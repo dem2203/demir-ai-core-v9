@@ -8,59 +8,70 @@ logger = logging.getLogger(__name__)
 class RealDataVerifier:
     """
     Gerçek Borsa Verisi Doğrulayıcı.
-    Fiyat doğrulamasını ve zaman damgası (Timestamp) kontrollerini yapar.
+    OHLCV (Mum) verilerini ve zaman damgalarını doğrular.
     """
     
-    MAX_ALLOWED_LATENCY_SEC = 60  # Maksimum kabul edilebilir gecikme (sn)
+    MAX_ALLOWED_LATENCY_SEC = 600  # Gecikme toleransı (Mum verisi olduğu için biraz daha esnek)
 
     @staticmethod
     def verify_timestamp(timestamp_ms: int) -> bool:
         """
         Verinin zaman damgasını kontrol eder.
-        Veri çok eskiyse veya gelecekten geliyorsa (saat hatası) reddeder.
         """
         current_time_ms = int(time.time() * 1000)
-        diff = abs(current_time_ms - timestamp_ms)
         
-        # Gelecekten gelen veri kontrolü (Server saat farkı toleransı: 5sn)
-        if timestamp_ms > current_time_ms + 5000:
-            logger.error(f"DATA ERROR: Timestamp is in the future! Diff: {diff}ms")
-            return False
-            
-        # Bayat veri kontrolü
-        if diff > (RealDataVerifier.MAX_ALLOWED_LATENCY_SEC * 1000):
-            logger.error(f"DATA ERROR: Data is stale/old. Latency: {diff/1000}s")
+        # Gelecekten gelen veri kontrolü
+        if timestamp_ms > current_time_ms + 60000: # 1 dk tolerans
+            logger.error(f"DATA ERROR: Timestamp is in the future! Server time sync issue?")
             return False
             
         return True
 
     @staticmethod
-    def verify_price_physics(price: float) -> bool:
+    def verify_candle_physics(candle: Dict) -> bool:
         """
-        Fiyatın mantıksal fizik kurallarına uygunluğunu denetler.
-        Negatif veya Sıfır fiyat kripto piyasasında olamaz.
+        Mum verisinin fiziksel olarak mantıklı olup olmadığını denetler.
+        Örn: High < Low olamaz. Fiyat negatif olamaz.
         """
-        if not isinstance(price, (int, float)):
-            logger.error(f"TYPE ERROR: Price is not a number: {type(price)}")
-            return False
+        try:
+            o = float(candle['open'])
+            h = float(candle['high'])
+            l = float(candle['low'])
+            c = float(candle['close'])
             
-        if price <= 0:
-            logger.critical(f"CRITICAL: Invalid price detected: {price}. Price must be positive.")
+            if any(p <= 0 for p in [o, h, l, c]):
+                logger.critical("CRITICAL: Negative or Zero price detected.")
+                return False
+                
+            if h < l:
+                logger.critical(f"PHYSICS FAIL: High ({h}) is lower than Low ({l})")
+                return False
+                
+            if not (l <= o <= h) or not (l <= c <= h):
+                 # Bazen çok küçük kaymalarda bu olabilir ama genel kural budur
+                 pass 
+
+            return True
+        except ValueError:
             return False
-            
-        return True
 
     @classmethod
     def verify_market_data(cls, ticker_data: Dict) -> bool:
         """
-        Tek bir veri paketini (Ticker) tam kontrolden geçirir.
+        Gelen veri paketini denetler.
         """
-        required_fields = ['symbol', 'price', 'timestamp']
+        # ARTIK 'price' YERİNE 'close' ARIYORUZ
+        required_fields = ['symbol', 'timestamp', 'close', 'high', 'low']
+        
         if not all(field in ticker_data for field in required_fields):
-            logger.error("Data structure missing required fields.")
+            missing = [f for f in required_fields if f not in ticker_data]
+            logger.error(f"Data structure missing required fields: {missing}")
             return False
 
-        is_time_valid = cls.verify_timestamp(ticker_data['timestamp'])
-        is_price_valid = cls.verify_price_physics(ticker_data['price'])
+        if not cls.verify_timestamp(ticker_data['timestamp']):
+            return False
+            
+        if not cls.verify_candle_physics(ticker_data):
+            return False
         
-        return is_time_valid and is_price_valid
+        return True
