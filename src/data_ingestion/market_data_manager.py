@@ -22,13 +22,14 @@ class MarketDataManager:
 
     async def get_live_market_snapshot(self) -> List[List[Dict]]:
         """
-        Her parite için son 100 mumluk veri setini çeker.
-        Dönüş Formatı: [ [BTC_Mumlari], [ETH_Mumlari], ... ]
+        Her parite için veri çeker.
+        GÜNCELLEME: Monster Math motoru için 100 mum yetmedi.
+        Limit 500'e çıkarıldı ki hesaplamalar sonrası veri kalsın.
         """
         tasks = []
         for pair in self.active_pairs:
-            # Artık Ticker değil, Candle (Mum) çekiyoruz
-            tasks.append(self.binance.fetch_candles(pair, timeframe='1h', limit=100))
+            # BURAYI GÜNCELLEDİK: limit=100 -> limit=500
+            tasks.append(self.binance.fetch_candles(pair, timeframe='1h', limit=500))
         
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
