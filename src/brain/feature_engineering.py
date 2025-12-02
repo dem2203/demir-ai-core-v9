@@ -7,20 +7,28 @@ logger = logging.getLogger("ULTIMATE_FEATURE_ENGINEERING")
 
 class FeatureEngineer:
     """
-    DEMIR AI V9.2 - ROBUST EDITION
+    DEMIR AI V9.5 - PLATINUM EDITION
     
-    Veri kaybını önlemek için 'fillna' stratejisi eklendi.
-    Hurst Exponent hesaplaması güvenli hale getirildi.
+    Kapsam:
+    1. Klasik Osilatörler: RSI, MACD, ROC, MFI
+    2. Trend Takipçileri: ADX, Ichimoku (Live-Safe), Parabolic SAR
+    3. Volatilite: ATR, Bollinger Width, Z-Score
+    4. Kurumsal Hacim: VWAP
+    5. Kaos Matematiği: Hurst Exponent
+    6. Formasyonlar: Doji, Hammer, Engulfing
+    
+    Özellik:
+    - Live-Trading Safe: Geleceğe bakan veriler (Look-ahead bias) temizlendi.
+    - Data Rescue: Eksik veriler (NaN) için 'ffill' koruması eklendi.
     """
 
-    # --- YARDIMCI FONKSİYONLAR ---
-    @staticmethod
-    def _calculate_sma(series: pd.Series, period: int) -> pd.Series:
-        return series.rolling(window=period).mean()
-
-    # --- 1. MOMENTUM & OSİLATÖRLER ---
+    # ==========================================
+    # 1. MOMENTUM VE OSİLATÖRLER
+    # ==========================================
+    
     @staticmethod
     def calculate_rsi(data: pd.DataFrame, period: int = 14) -> pd.Series:
+        """Relative Strength Index"""
         delta = data['close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
@@ -28,11 +36,22 @@ class FeatureEngineer:
         return 100 - (100 / (1 + rs))
 
     @staticmethod
+    def calculate_macd(data: pd.DataFrame, fast: int = 12, slow: int = 26, signal: int = 9):
+        """Moving Average Convergence Divergence"""
+        exp1 = data['close'].ewm(span=fast, adjust=False).mean()
+        exp2 = data['close'].ewm(span=slow, adjust=False).mean()
+        macd = exp1 - exp2
+        signal_line = macd.ewm(span=signal, adjust=False).mean()
+        return macd, signal_line
+
+    @staticmethod
     def calculate_roc(series: pd.Series, period: int = 9) -> pd.Series:
+        """Rate of Change"""
         return series.pct_change(periods=period) * 100
 
     @staticmethod
     def calculate_mfi(data: pd.DataFrame, period: int = 14) -> pd.Series:
+        """Money Flow Index (Hacim Ağırlıklı RSI)"""
         typical_price = (data['high'] + data['low'] + data['close']) / 3
         money_flow = typical_price * data['volume']
         
@@ -45,9 +64,13 @@ class FeatureEngineer:
         mfi = 100 - (100 / (1 + (positive_mf / negative_mf)))
         return mfi
 
-    # --- 2. TREND GÖSTERGELERİ ---
+    # ==========================================
+    # 2. TREND GÖSTERGELERİ
+    # ==========================================
+
     @staticmethod
     def calculate_adx(data: pd.DataFrame, period: int = 14) -> pd.Series:
+        """Average Directional Index (Trend Gücü)"""
         df = data.copy()
         df['tr1'] = df['high'] - df['low']
         df['tr2'] = abs(df['high'] - df['close'].shift(1))
@@ -64,25 +87,28 @@ class FeatureEngineer:
         plus_di = 100 * (df['plus_dm'].rolling(window=period).mean() / df['atr'])
         minus_di = 100 * (df['minus_dm'].rolling(window=period).mean() / df['atr'])
         
-        # 0'a bölme hatasını engelle
         di_sum = plus_di + minus_di
-        di_sum = di_sum.replace(0, 1) 
+        di_sum = di_sum.replace(0, 1) # 0'a bölme hatasını engelle
         
         dx = 100 * abs(plus_di - minus_di) / di_sum
         return dx.rolling(window=period).mean()
 
     @staticmethod
     def calculate_ichimoku(data: pd.DataFrame) -> pd.DataFrame:
+        """Ichimoku Cloud (Chikou hariç - Live Safe)"""
         tenkan = (data['high'].rolling(9).max() + data['low'].rolling(9).min()) / 2
         kijun = (data['high'].rolling(26).max() + data['low'].rolling(26).min()) / 2
         span_a = ((tenkan + kijun) / 2).shift(26)
         span_b = ((data['high'].rolling(52).max() + data['low'].rolling(52).min()) / 2).shift(26)
-        
         return pd.DataFrame({'tenkan': tenkan, 'kijun': kijun, 'span_a': span_a, 'span_b': span_b})
 
-    # --- 3. VOLATİLİTE ---
+    # ==========================================
+    # 3. VOLATİLİTE VE İSTATİSTİK
+    # ==========================================
+
     @staticmethod
     def calculate_atr(data: pd.DataFrame, period: int = 14) -> pd.Series:
+        """Average True Range (Risk Yönetimi için)"""
         tr1 = data['high'] - data['low']
         tr2 = abs(data['high'] - data['close'].shift())
         tr3 = abs(data['low'] - data['close'].shift())
@@ -91,14 +117,17 @@ class FeatureEngineer:
 
     @staticmethod
     def calculate_bollinger_width(data: pd.DataFrame, period: int = 20) -> pd.Series:
+        """Bollinger Bant Genişliği (Sıkışma tespiti için)"""
         sma = data['close'].rolling(period).mean()
         std = data['close'].rolling(period).std()
         upper = sma + (2 * std)
         lower = sma - (2 * std)
+        # Sıkışma (Squeeze) tespiti için yüzdesel genişlik
         return (upper - lower) / sma
 
     @staticmethod
     def calculate_z_score(series: pd.Series, period: int = 20) -> pd.Series:
+        """İstatistiksel Anomali Tespiti"""
         mean = series.rolling(window=period).mean()
         std = series.rolling(window=period).std()
         std = std.replace(0, 0.0001)
@@ -106,52 +135,59 @@ class FeatureEngineer:
 
     @staticmethod
     def calculate_vwap(data: pd.DataFrame) -> pd.Series:
+        """Hacim Ağırlıklı Ortalama Fiyat (Balina izi)"""
         v = data['volume']
         tp = (data['high'] + data['low'] + data['close']) / 3
         return (tp * v).cumsum() / v.cumsum()
 
-    # --- 4. KAOS TEORİSİ ---
+    # ==========================================
+    # 4. İLERİ MATEMATİK VE FORMASYONLAR
+    # ==========================================
+
     @staticmethod
     def calculate_hurst_exponent(series: pd.Series, max_lag: int = 20) -> float:
+        """Kaos Teorisi: Piyasa Rastgele mi, Trend mi?"""
         try:
-            # Seri çok kısaysa veya sabitse hata verme, 0.5 dön
             if len(series) < max_lag + 2: return 0.5
             if series.std() == 0: return 0.5
-
             lags = range(2, max_lag)
             tau = [np.sqrt(np.std(np.subtract(series[lag:], series[:-lag]))) for lag in lags]
-            
             if len(tau) < 2: return 0.5
-            
             poly = np.polyfit(np.log(lags), np.log(tau), 1)
             val = poly[0] * 2.0
-            
-            # Aşırı uç değerleri temizle
             if np.isnan(val) or np.isinf(val): return 0.5
             return val
         except:
             return 0.5
 
-    # --- 5. MUM FORMASYONLARI ---
     @staticmethod
     def detect_patterns(df: pd.DataFrame) -> pd.DataFrame:
+        """Japon Mum Formasyonları"""
         body = np.abs(df['close'] - df['open'])
         range_len = df['high'] - df['low']
         range_len = range_len.replace(0, 0.0001)
         
+        # Doji (Kararsızlık)
         df['is_doji'] = np.where(body <= (range_len * 0.1), 1, 0)
         
+        # Hammer (Dönüş Sinyali)
         lower_shadow = np.minimum(df['close'], df['open']) - df['low']
         df['is_hammer'] = np.where((lower_shadow >= (body * 2)) & (df['is_doji'] == 0), 1, 0)
         
+        # Engulfing (Yutan Boğa/Ayı)
         df['is_engulfing'] = np.where(
             (df['open'] < df['close'].shift(1)) & (df['close'] > df['open'].shift(1)) & 
             (df['close'] > df['open']) & (df['close'].shift(1) < df['open'].shift(1)), 1, 0
         )
         return df[['is_doji', 'is_hammer', 'is_engulfing']]
 
+    # ==========================================
+    # ANA İŞLEMCİ (PIPELINE)
+    # ==========================================
+
     @classmethod
     def process_data(cls, raw_data: List[Dict]) -> Optional[pd.DataFrame]:
+        """Ham veriyi alıp, tüm indikatörleri hesaplayıp temiz veri döner."""
         if not raw_data: return None
 
         try:
@@ -159,8 +195,14 @@ class FeatureEngineer:
             cols = ['open', 'high', 'low', 'close', 'volume']
             df[cols] = df[cols].astype(float)
 
-            # Temel Hesaplamalar
+            # --- GÖSTERGELERİ HESAPLA ---
             df['rsi'] = cls.calculate_rsi(df)
+            
+            # Yeni Eklenenler:
+            macd, macd_signal = cls.calculate_macd(df)
+            df['macd'] = macd
+            df['macd_signal'] = macd_signal
+            
             df['roc'] = cls.calculate_roc(df['close'])
             df['adx'] = cls.calculate_adx(df)
             df['atr'] = cls.calculate_atr(df)
@@ -174,26 +216,28 @@ class FeatureEngineer:
             df['z_score'] = cls.calculate_z_score(df['close'])
             df['log_ret'] = np.log(df['close'] / df['close'].shift(1))
 
-            # Kaos Analizi - Hata vermez, 0.5 döner
+            # Kaos Analizi (Son 100 veri penceresi)
             df['hurst'] = df['close'].rolling(window=100).apply(lambda x: cls.calculate_hurst_exponent(x))
 
+            # Formasyonlar
             patterns = cls.detect_patterns(df)
             df = pd.concat([df, patterns], axis=1)
 
+            # AI Hafızası (Lag Features)
             for lag in [1, 2, 3, 5, 8]:
                 df[f'close_lag_{lag}'] = df['close'].shift(lag)
                 df[f'vol_lag_{lag}'] = df['volume'].shift(lag)
                 df[f'rsi_lag_{lag}'] = df['rsi'].shift(lag)
 
-            # --- VERİ KURTARMA OPERASYONU ---
+            # --- VERİ TEMİZLİK VE KURTARMA ---
             
-            # 1. İlk 100 satırı at (Hurst için gerekliydi, zaten boş)
+            # 1. Başlangıçtaki boş hesaplamaları at (İlk 100 veri)
             df = df.iloc[100:]
             
-            # 2. Hala boşluk (NaN) varsa, 'dropna' YERİNE önceki veriyi kopyala (Forward Fill)
-            # Böylece veri kaybı yaşanmaz.
-            df.fillna(method='ffill', inplace=True)
-            df.fillna(0, inplace=True) # En kötü ihtimalle 0 bas
+            # 2. Arada kalan boşlukları (NaN) önceki veriyle doldur (Forward Fill)
+            # Bu işlem 'Data Wiped Out' hatasını engeller.
+            df = df.ffill() 
+            df.fillna(0, inplace=True)
             
             if len(df) == 0:
                 logger.error(f"Data wiped out! Check math logic.")
