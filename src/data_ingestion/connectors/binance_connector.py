@@ -1,6 +1,6 @@
 import ccxt.async_support as ccxt
 import asyncio
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 import logging
 from src.config.settings import Config
 from src.validation.validator import SignalValidator
@@ -10,7 +10,7 @@ logger = logging.getLogger("BINANCE_CONNECTOR")
 class BinanceConnector:
     """
     Profesyonel Binance Bağlantı Yöneticisi.
-    Railway Env değişkenlerini kullanır. Hardcoded veri İÇERMEZ.
+    Anlık Ticker yerine OHLCV (Mum) verisi çeker.
     """
     
     def __init__(self):
@@ -18,67 +18,57 @@ class BinanceConnector:
         self.api_secret = Config.BINANCE_API_SECRET
         self.exchange = None
         
-        # Borsa ayarları
         self.exchange_config = {
             'apiKey': self.api_key,
             'secret': self.api_secret,
-            'enableRateLimit': True,  # Ban yememek için otomatik hız sınırı
-            'options': {
-                'defaultType': 'future',  # Vadeli işlemler (Futures) modu
-            }
+            'enableRateLimit': True,
+            'options': {'defaultType': 'future'}
         }
 
     async def connect(self):
-        """Borsaya asenkron bağlantı başlatır."""
         try:
             self.exchange = ccxt.binance(self.exchange_config)
-            # Bağlantı testi: Server saatini çek
-            time = await self.exchange.fetch_time()
-            logger.info(f"CONNECTED: Binance System Time: {time}")
-            
-            # Piyasaları yükle (Symbol map)
             await self.exchange.load_markets()
-            logger.info("MARKETS LOADED: Binance symbols ready.")
-            
+            logger.info("CONNECTED: Binance Markets Loaded.")
         except Exception as e:
-            logger.critical(f"CONNECTION FAILED: Could not connect to Binance. Error: {e}")
+            logger.critical(f"CONNECTION FAILED: {e}")
             raise e
 
-    async def fetch_ticker(self, symbol: str) -> Optional[Dict]:
+    async def fetch_candles(self, symbol: str, timeframe: str = '1h', limit: int = 100) -> Optional[List[Dict]]:
         """
-        Tek bir parite için CANLI fiyat verisi çeker.
-        Örn: symbol='BTC/USDT'
+        Feature Engineering için gerekli olan GEÇMİŞ MUM (OHLCV) verilerini çeker.
         """
         if not self.exchange:
             await self.connect()
             
         try:
-            # 1. Gerçek veriyi çek
-            ticker = await self.exchange.fetch_ticker(symbol)
+            # OHLCV verisini çek (Open, High, Low, Close, Volume)
+            ohlcv = await self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
             
-            # Veriyi standart formata getir
-            processed_data = {
-                'source': 'binance',
-                'symbol': symbol,
-                'price': float(ticker['last']),
-                'volume': float(ticker['quoteVolume']),
-                'timestamp': int(ticker['timestamp']),
-                'high': float(ticker['high']),
-                'low': float(ticker['low']),
-            }
+            formatted_data = []
+            for candle in ohlcv:
+                # CCXT formatı: [timestamp, open, high, low, close, volume]
+                data_point = {
+                    'symbol': symbol,
+                    'timestamp': candle[0],
+                    'open': float(candle[1]),
+                    'high': float(candle[2]),
+                    'low': float(candle[3]),
+                    'close': float(candle[4]),
+                    'volume': float(candle[5])
+                }
+                formatted_data.append(data_point)
             
-            # 2. VALIDATION KATMANI (Az önce yazdığımız Polis Kontrolü)
-            if SignalValidator.validate_incoming_data(processed_data):
-                return processed_data
+            # Son mumu (henüz kapanmamış olabilir) validator'dan geçir
+            if formatted_data and SignalValidator.validate_incoming_data(formatted_data[-1]):
+                return formatted_data
             else:
-                logger.warning(f"DATA REJECTED: Validation failed for {symbol}")
                 return None
 
         except Exception as e:
-            logger.error(f"FETCH ERROR: {symbol} - {str(e)}")
+            logger.error(f"FETCH ERROR ({symbol}): {str(e)}")
             return None
 
     async def close(self):
-        """Bağlantıyı güvenli kapatır."""
         if self.exchange:
             await self.exchange.close()

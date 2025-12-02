@@ -95,27 +95,29 @@ class BotEngine:
         # Tüm analizleri paralel çalıştır
         await asyncio.gather(*tasks)
 
-    async def analyze_and_execute(self, ticker_data: dict, balance: float):
+   async def analyze_and_execute(self, ticker_data: List[dict], balance: float):
         """
         TEK BİR COIN İÇİN KARAR MEKANİZMASI
         """
-        symbol = ticker_data['symbol']
+        if not ticker_data or len(ticker_data) == 0:
+            return
+
+        symbol = ticker_data[0]['symbol']
         
-        # --- A. ANALİZ KATMANI (BEYİN) ---
-        # Veriyi geçmiş verilerle birleştirip (burada basitlik için tek veri yolluyoruz)
-        # MarketAnalyzer, feature engineering yapıp AI'a soracak.
-        # Not: Gerçek senaryoda buraya 'OHLCV history' gönderilir.
-        signal = await self.analyzer.analyze_market(symbol, [ticker_data])
+        # --- A. ANALİZ KATMANI ---
+        # DÜZELTME BURADA: ticker_data zaten bir liste (mumlar listesi).
+        # Onu tekrar köşeli parantez [] içine ALMIYORUZ.
+        signal = await self.analyzer.analyze_market(symbol, ticker_data)
         
         if not signal:
-            # Sinyal yoksa (NEUTRAL), işlem yapma
             return
 
         logger.info(f"SIGNAL DETECTED: {symbol} -> {signal['side']} (Conf: {signal['confidence']}%)")
 
-        # --- B. EXECUTION KATMANI (KAS VE REFLEKS) ---
-        # Sinyali emre dönüştür (Stop Loss, Risk, Bakiye Kontrolü)
-        atr_value = ticker_data.get('high') - ticker_data.get('low') # Basit ATR örneği
+        # --- B. EXECUTION KATMANI ---
+        # ATR hesabı için son mumun verilerini kullan
+        last_candle = ticker_data[-1]
+        atr_value = last_candle.get('high') - last_candle.get('low') 
         
         order = await self.order_manager.prepare_order(signal, balance, atr_value)
         
