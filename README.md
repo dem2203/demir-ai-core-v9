@@ -1,2 +1,2 @@
-# demir-ai-core-v9
-Enterprise-grade AI Crypto Trading System with Real-Time Validation and Zero-Mock Architecture
+# DEMIR AI CORE v9.0
+Enterprise System with Zero-Mock Architecture.

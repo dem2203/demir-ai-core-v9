@@ -1,0 +1,1 @@
+# Stop-Loss/TP Hesaplayıcı
