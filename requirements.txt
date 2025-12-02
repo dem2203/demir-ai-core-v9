@@ -1,11 +1,17 @@
-ccxt
-pandas
-numpy
-scikit-learn
-sqlalchemy
-psycopg2-binary
+# --- Core ---
 python-dotenv
 requests
-tweepy
+asyncio
+
+# --- Data & Math ---
+pandas
+numpy
+ccxt
+
+# --- AI & Machine Learning ---
+scikit-learn
+joblib
+
+# --- Dashboard ---
 streamlit
-plotly
+watchdog

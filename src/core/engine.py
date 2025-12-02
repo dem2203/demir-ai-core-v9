@@ -7,14 +7,21 @@ from datetime import datetime
 from src.config.settings import Config
 from src.data_ingestion.market_data_manager import MarketDataManager
 from src.brain.market_analyzer import MarketAnalyzer
-from src.execution.order_manager import OrderManager
 from src.utils.logger import setup_logger
+from src.utils.notifications import NotificationManager # <-- YENİ EKLENDİ
 
 logger = logging.getLogger("DEMIR_AI_CORE_ENGINE")
 
 class BotEngine:
     """
-    DEMIR AI v9.0 - MAIN ORCHESTRATOR
+    DEMIR AI v10.1 - ANALYST ENGINE
+    
+    Bu motor artık işlem açmaz (Execution Layer devre dışı).
+    Bunun yerine:
+    1. Piyasayı izler.
+    2. AI ile analiz eder.
+    3. Dashboard verisini günceller.
+    4. Telegram üzerinden Sinyal/Rapor gönderir.
     """
     
     def __init__(self):
@@ -22,18 +29,19 @@ class BotEngine:
         
         # --- Alt Sistemlerin Yüklenmesi ---
         logger.info("Initializing Sub-systems...")
+        
         self.data_manager = MarketDataManager()
         self.analyzer = MarketAnalyzer()
-        self.order_manager = OrderManager()
+        self.notifier = NotificationManager() # <-- OrderManager yerine geldi
         
-        # Takip Edilecek Coinler (Dinamik)
-        self.target_symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"]
+        # Takip Edilecek Coinler (Otomatik algılamaya geçene kadar manuel liste)
+        self.target_symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "AVAX/USDT"]
         
-        self.loop_interval = 60 # Saniye
+        self.loop_interval = 60 # Saniye (1 Dakika)
 
     async def start(self):
         """Botu Başlatır"""
-        logger.info(f"STARTING DEMIR AI v{Config.VERSION} - ENVIRONMENT: {Config.ENVIRONMENT}")
+        logger.info(f"STARTING DEMIR AI v{Config.VERSION} - MODE: AI CO-PILOT")
         
         # Borsa Bağlantılarını Aç
         await self.data_manager.initialize()
@@ -53,6 +61,7 @@ class BotEngine:
                 
             except Exception as e:
                 logger.critical(f"CRITICAL ENGINE FAILURE: {e}")
+                # Hata olsa bile botu durdurma, sadece logla ve devam et
                 await asyncio.sleep(5) 
             
             # Döngü süresini hesapla ve bekle
@@ -68,20 +77,21 @@ class BotEngine:
         # Toplu Veri Çekme (OHLCV Listesi)
         market_data_list = await self.data_manager.get_live_market_snapshot()
         
-        current_balance = 10000.0 
+        # Analist modunda bakiyeye ihtiyacımız yok ama fonksiyon yapısını bozmamak için dummy veri.
+        current_balance = 0.0 
         
         tasks = []
         for data in market_data_list:
-            # Her coin için analiz görevi
-            task = self.analyze_and_execute(data, current_balance)
+            # Her coin için analiz görevi oluştur
+            task = self.analyze_and_report(data)
             tasks.append(task)
             
         # Tüm analizleri paralel çalıştır
         await asyncio.gather(*tasks)
 
-    async def analyze_and_execute(self, ticker_data: List[dict], balance: float):
+    async def analyze_and_report(self, ticker_data: List[dict]):
         """
-        TEK BİR COIN İÇİN KARAR MEKANİZMASI
+        TEK BİR COIN İÇİN ANALİZ VE RAPORLAMA
         """
         if not ticker_data or len(ticker_data) == 0:
             return
@@ -89,22 +99,20 @@ class BotEngine:
         symbol = ticker_data[0]['symbol']
         
         # --- A. ANALİZ KATMANI ---
+        # AI burada devreye giriyor, analiz yapıyor ve dashboard için veri kaydediyor.
         signal = await self.analyzer.analyze_market(symbol, ticker_data)
         
+        # Eğer kayda değer bir sinyal yoksa çık
         if not signal:
             return
 
         logger.info(f"SIGNAL DETECTED: {symbol} -> {signal['side']} (Conf: {signal['confidence']}%)")
 
-        # --- B. EXECUTION KATMANI ---
-        # ATR hesabı için son mumun verilerini kullan
-        last_candle = ticker_data[-1]
-        atr_value = last_candle.get('high') - last_candle.get('low') 
+        # --- B. BİLDİRİM KATMANI (EXECUTION YOK) ---
+        # Sinyali Telegram'a gönder
+        await self.notifier.send_signal(signal)
         
-        order = await self.order_manager.prepare_order(signal, balance, atr_value)
-        
-        if order:
-            logger.info(f"🚀 EXECUTING ORDER: {order}")
+        logger.info(f"📨 TELEGRAM REPORT SENT: {signal['side']} {symbol}")
 
     async def stop(self):
         """Güvenli Kapatma"""

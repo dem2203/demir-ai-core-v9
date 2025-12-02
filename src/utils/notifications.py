@@ -7,9 +7,8 @@ logger = logging.getLogger("NOTIFICATION_MANAGER")
 
 class NotificationManager:
     """
-    TELEGRAM ALERT SYSTEM
-    Botun dış dünya ile (seninle) iletişim kurduğu yer.
-    7/24 çalışırken sana rapor verir.
+    VIP SIGNAL BROADCASTER
+    AI'ın analizlerini profesyonel bir sinyal formatında Telegram'a iletir.
     """
     
     def __init__(self):
@@ -17,50 +16,44 @@ class NotificationManager:
         self.chat_id = Config.TELEGRAM_CHAT_ID
         self.base_url = f"https://api.telegram.org/bot{self.token}/sendMessage"
 
-    async def send_message(self, message: str, level: str = "INFO"):
+    async def send_signal(self, signal: dict):
         """
-        Asenkron mesaj gönderimi (Botu yavaşlatmaz).
-        Emojilerle mesajın önemini belirtir.
+        Detaylı Sinyal Kartı Gönderir.
         """
         if not self.token or not self.chat_id:
-            logger.warning("Telegram token missing. Notifications disabled.")
             return
 
-        # Mesaj seviyesine göre ikon seç
-        icons = {
-            "INFO": "ℹ️",
-            "SUCCESS": "✅",
-            "WARNING": "⚠️",
-            "CRITICAL": "🚨",
-            "PROFIT": "💰",
-            "LOSS": "🔻"
-        }
-        icon = icons.get(level, "📢")
+        # Yön İkonu
+        side_icon = "🟢 LONG 🚀" if signal['side'] == "BUY" else "🔴 SHORT 🔻"
         
-        formatted_message = f"{icon} **DEMIR AI v{Config.VERSION}**\n\n{message}"
+        # Güven Skoru Görseli
+        conf = signal['confidence']
+        conf_icon = "⭐⭐⭐" if conf > 85 else ("⭐⭐" if conf > 70 else "⭐")
+
+        # Mesaj Şablonu
+        message = (
+            f"{side_icon} **{signal['symbol']}**\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"🤖 **AI Confidence:** {conf:.1f}% {conf_icon}\n"
+            f"📊 **Setup:** {signal.get('reason', 'AI Prediction Model')}\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"📍 **ENTRY:** ${signal['entry_price']:.4f}\n"
+            f"🎯 **TP (Target):** ${signal['tp_price']:.4f}\n"
+            f"🛡️ **SL (Stop):** ${signal['sl_price']:.4f}\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"⚠️ _Bu bir yatırım tavsiyesi değildir. Son karar sizindir._"
+        )
         
+        await self.send_message_raw(message)
+
+    async def send_message_raw(self, text: str):
         try:
-            # Blocking I/O olmaması için ayrı thread'de çalıştırılır (Requests kütüphanesi senkrondur)
             payload = {
                 "chat_id": self.chat_id,
-                "text": formatted_message,
+                "text": text,
                 "parse_mode": "Markdown"
             }
-            # Basit HTTP isteği
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, lambda: requests.post(self.base_url, data=payload))
-            
         except Exception as e:
-            logger.error(f"Failed to send Telegram message: {e}")
-
-    async def send_trade_alert(self, symbol: str, side: str, price: float, size: float):
-        """Özel Alım-Satım Bildirimi"""
-        msg = (
-            f"*NEW TRADE EXECUTED*\n"
-            f"Symbol: `{symbol}`\n"
-            f"Side: *{side}*\n"
-            f"Price: ${price}\n"
-            f"Size: ${size:.2f}\n"
-            f"Time: {Config.ENVIRONMENT.upper()}"
-        )
-        await self.send_message(msg, level="SUCCESS" if side=="BUY" else "WARNING")
+            logger.error(f"Telegram Error: {e}")
