@@ -63,7 +63,8 @@ class AITrainer:
         df = self.prepare_targets(df)
         
         # Hedef (target) ve gereksiz sütunları çıkar, geriye sadece matematik kalsın
-        features = [col for col in df.columns if col not in ['target', 'open', 'high', 'low', 'close', 'volume', 'timestamp']]
+        # DÜZELTME: 'symbol' sütununu (BTC/USDT yazısını) eğitimden çıkarıyoruz. AI sadece sayı ister.
+        features = [col for col in df.columns if col not in ['target', 'symbol', 'open', 'high', 'low', 'close', 'volume', 'timestamp']]
         
         X = df[features]
         y = df['target']
