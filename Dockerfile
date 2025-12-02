@@ -1,14 +1,17 @@
+# Hafif Python sürümü
 FROM python:3.11-slim
 
+# Çalışma dizini
 WORKDIR /app
 
+# Dosyaları kopyala
 COPY . .
 
-# Gerekli kütüphaneleri yükle
+# Kütüphaneleri yükle
 RUN pip install --no-cache-dir -r requirements.txt
 
-# start.sh dosyasına çalıştırma izni ver
+# start.sh dosyasına "Çalıştırılma İzni" ver (Çok Önemli!)
 RUN chmod +x start.sh
 
-# Çift motoru çalıştır (Bot + Dashboard)
+# Çift motoru başlat
 CMD ["./start.sh"]
