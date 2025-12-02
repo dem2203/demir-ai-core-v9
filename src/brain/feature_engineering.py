@@ -7,10 +7,10 @@ logger = logging.getLogger("ULTIMATE_FEATURE_ENGINEERING")
 
 class FeatureEngineer:
     """
-    DEMIR AI V9.1 - LIVE TRADING SAFE EDITION
+    DEMIR AI V9.2 - ROBUST EDITION
     
-    Canlı işlem sırasında 'Geleceğe Bakan' (Look-ahead bias) veriler temizlendi.
-    Son gelen mum verisinin silinmesi engellendi.
+    Veri kaybını önlemek için 'fillna' stratejisi eklendi.
+    Hurst Exponent hesaplaması güvenli hale getirildi.
     """
 
     # --- YARDIMCI FONKSİYONLAR ---
@@ -73,19 +73,10 @@ class FeatureEngineer:
 
     @staticmethod
     def calculate_ichimoku(data: pd.DataFrame) -> pd.DataFrame:
-        # Tenkan-sen (Conversion Line): (9-period high + 9-period low) / 2
         tenkan = (data['high'].rolling(9).max() + data['low'].rolling(9).min()) / 2
-        
-        # Kijun-sen (Base Line): (26-period high + 26-period low) / 2
         kijun = (data['high'].rolling(26).max() + data['low'].rolling(26).min()) / 2
-        
-        # Senkou Span A (Leading Span A): (Conversion Line + Base Line) / 2
         span_a = ((tenkan + kijun) / 2).shift(26)
-        
-        # Senkou Span B (Leading Span B): (52-period high + 52-period low) / 2
         span_b = ((data['high'].rolling(52).max() + data['low'].rolling(52).min()) / 2).shift(26)
-        
-        # NOT: Chikou Span (Lagging Span) canlı işlemde son veriyi NaN yapacağı için kaldırıldı.
         
         return pd.DataFrame({'tenkan': tenkan, 'kijun': kijun, 'span_a': span_a, 'span_b': span_b})
 
@@ -110,7 +101,6 @@ class FeatureEngineer:
     def calculate_z_score(series: pd.Series, period: int = 20) -> pd.Series:
         mean = series.rolling(window=period).mean()
         std = series.rolling(window=period).std()
-        # 0'a bölme koruması
         std = std.replace(0, 0.0001)
         return (series - mean) / std
 
@@ -124,11 +114,21 @@ class FeatureEngineer:
     @staticmethod
     def calculate_hurst_exponent(series: pd.Series, max_lag: int = 20) -> float:
         try:
+            # Seri çok kısaysa veya sabitse hata verme, 0.5 dön
+            if len(series) < max_lag + 2: return 0.5
+            if series.std() == 0: return 0.5
+
             lags = range(2, max_lag)
             tau = [np.sqrt(np.std(np.subtract(series[lag:], series[:-lag]))) for lag in lags]
+            
             if len(tau) < 2: return 0.5
+            
             poly = np.polyfit(np.log(lags), np.log(tau), 1)
-            return poly[0] * 2.0
+            val = poly[0] * 2.0
+            
+            # Aşırı uç değerleri temizle
+            if np.isnan(val) or np.isinf(val): return 0.5
+            return val
         except:
             return 0.5
 
@@ -137,8 +137,6 @@ class FeatureEngineer:
     def detect_patterns(df: pd.DataFrame) -> pd.DataFrame:
         body = np.abs(df['close'] - df['open'])
         range_len = df['high'] - df['low']
-        
-        # 0'a bölme koruması
         range_len = range_len.replace(0, 0.0001)
         
         df['is_doji'] = np.where(body <= (range_len * 0.1), 1, 0)
@@ -161,7 +159,7 @@ class FeatureEngineer:
             cols = ['open', 'high', 'low', 'close', 'volume']
             df[cols] = df[cols].astype(float)
 
-            # İndikatörler
+            # Temel Hesaplamalar
             df['rsi'] = cls.calculate_rsi(df)
             df['roc'] = cls.calculate_roc(df['close'])
             df['adx'] = cls.calculate_adx(df)
@@ -176,30 +174,29 @@ class FeatureEngineer:
             df['z_score'] = cls.calculate_z_score(df['close'])
             df['log_ret'] = np.log(df['close'] / df['close'].shift(1))
 
-            # Kaos Analizi (Son 100 veri için)
+            # Kaos Analizi - Hata vermez, 0.5 döner
             df['hurst'] = df['close'].rolling(window=100).apply(lambda x: cls.calculate_hurst_exponent(x))
 
             patterns = cls.detect_patterns(df)
             df = pd.concat([df, patterns], axis=1)
 
-            # Lag Features
             for lag in [1, 2, 3, 5, 8]:
                 df[f'close_lag_{lag}'] = df['close'].shift(lag)
                 df[f'vol_lag_{lag}'] = df['volume'].shift(lag)
                 df[f'rsi_lag_{lag}'] = df['rsi'].shift(lag)
 
-            # CRITICAL FIX: Sadece hesaplama için gereken BAŞTAKİ boş verileri siliyoruz.
-            # Sondaki verileri (Canlı veriyi) koruyoruz.
-            # Hurst 100 veri gerektirir, Ichimoku 52. 
-            # Güvenlik için ilk 100 satırı atıyoruz.
-            df = df.iloc[100:] 
+            # --- VERİ KURTARMA OPERASYONU ---
             
-            # Hala NaN varsa (örneğin ara hesaplamalardan), onları da temizle ama logla
-            original_len = len(df)
-            df.dropna(inplace=True)
+            # 1. İlk 100 satırı at (Hurst için gerekliydi, zaten boş)
+            df = df.iloc[100:]
+            
+            # 2. Hala boşluk (NaN) varsa, 'dropna' YERİNE önceki veriyi kopyala (Forward Fill)
+            # Böylece veri kaybı yaşanmaz.
+            df.fillna(method='ffill', inplace=True)
+            df.fillna(0, inplace=True) # En kötü ihtimalle 0 bas
             
             if len(df) == 0:
-                logger.error(f"Data wiped out after processing! Original len after skip: {original_len}")
+                logger.error(f"Data wiped out! Check math logic.")
                 return None
             
             logger.info(f"Feature Engineering Complete. Shape: {df.shape}")
