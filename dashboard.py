@@ -25,7 +25,7 @@ def load_data():
 
 # Otomatik Yenileme Butonu
 if st.button('🔄 Refresh Data'):
-    st.experimental_rerun()
+    st.rerun()
 
 # Ana Veri Döngüsü
 data = load_data()
