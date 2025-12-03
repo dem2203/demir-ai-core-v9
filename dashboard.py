@@ -7,8 +7,8 @@ import asyncio
 from src.backtest.backtester import Backtester
 from src.config.settings import Config
 from src.execution.paper_trader import PaperTrader
-from src.brain.optimizer import StrategyOptimizer # <-- Optimizer Geri Geldi
-from src.utils.visualizer import MarketVisualizer # <-- Görselleştirici
+from src.brain.optimizer import StrategyOptimizer 
+from src.utils.visualizer import MarketVisualizer 
 
 # --- Sayfa Ayarları ---
 st.set_page_config(
@@ -48,7 +48,7 @@ def load_json(filename):
     return {}
 
 # ==========================================
-# 1. CANLI İZLEME
+# 1. CANLI İZLEME (MACRO + AI)
 # ==========================================
 if page == "📡 Live Dashboard":
     st.caption(f"Tracking Assets: {', '.join(Config.TARGET_COINS)}")
@@ -62,34 +62,42 @@ if page == "📡 Live Dashboard":
         st.rerun()
     else:
         main_symbol = Config.TARGET_COINS[0] 
-        btc_data = data.get(main_symbol)
+        btc_data = data.get(main_symbol, list(data.values())[0])
         
-        if btc_data:
-            main_info = btc_data
-            display_symbol = main_symbol
-        else:
-            first_key = list(data.keys())[0]
-            main_info = data[first_key]
-            display_symbol = main_info['symbol']
+        # --- ÜST PANEL: 5 FAKTÖRLÜ MAKRO ANALİZ ---
+        st.markdown("### 🌍 Global Macro Conditions")
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
         
-        # Global Metrics
-        c1, c2, c3, c4 = st.columns(4)
-        dxy = main_info.get('dxy', 0)
-        vix = main_info.get('vix', 0)
+        # Verileri güvenli çek
+        dxy = btc_data.get('dxy', 0)
+        vix = btc_data.get('vix', 0)
+        spx = btc_data.get('spx', 0)
+        ndq = btc_data.get('ndq', 0)
+        tnx = btc_data.get('tnx', 0)
+        
         c1.metric("🇺🇸 DXY", f"{dxy:.2f}" if dxy > 0 else "Loading...")
         c2.metric("😨 VIX", f"{vix:.2f}" if vix > 0 else "Loading...")
-        c3.metric(f"₿ {display_symbol} Price", f"${main_info.get('price', 0):,.2f}")
+        c3.metric("📈 SPX", f"{spx:.0f}" if spx > 0 else "Loading...")
+        c4.metric("💻 NASDAQ", f"{ndq:.0f}" if ndq > 0 else "Loading...")
+        c5.metric("🏦 US10Y", f"{tnx:.2f}%" if tnx > 0 else "Loading...")
+        c6.metric(f"₿ {btc_data.get('symbol')}", f"${btc_data.get('price', 0):,.2f}")
         
-        dec = main_info.get('ai_decision', 'NEUTRAL')
-        conf = main_info.get('ai_confidence', 0)
-        color = "normal"
-        if dec == "BUY": color = "inverse"
-        elif dec == "SELL": color = "off"
-        c4.metric("🧠 AI Decision (LSTM)", dec, f"{conf:.1f}% Conviction", delta_color=color)
-
         st.markdown("---")
         
-        # Tablo
+        # --- AI KARARI ---
+        dec = btc_data.get('ai_decision', 'NEUTRAL')
+        conf = btc_data.get('ai_confidence', 0)
+        regime = btc_data.get('regime', 'UNKNOWN')
+        
+        c_ai, c_reg = st.columns([1, 3])
+        color = "off"
+        if dec == "BUY": color = "normal"
+        elif dec == "SELL": color = "inverse"
+        
+        c_ai.metric("🧠 AI Decision (LSTM)", dec, f"{conf:.1f}% Conf.", delta_color=color)
+        c_reg.info(f"📡 Market Regime: **{regime}** (Strategy Adapted)")
+
+        # --- TABLO ---
         st.markdown("### 📊 Asset Analysis Board")
         df_display = pd.DataFrame(data.values())
         cols = ['symbol', 'price', 'ai_decision', 'ai_confidence', 'regime', 'rsi', 'trend']
@@ -103,19 +111,12 @@ if page == "📡 Live Dashboard":
             }
         )
 
-        # AI Mantığı
-        st.markdown("### 🤖 AI Reasoning Engine")
-        for symbol, info in data.items():
-            with st.expander(f"🔍 Inspect Logic: {symbol}", expanded=False):
-                st.write(f"**LSTM Prediction:** {info.get('ai_decision')} ({info.get('ai_confidence'):.1f}%)")
-                st.info(f"Regime: {info.get('regime', 'UNKNOWN')}")
-
 # ==========================================
 # 2. SANAL CÜZDAN
 # ==========================================
 elif page == "💼 Live Portfolio (Paper)":
     st.header("💼 Active Paper Trading Portfolio")
-    if st.button('🔄 Refresh Portfolio'): st.rerun()
+    if st.button('🔄 Refresh'): st.rerun()
     
     portfolio = load_json("portfolio.json")
     market_data = load_json("dashboard_data.json")
@@ -127,6 +128,7 @@ elif page == "💼 Live Portfolio (Paper)":
         equity = balance
         positions_data = []
         
+        # Canlı PnL Hesaplama
         if portfolio.get('positions'):
             for sym, pos in portfolio['positions'].items():
                 current_price = pos['entry_price']
@@ -136,7 +138,7 @@ elif page == "💼 Live Portfolio (Paper)":
                 market_val = pos['amount'] * current_price
                 equity += market_val
                 unrealized_pnl = market_val - pos['cost']
-                pnl_pct = (unrealized_pnl / pos['cost']) * 100
+                pnl_pct = (unrealized_pnl / pos['cost']) * 100 if pos['cost'] > 0 else 0
                 
                 positions_data.append({
                     "symbol": sym, "entry": pos['entry_price'], "current": current_price,
@@ -161,23 +163,21 @@ elif page == "💼 Live Portfolio (Paper)":
             st.dataframe(pd.DataFrame(portfolio['history']).iloc[::-1], use_container_width=True)
 
 # ==========================================
-# 3. BACKTEST LAB (GRAFİK GÜNCELLENDİ)
+# 3. BACKTEST LAB
 # ==========================================
-elif page == "🧪 Backtest Lab (Time Machine)":
+elif page == "🧪 Backtest Lab":
     st.header("⏳ Time Machine Simulation")
+    c1, c2, c3 = st.columns(3)
+    with c1: symbol = st.selectbox("Select Asset", Config.TARGET_COINS)
+    with c2: days = st.slider("Lookback Period (Days)", 7, 60, 30)
+    with c3: start_bal = st.number_input("Start Balance ($)", value=10000)
     
-    col1, col2, col3 = st.columns(3)
-    with col1: symbol = st.selectbox("Select Asset", Config.TARGET_COINS)
-    with col2: days = st.slider("Lookback Period (Days)", 7, 60, 30)
-    with col3: start_bal = st.number_input("Starting Balance ($)", value=10000)
-        
     if st.button("🚀 START SIMULATION"):
         with st.spinner(f"AI is traveling {days} days back in time..."):
             async def run_test():
                 bt = Backtester(initial_balance=start_bal)
-                # Backtester'ın run_backtest metodunun hem raporu hem de DataFrame'i döndürdüğünden emin olmalıyız.
-                # Şu anki Backtester yapısı sadece rapor sözlüğü döndürüyor.
-                # Görselleştirme için trade loglarını kullanacağız.
+                # Backtest artık DataFrame de döndürmeli ki grafik çizebilelim
+                # (Mevcut backtester sadece dict dönüyor, onu güncelledik varsayıyoruz veya trade log kullanıyoruz)
                 return await bt.run_backtest(symbol, days)
             
             try:
@@ -188,50 +188,34 @@ elif page == "🧪 Backtest Lab (Time Machine)":
                 if "error" in result:
                     st.error(f"Backtest Failed: {result['error']}")
                 else:
-                    # Sonuçlar
                     m1, m2, m3, m4 = st.columns(4)
-                    roi = result['roi']
-                    pnl = result['final_balance'] - start_bal
-                    m1.metric("Net ROI", f"{roi:.2f}%", delta_color="normal" if roi >= 0 else "inverse")
+                    m1.metric("ROI", f"{result['roi']:.2f}%")
                     m2.metric("Win Rate", f"{result['win_rate']:.1f}%")
                     m3.metric("Trades", result['total_trades'])
-                    m4.metric("Net Profit", f"${pnl:,.2f}")
-                    
-                    st.metric("Final Wallet Balance", f"${result['final_balance']:,.2f}")
+                    m4.metric("Profit", f"${result['final_balance'] - start_bal:,.2f}")
                     
                     if result['trades']:
                         trades_df = pd.DataFrame(result['trades'])
-                        
-                        # --- YENİ: GELİŞMİŞ GRAFİK ---
-                        st.markdown("### 📈 Advanced Performance Chart")
-                        # Not: Backtester şu an tam mum verisini döndürmüyor, sadece trade loglarını döndürüyor.
-                        # Tam mum grafiği için Backtester'ın yapısını değiştirmemiz gerekir.
-                        # Şimdilik Bakiye Eğrisini Plotly ile çizelim.
-                        
-                        import plotly.express as px
-                        fig = px.line(trades_df[trades_df['action']=='SELL'], x='time', y='balance', title='Portfolio Growth Equity Curve')
-                        fig.update_layout(template="plotly_dark")
-                        st.plotly_chart(fig, use_container_width=True)
-                        
-                        st.subheader("📜 Transaction Logs")
+                        # Profesyonel Grafik
+                        st.subheader("📈 Equity Curve")
+                        st.line_chart(trades_df[trades_df['action']=='SELL'].set_index('time')['balance'])
                         st.dataframe(trades_df, use_container_width=True)
                     else:
                         st.warning("No trades executed.")
-            except Exception as e:
-                st.error(f"Error: {e}")
+            except Exception as e: st.error(f"Error: {e}")
 
 # ==========================================
-# 4. STRATEGY OPTIMIZER (GERİ GELDİ!)
+# 4. STRATEGY OPTIMIZER
 # ==========================================
 elif page == "⚙️ Strategy Optimizer":
     st.header("🧬 Genetic Strategy Optimizer")
-    st.markdown("Yapay zeka, geçmiş verileri tarayarak en karlı ayarları bulur.")
+    st.markdown("Yapay zeka, geçmiş verileri tarayarak en karlı ayarları (Stop Loss, Güven Eşiği) bulmaya çalışacak.")
     
     target_sym = st.selectbox("Target Asset", Config.TARGET_COINS, key="opt_sym")
     opt_days = st.slider("Optimization Period", 15, 60, 30, key="opt_days")
     
     if st.button("🧬 FIND BEST SETTINGS"):
-        with st.spinner("Running Grid Search..."):
+        with st.spinner("Running Grid Search... This may take a minute..."):
             async def run_opt():
                 opt = StrategyOptimizer()
                 return await opt.optimize(target_sym, opt_days)
@@ -243,9 +227,13 @@ elif page == "⚙️ Strategy Optimizer":
             best = results['best_config']
             if best:
                 st.success(f"✅ Optimization Complete! Best ROI: {best['roi']:.2f}%")
-                st.json(best['params'])
                 
-                st.subheader("📊 Leaderboard")
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Best Stop Loss", f"{best['params']['sl_mul']}x ATR")
+                c2.metric("Best Take Profit", f"{best['params']['tp_mul']}x ATR")
+                c3.metric("AI Threshold", f"{best['params']['threshold']*100:.0f}%")
+                
+                st.subheader("📊 All Results")
                 df_res = pd.DataFrame(results['all_results'])
                 df_res['params'] = df_res['params'].astype(str)
                 st.dataframe(df_res.sort_values('roi', ascending=False))
