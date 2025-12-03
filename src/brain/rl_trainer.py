@@ -1,0 +1,85 @@
+import os
+import logging
+import pandas as pd
+import numpy as np
+from stable_baselines3 import PPO
+from src.brain.trading_env import TradingEnv
+from src.brain.feature_engineering import FeatureEngineer
+from src.data_ingestion.connectors.binance_connector import BinanceConnector
+from src.data_ingestion.macro_connector import MacroConnector
+import asyncio
+
+logger = logging.getLogger("RL_TRAINER")
+
+class RLTrainer:
+    """
+    PEKİŞTİRMELİ ÖĞRENME EĞİTMENİ (Reinforcement Learning)
+    PPO Algoritması ile Trader Ajanı eğitir.
+    """
+    
+    MODEL_PATH = "src/brain/models/storage/rl_agent_v1" # .zip otomatik eklenir
+    
+    def __init__(self):
+        self.connector = BinanceConnector()
+        self.macro = MacroConnector()
+
+    async def prepare_data(self, symbol="BTC/USDT"):
+        """Eğitim için veriyi hazırlar ve temizler."""
+        logger.info("Fetching data for RL Training...")
+        
+        # 1. Veri Çek
+        raw_crypto = await self.connector.fetch_candles(symbol, limit=2000)
+        await self.connector.close()
+        
+        if not raw_crypto: return None
+        
+        crypto_df = FeatureEngineer.process_data(raw_crypto)
+        macro_df = await self.macro.fetch_macro_data(period="1y", interval="1h")
+        
+        # 2. Birleştir
+        df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
+        
+        # 3. TEMİZLİK (ÇOK ÖNEMLİ)
+        # Gym ortamı sadece SAYI kabul eder. Tarih, sembol gibi stringleri atıyoruz.
+        drop_cols = ['timestamp', 'symbol', 'target', 'open', 'high', 'low'] 
+        # close ve volume kalsın, AI fiyatı bilsin.
+        
+        numeric_df = df.drop(columns=[c for c in drop_cols if c in df.columns], errors='ignore')
+        
+        # NaN temizliği
+        numeric_df.fillna(0, inplace=True)
+        
+        return numeric_df
+
+    async def train_agent(self, symbol="BTC/USDT"):
+        logger.info("🚀 Starting RL Agent Training (PPO)...")
+        
+        df = await self.prepare_data(symbol)
+        if df is None:
+            logger.error("No data for RL training.")
+            return
+        
+        logger.info(f"Training Environment Ready. Data Shape: {df.shape}")
+        
+        # Ortamı Kur
+        env = TradingEnv(df)
+        
+        # Modeli Tanımla (MlpPolicy: Çok Katmanlı Perceptron)
+        model = PPO("MlpPolicy", env, verbose=1)
+        
+        # Eğit (Timesteps ne kadar yüksekse o kadar zeki olur)
+        # Başlangıç için 10.000 adım yeterli, gerçekte 1M+ gerekir.
+        model.learn(total_timesteps=20000)
+        
+        # Kaydet
+        if not os.path.exists("src/brain/models/storage"):
+            os.makedirs("src/brain/models/storage")
+            
+        model.save(self.MODEL_PATH)
+        logger.info(f"✅ RL AGENT SAVED at {self.MODEL_PATH}.zip")
+
+if __name__ == "__main__":
+    # Manuel test için
+    trainer = RLTrainer()
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(trainer.train_agent())
