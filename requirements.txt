@@ -9,8 +9,8 @@ numpy
 ccxt
 scikit-learn
 joblib
-yfinance>=0.2.50
-pandas_datareader  # <--- YENİ: Profesyonel Veri Okuyucu
+pandas_datareader  # <--- BU ÇOK ÖNEMLİ (STOOQ İÇİN)
+yfinance           # (Yedek olarak kalsın ama kullanmayacağız)
 
 # --- Deep Learning ---
 tensorflow
