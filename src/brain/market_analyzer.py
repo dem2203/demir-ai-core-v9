@@ -9,7 +9,6 @@ from typing import Dict, List, Optional
 from tensorflow.keras.models import load_model
 from stable_baselines3 import PPO 
 
-# Kendi modüllerimiz
 from src.brain.feature_engineering import FeatureEngineer
 from src.brain.regime_classifier import RegimeClassifier
 from src.validation.validator import SignalValidator
@@ -19,11 +18,10 @@ logger = logging.getLogger("MARKET_ANALYZER_PRO")
 
 class MarketAnalyzer:
     """
-    DEMIR AI V16.0 - LOGIC FUSION ENGINE
+    DEMIR AI V17.0 - OMNISCIENT ENGINE (HER ŞEYİ BİLEN)
     
-    Bu motor, sadece bir tahminci değil, bir "Stratejist"tir.
-    LSTM (Yön) + Macro (Ortam) + Pivot (Seviye) verilerini birleştirerek
-    sana 'Nokta Atışı' fırsatlar sunar.
+    Kripto Grafiği + 8 Küresel Makro Faktör + LSTM + RL + Rejim
+    hepsini tek potada eritip karar veren nihai beyin.
     """
     
     LSTM_DIR = "src/brain/models/storage"
@@ -62,151 +60,147 @@ class MarketAnalyzer:
             except: pass
 
     async def analyze_market(self, symbol: str, raw_data: List[Dict]) -> Optional[Dict]:
-        # 1. VERİ HAZIRLIĞI (ENGINEERING)
+        # 1. TEMEL VERİ İŞLEME
         crypto_df = FeatureEngineer.process_data(raw_data)
         if crypto_df is None or len(crypto_df) < self.LOOKBACK + 5: return None
 
         macro_df = await self.macro.fetch_macro_data(period="5d", interval="1h")
         df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
-        
         last_row = df.iloc[-1]
         
-        # 2. PİYASA ORTAMI (REGIME & MACRO FILTER)
+        # 2. PİYASA REJİMİ
         current_regime = self.regime_classifier.identify_regime(df)
+        regime_settings = self.regime_classifier.get_risk_adjustment(current_regime)
         
-        # --- MAKRO FİLTRELER (YENİ) ---
-        # Eğer Dolar (DXY) veya Korku (VIX) çok yüksekse, bot "AL" vermemeli.
-        dxy = float(last_row.get('macro_DXY', 0))
-        vix = float(last_row.get('macro_VIX', 0))
-        
-        # Veri 0 ise geçmişten tamamla (Patching)
-        if dxy == 0 and 'macro_DXY' in df.columns: dxy = df['macro_DXY'].ffill().iloc[-1]
-        if vix == 0 and 'macro_VIX' in df.columns: vix = df['macro_VIX'].ffill().iloc[-1]
+        # 3. MAKRO ANALİZ PUANLAMASI (YENİ MANTIK)
+        # Tüm küresel verileri topla (Eksikleri doldur)
+        macro_vars = ['macro_DXY', 'macro_VIX', 'macro_SPX', 'macro_NDQ', 'macro_TNX', 'macro_GOLD', 'macro_SILVER', 'macro_OIL']
+        m = {}
+        for k in macro_vars:
+            val = float(last_row.get(k, 0))
+            if val == 0 and k in df.columns: val = float(df[k].ffill().iloc[-1])
+            m[k] = val
 
-        macro_risk_high = False
-        macro_reason = ""
-        if dxy > 106.5: 
-            macro_risk_high = True; macro_reason = "DXY Extreme High"
-        if vix > 30: 
-            macro_risk_high = True; macro_reason = "VIX Panic Mode"
+        # Puanlama Sistemi: Pozitif puanlar AL'ı, Negatifler SAT'ı destekler.
+        macro_score = 0
+        reasons = []
 
-        # 3. YAPAY ZEKA TAHMİNİ (LSTM + RL)
-        ai_decision = "NEUTRAL"
-        ai_confidence = 0.0
-        reason = "Waiting for setup..."
+        # a) Dolar ve Korku (En önemli düşmanlar)
+        if m['macro_DXY'] > 106: macro_score -= 3; reasons.append("DXY High")
+        elif m['macro_DXY'] < 102: macro_score += 2; reasons.append("DXY Low")
         
+        if m['macro_VIX'] > 25: macro_score -= 3; reasons.append("VIX Panic")
+        elif m['macro_VIX'] < 15: macro_score += 1; reasons.append("VIX Calm")
+
+        # b) Borsalar (Risk İştahı)
+        # Son 24 saatlik değişime bakmak daha doğru olur ama anlık seviye kontrolü:
+        # (Basitlik için SPX 4000 üstü güvenli kabulü - örnek)
+        # Burada korelasyona bakıyoruz:
+        corr_spx = float(last_row.get('corr_spx', 0))
+        if corr_spx > 0.7: # Eğer Bitcoin borsayla birlikte hareket ediyorsa
+            macro_score += 1; reasons.append("High SPX Corr")
+
+        # c) Tahvil Faizi (TNX)
+        if m['macro_TNX'] > 4.5: macro_score -= 2; reasons.append("Yields High")
+
+        # d) Emtialar
+        if m['macro_GOLD'] > 2100 and m['macro_DXY'] < 103: 
+            macro_score += 2; reasons.append("Gold/Weak Dollar Rally")
+
+        # FİLTRE KARARI
+        # Skor -3'ten kötüyse piyasa çok risklidir -> İşlem Yasak
+        # Skor +3'ten iyiyse rüzgar arkamızda -> İşlem Serbest
+        macro_status = "NEUTRAL"
+        if macro_score <= -3: macro_status = "BEARISH_MACRO"
+        elif macro_score >= 3: macro_status = "BULLISH_MACRO"
+
+        # 4. YAPAY ZEKA TAHMİNİ (LSTM)
         lstm_prob = 0.5
-        
         if self.load_lstm_for_symbol(symbol):
             try:
-                # LSTM Tahmini
+                # Sadece temel 44 sütunu kullan (Eğitimle uyumlu)
                 drop_cols = ['timestamp', 'symbol', 'target', 'open', 'high', 'low', 'close', 'volume', 
-                             'macro_GOLD', 'macro_SILVER', 'macro_OIL', 'corr_spx', 'corr_dxy']
-                feat_cols = [c for c in df.columns if c not in drop_cols]
+                             'macro_GOLD', 'macro_SILVER', 'macro_OIL', 'corr_spx', 'corr_dxy',
+                             'macro_SPX', 'macro_NDQ', 'macro_TNX', 'macro_DXY', 'macro_VIX'] # Tüm makroları çıkar, model sadece teknik biliyor
+                             
+                # Not: İleride modeli makro verilerle eğitirsek bunları çıkarmayacağız.
+                # Şimdilik "Hybrid Logic" (Mantık Birleştirme) yapıyoruz: Model Teknik bakar, Kod Makro bakar.
                 
+                feat_cols = [c for c in df.columns if c not in drop_cols]
                 recent = df[feat_cols].tail(self.LOOKBACK).values
                 scaled = self.scalers[symbol].transform(recent)
                 lstm_prob = self.lstm_models[symbol].predict(np.array([scaled]), verbose=0)[0][0]
             except: pass
 
-        # 4. KARAR MEKANİZMASI (LOGIC FUSION)
-        
-        # Eğer Makro Risk varsa, sadece SHORT (Satış) yönlü sinyallere izin ver veya bekle
-        if macro_risk_high:
-            if lstm_prob < 0.40: # Düşüş sinyali
+        # 5. FİNAL KARAR (FÜZYON)
+        ai_decision = "NEUTRAL"
+        ai_confidence = lstm_prob * 100
+        final_reason = f"{current_regime} | Macro: {macro_score}"
+
+        # Eğer Makro Ortam ÇOK KÖTÜYSE, LSTM ne derse desin ALMA.
+        if macro_status == "BEARISH_MACRO":
+            if lstm_prob < 0.40:
                 ai_decision = "SELL"
-                ai_confidence = (1 - lstm_prob) * 100
-                reason = f"Macro Risk ({macro_reason}) + LSTM Bearish"
+                final_reason = f"Macro Bearish + LSTM Bearish ({reasons})"
             else:
                 ai_decision = "NEUTRAL"
-                reason = f"Trade Blocked: {macro_reason}"
+                final_reason = f"Blocked by Macro Risk ({reasons})"
         
+        # Eğer Rejim Yasaklıysa
+        elif not regime_settings['trade_allowed']:
+             ai_decision = "NEUTRAL"
+             final_reason = f"Blocked by Regime ({current_regime})"
+             
         else:
-            # Normal Piyasa Koşulları
-            if lstm_prob > 0.60: # %60 Eminse
-                # Trend Kontrolü (Feature Engineering'den gelen 4H Trend)
-                if last_row.get('trend_4h', 0) == -1:
-                     ai_decision = "NEUTRAL"
-                     reason = "LSTM Bullish but 4H Trend is Bearish"
-                else:
-                    ai_decision = "BUY"
-                    ai_confidence = lstm_prob * 100
-                    reason = "Strong LSTM Signal + Trend Aligned"
+            # Normal veya İyi Makro Ortam
+            threshold = regime_settings['confidence_threshold']
             
-            elif lstm_prob < 0.40:
-                if last_row.get('trend_4h', 0) == 1:
-                     ai_decision = "NEUTRAL"
-                     reason = "LSTM Bearish but 4H Trend is Bullish"
-                else:
-                    ai_decision = "SELL"
-                    ai_confidence = (1 - lstm_prob) * 100
-                    reason = "Strong LSTM Signal + Trend Aligned"
+            # Makro destekliyorsa eşiği düşür (Cesur ol)
+            if macro_status == "BULLISH_MACRO": threshold -= 0.05
+            
+            if lstm_prob > threshold:
+                ai_decision = "BUY"
+                final_reason = f"Strong LSTM + Macro OK ({reasons})"
+            elif lstm_prob < (1 - threshold):
+                ai_decision = "SELL"
+                final_reason = "LSTM Sell Signal"
 
-        # 5. HEDEF BELİRLEME (PIVOT POINTS)
-        # ATR yerine Pivot seviyelerini kullanıyoruz (Daha profesyonel)
-        price = float(last_row['close'])
-        
-        # Pivotlar (Feature Engineering'den geliyor: r1, r2, s1, s2)
-        r1 = float(last_row.get('r1', price * 1.02))
-        s1 = float(last_row.get('s1', price * 0.98))
-        
-        if ai_decision == "BUY":
-            tp = r1 # İlk direnç hedef
-            sl = s1 # İlk destek altı stop
-            # Eğer hedef çok yakınsa (Risk/Reward kötü), işlemi iptal et
-            if (tp - price) < (price - sl):
-                ai_decision = "NEUTRAL"
-                reason = "Bad Risk/Reward Ratio (Target too close)"
-                
-        elif ai_decision == "SELL":
-            tp = s1
-            sl = r1
-            if (price - tp) < (sl - price):
-                ai_decision = "NEUTRAL"
-                reason = "Bad Risk/Reward Ratio (Target too close)"
-        else:
-            tp, sl = 0.0, 0.0
-
-        # 6. DASHBOARD VERİSİ (PATCHED)
-        # ... (Eksik verileri doldurma) ...
-        snapshot = self._create_snapshot(symbol, last_row, ai_decision, ai_confidence, current_regime, lstm_prob, df)
+        # 6. DASHBOARD KAYIT
+        snapshot = {
+            "symbol": symbol,
+            "price": float(last_row['close']),
+            "dxy": m['macro_DXY'], "vix": m['macro_VIX'], "spx": m['macro_SPX'],
+            "ndq": m['macro_NDQ'], "tnx": m['macro_TNX'], "gold": m['macro_GOLD'],
+            "silver": m['macro_SILVER'], "oil": m['macro_OIL'], "corr_spx": corr_spx,
+            "ai_decision": ai_decision, "ai_confidence": ai_confidence,
+            "regime": current_regime, "rsi": float(last_row['rsi']),
+            "trend": "UP" if lstm_prob > 0.5 else "DOWN",
+            "timestamp": pd.Timestamp.now().isoformat()
+        }
         self._save_to_dashboard(snapshot)
 
         if ai_decision == "NEUTRAL": return None
+
+        # 7. HEDEF BELİRLEME (Pivot)
+        price = float(last_row['close'])
+        r1 = float(last_row.get('r1', price*1.02))
+        s1 = float(last_row.get('s1', price*0.98))
         
+        tp = r1 if ai_decision == "BUY" else s1
+        sl = s1 if ai_decision == "BUY" else r1
+        
+        # Güvenlik (Stop çok yakınsa ATR kullan)
+        atr = float(last_row['atr'])
+        if abs(price - sl) < atr * 0.5:
+            sl = price - (atr * 1.5) if ai_decision == "BUY" else price + (atr * 1.5)
+
         signal = {
-            "symbol": symbol,
-            "side": ai_decision,
-            "entry_price": price,
-            "tp_price": tp,
-            "sl_price": sl,
-            "confidence": ai_confidence,
-            "reason": reason,
-            "regime": current_regime
+            "symbol": symbol, "side": ai_decision, "entry_price": price,
+            "tp_price": tp, "sl_price": sl, "confidence": ai_confidence,
+            "reason": final_reason, "regime": current_regime
         }
         
         return signal if SignalValidator.validate_outgoing_signal(signal) else None
-
-    def _create_snapshot(self, symbol, row, decision, conf, regime, prob, df):
-        """Dashboard için temiz veri paketi hazırlar."""
-        macro_vars = ['macro_DXY', 'macro_VIX', 'macro_SPX', 'macro_NDQ', 'macro_TNX', 'macro_GOLD', 'macro_SILVER', 'macro_OIL']
-        vals = {}
-        for k in macro_vars:
-            v = float(row.get(k, 0))
-            if v == 0 and k in df.columns: v = float(df[k].ffill().iloc[-1])
-            vals[k] = v
-            
-        return {
-            "symbol": symbol,
-            "price": float(row['close']),
-            "dxy": vals['macro_DXY'], "vix": vals['macro_VIX'], "spx": vals['macro_SPX'],
-            "gold": vals['macro_GOLD'], "silver": vals['macro_SILVER'], "oil": vals['macro_OIL'],
-            "corr_spx": float(row.get('corr_spx', 0)),
-            "ai_decision": decision, "ai_confidence": conf,
-            "regime": regime, "rsi": float(row['rsi']),
-            "trend": "UP" if prob > 0.5 else "DOWN",
-            "timestamp": pd.Timestamp.now().isoformat()
-        }
 
     def _save_to_dashboard(self, data):
         try:
