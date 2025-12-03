@@ -7,19 +7,20 @@ logger = logging.getLogger("ULTIMATE_FEATURE_ENGINEERING")
 
 class FeatureEngineer:
     """
-    DEMIR AI V9.5 - PLATINUM EDITION
+    DEMIR AI V11.0 - PLATINUM EDITION (FULL)
     
     Kapsam:
     1. Klasik Osilatörler: RSI, MACD, ROC, MFI
-    2. Trend Takipçileri: ADX, Ichimoku (Live-Safe), Parabolic SAR
+    2. Trend Takipçileri: ADX, Ichimoku (Live-Safe)
     3. Volatilite: ATR, Bollinger Width, Z-Score
     4. Kurumsal Hacim: VWAP
     5. Kaos Matematiği: Hurst Exponent
     6. Formasyonlar: Doji, Hammer, Engulfing
+    7. Veri Füzyonu: Kripto + Makro Ekonomi Birleştirme
     
     Özellik:
-    - Live-Trading Safe: Geleceğe bakan veriler (Look-ahead bias) temizlendi.
-    - Data Rescue: Eksik veriler (NaN) için 'ffill' koruması eklendi.
+    - Live-Trading Safe: Geleceğe bakan veriler temizlendi.
+    - Data Rescue: Eksik veriler (NaN) için 'ffill' koruması.
     """
 
     # ==========================================
@@ -51,16 +52,13 @@ class FeatureEngineer:
 
     @staticmethod
     def calculate_mfi(data: pd.DataFrame, period: int = 14) -> pd.Series:
-        """Money Flow Index (Hacim Ağırlıklı RSI)"""
+        """Money Flow Index"""
         typical_price = (data['high'] + data['low'] + data['close']) / 3
         money_flow = typical_price * data['volume']
-        
         positive_flow = np.where(typical_price > typical_price.shift(1), money_flow, 0)
         negative_flow = np.where(typical_price < typical_price.shift(1), money_flow, 0)
-        
         positive_mf = pd.Series(positive_flow).rolling(window=period).mean()
         negative_mf = pd.Series(negative_flow).rolling(window=period).mean()
-        
         mfi = 100 - (100 / (1 + (positive_mf / negative_mf)))
         return mfi
 
@@ -70,32 +68,27 @@ class FeatureEngineer:
 
     @staticmethod
     def calculate_adx(data: pd.DataFrame, period: int = 14) -> pd.Series:
-        """Average Directional Index (Trend Gücü)"""
+        """Average Directional Index"""
         df = data.copy()
         df['tr1'] = df['high'] - df['low']
         df['tr2'] = abs(df['high'] - df['close'].shift(1))
         df['tr3'] = abs(df['low'] - df['close'].shift(1))
         df['tr'] = df[['tr1', 'tr2', 'tr3']].max(axis=1)
         df['atr'] = df['tr'].rolling(window=period).mean()
-
         df['up'] = df['high'] - df['high'].shift(1)
         df['down'] = df['low'].shift(1) - df['low']
-        
         df['plus_dm'] = np.where((df['up'] > df['down']) & (df['up'] > 0), df['up'], 0)
         df['minus_dm'] = np.where((df['down'] > df['up']) & (df['down'] > 0), df['down'], 0)
-
         plus_di = 100 * (df['plus_dm'].rolling(window=period).mean() / df['atr'])
         minus_di = 100 * (df['minus_dm'].rolling(window=period).mean() / df['atr'])
-        
         di_sum = plus_di + minus_di
-        di_sum = di_sum.replace(0, 1) # 0'a bölme hatasını engelle
-        
+        di_sum = di_sum.replace(0, 1) 
         dx = 100 * abs(plus_di - minus_di) / di_sum
         return dx.rolling(window=period).mean()
 
     @staticmethod
     def calculate_ichimoku(data: pd.DataFrame) -> pd.DataFrame:
-        """Ichimoku Cloud (Chikou hariç - Live Safe)"""
+        """Ichimoku Cloud"""
         tenkan = (data['high'].rolling(9).max() + data['low'].rolling(9).min()) / 2
         kijun = (data['high'].rolling(26).max() + data['low'].rolling(26).min()) / 2
         span_a = ((tenkan + kijun) / 2).shift(26)
@@ -108,7 +101,7 @@ class FeatureEngineer:
 
     @staticmethod
     def calculate_atr(data: pd.DataFrame, period: int = 14) -> pd.Series:
-        """Average True Range (Risk Yönetimi için)"""
+        """Average True Range"""
         tr1 = data['high'] - data['low']
         tr2 = abs(data['high'] - data['close'].shift())
         tr3 = abs(data['low'] - data['close'].shift())
@@ -117,17 +110,16 @@ class FeatureEngineer:
 
     @staticmethod
     def calculate_bollinger_width(data: pd.DataFrame, period: int = 20) -> pd.Series:
-        """Bollinger Bant Genişliği (Sıkışma tespiti için)"""
+        """Bollinger Bant Genişliği"""
         sma = data['close'].rolling(period).mean()
         std = data['close'].rolling(period).std()
         upper = sma + (2 * std)
         lower = sma - (2 * std)
-        # Sıkışma (Squeeze) tespiti için yüzdesel genişlik
         return (upper - lower) / sma
 
     @staticmethod
     def calculate_z_score(series: pd.Series, period: int = 20) -> pd.Series:
-        """İstatistiksel Anomali Tespiti"""
+        """Z-Score"""
         mean = series.rolling(window=period).mean()
         std = series.rolling(window=period).std()
         std = std.replace(0, 0.0001)
@@ -135,7 +127,7 @@ class FeatureEngineer:
 
     @staticmethod
     def calculate_vwap(data: pd.DataFrame) -> pd.Series:
-        """Hacim Ağırlıklı Ortalama Fiyat (Balina izi)"""
+        """Volume Weighted Average Price"""
         v = data['volume']
         tp = (data['high'] + data['low'] + data['close']) / 3
         return (tp * v).cumsum() / v.cumsum()
@@ -146,7 +138,7 @@ class FeatureEngineer:
 
     @staticmethod
     def calculate_hurst_exponent(series: pd.Series, max_lag: int = 20) -> float:
-        """Kaos Teorisi: Piyasa Rastgele mi, Trend mi?"""
+        """Kaos Teorisi (Hurst Exponent)"""
         try:
             if len(series) < max_lag + 2: return 0.5
             if series.std() == 0: return 0.5
@@ -167,14 +159,11 @@ class FeatureEngineer:
         range_len = df['high'] - df['low']
         range_len = range_len.replace(0, 0.0001)
         
-        # Doji (Kararsızlık)
         df['is_doji'] = np.where(body <= (range_len * 0.1), 1, 0)
         
-        # Hammer (Dönüş Sinyali)
         lower_shadow = np.minimum(df['close'], df['open']) - df['low']
         df['is_hammer'] = np.where((lower_shadow >= (body * 2)) & (df['is_doji'] == 0), 1, 0)
         
-        # Engulfing (Yutan Boğa/Ayı)
         df['is_engulfing'] = np.where(
             (df['open'] < df['close'].shift(1)) & (df['close'] > df['open'].shift(1)) & 
             (df['close'] > df['open']) & (df['close'].shift(1) < df['open'].shift(1)), 1, 0
@@ -182,12 +171,39 @@ class FeatureEngineer:
         return df[['is_doji', 'is_hammer', 'is_engulfing']]
 
     # ==========================================
+    # 5. YENİ VERİ FÜZYONU (MERGE) FONKSİYONU
+    # ==========================================
+    
+    @staticmethod
+    def merge_crypto_and_macro(crypto_df: pd.DataFrame, macro_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        VERİ FÜZYONU: Kripto verisi ile Dünya Ekonomisi verisini birleştirir.
+        """
+        if macro_df is None or macro_df.empty:
+            return crypto_df
+
+        # Zaman damgasına göre sırala
+        crypto_df = crypto_df.sort_values('timestamp')
+        macro_df = macro_df.sort_values('timestamp')
+
+        # En yakın tarihli makro veriyi kripto verisine eşle (Backward fill mantığı)
+        merged_df = pd.merge_asof(
+            crypto_df, 
+            macro_df, 
+            on='timestamp', 
+            direction='backward' 
+        )
+        
+        # Boşlukları doldur
+        merged_df = merged_df.ffill().bfill()
+        return merged_df
+
+    # ==========================================
     # ANA İŞLEMCİ (PIPELINE)
     # ==========================================
 
     @classmethod
     def process_data(cls, raw_data: List[Dict]) -> Optional[pd.DataFrame]:
-        """Ham veriyi alıp, tüm indikatörleri hesaplayıp temiz veri döner."""
         if not raw_data: return None
 
         try:
@@ -195,10 +211,8 @@ class FeatureEngineer:
             cols = ['open', 'high', 'low', 'close', 'volume']
             df[cols] = df[cols].astype(float)
 
-            # --- GÖSTERGELERİ HESAPLA ---
+            # İndikatör Hesaplamaları
             df['rsi'] = cls.calculate_rsi(df)
-            
-            # Yeni Eklenenler:
             macd, macd_signal = cls.calculate_macd(df)
             df['macd'] = macd
             df['macd_signal'] = macd_signal
@@ -216,26 +230,18 @@ class FeatureEngineer:
             df['z_score'] = cls.calculate_z_score(df['close'])
             df['log_ret'] = np.log(df['close'] / df['close'].shift(1))
 
-            # Kaos Analizi (Son 100 veri penceresi)
             df['hurst'] = df['close'].rolling(window=100).apply(lambda x: cls.calculate_hurst_exponent(x))
 
-            # Formasyonlar
             patterns = cls.detect_patterns(df)
             df = pd.concat([df, patterns], axis=1)
 
-            # AI Hafızası (Lag Features)
             for lag in [1, 2, 3, 5, 8]:
                 df[f'close_lag_{lag}'] = df['close'].shift(lag)
                 df[f'vol_lag_{lag}'] = df['volume'].shift(lag)
                 df[f'rsi_lag_{lag}'] = df['rsi'].shift(lag)
 
-            # --- VERİ TEMİZLİK VE KURTARMA ---
-            
-            # 1. Başlangıçtaki boş hesaplamaları at (İlk 100 veri)
+            # Veri Temizliği
             df = df.iloc[100:]
-            
-            # 2. Arada kalan boşlukları (NaN) önceki veriyle doldur (Forward Fill)
-            # Bu işlem 'Data Wiped Out' hatasını engeller.
             df = df.ffill() 
             df.fillna(0, inplace=True)
             
@@ -249,27 +255,3 @@ class FeatureEngineer:
         except Exception as e:
             logger.error(f"FEATURE ENGINEERING CRITICAL FAIL: {e}")
             return None
-
-@staticmethod
-    def merge_crypto_and_macro(crypto_df: pd.DataFrame, macro_df: pd.DataFrame) -> pd.DataFrame:
-        """
-        VERİ FÜZYONU: Kripto verisi ile Dünya Ekonomisi verisini birleştirir.
-        """
-        if macro_df is None or macro_df.empty:
-            return crypto_df
-
-        # Zaman damgasına göre en yakın eşleşmeyi bul (Merge asof)
-        # Kripto 7/24 açık, Borsa hafta içi açık. Bu yüzden 'nearest' eşleşme yapıyoruz.
-        crypto_df = crypto_df.sort_values('timestamp')
-        macro_df = macro_df.sort_values('timestamp')
-
-        merged_df = pd.merge_asof(
-            crypto_df, 
-            macro_df, 
-            on='timestamp', 
-            direction='backward' # Geçmişteki en son bilinen borsa verisini al
-        )
-        
-        # Boşlukları doldur
-        merged_df = merged_df.ffill().bfill()
-        return merged_df
