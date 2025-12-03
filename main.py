@@ -1,44 +1,50 @@
 import asyncio
 import os
+import glob # Dosya silmek için
 from src.core.engine import BotEngine
 from src.utils.logger import setup_logger
 from src.config.settings import Config
 from src.brain.trainer import AITrainer as LSTMTrainer
-from src.brain.rl_trainer import RLTrainer # <-- YENİ
+from src.brain.rl_trainer import RLTrainer
 
 async def main():
     setup_logger()
     print(f">> Starting DEMIR AI v{Config.VERSION}")
     print(f">> Mode: {Config.ENVIRONMENT}")
     
-    # --- 1. LSTM EĞİTİM KONTROLÜ (ESKİ BEYİN) ---
+    # --- TEMİZLİK MODU (VERSİYON GEÇİŞİ İÇİN) ---
+    # Eğer yeni bir özellik eklediysek, eski modelleri silip sıfırdan eğitmek en sağlıklısıdır.
+    # Bunu sadece gerektiğinde aktif et veya manuel sil.
+    # Otomatik silme için:
+    # if os.path.exists("src/brain/models/storage"):
+    #     files = glob.glob("src/brain/models/storage/*.h5")
+    #     for f in files: os.remove(f)
+    #     print(">> 🧹 Old Brains wiped for upgrade.")
+    
+    # --- 1. LSTM EĞİTİM KONTROLÜ ---
     lstm_trainer = LSTMTrainer()
     print(">> 🧠 Checking LSTM Brains...")
     for symbol in Config.TARGET_COINS:
         model_path, _ = lstm_trainer._get_paths(symbol)
+        
+        # Model yoksa EĞİT
         if not os.path.exists(model_path):
-            print(f">> ⏳ LSTM Brain missing for {symbol}. Training...")
+            print(f">> ⏳ LSTM Brain missing for {symbol}. Training with new features...")
             try:
                 await lstm_trainer.train_model_for_symbol(symbol)
             except Exception as e:
                 print(f">> ❌ LSTM Training Failed: {e}")
 
-    # --- 2. RL AJAN EĞİTİM KONTROLÜ (YENİ SÜPER ZEKA) ---
+    # --- 2. RL AJAN EĞİTİM KONTROLÜ ---
     rl_trainer = RLTrainer()
-    # .zip uzantısı Stable-Baselines3 tarafından otomatik eklenir
     rl_model_path = rl_trainer.MODEL_PATH + ".zip"
     
     if not os.path.exists(rl_model_path):
-        print(">> 🤖 RL Agent (PPO) not found. Starting Reinforcement Learning...")
-        print(">> 🎮 The Agent is entering the simulation (Matrix)...")
+        print(">> 🤖 RL Agent not found. Starting Simulation...")
         try:
-            # Genelde BTC verisiyle genel bir ajan eğitmek başlangıç için iyidir
-            await rl_trainer.train_agent("BTC/USDT")
-            print(">> ✅ RL Agent Trained & Saved.")
+            await rl_trainer.train_agent("BTC/USDT") # Genel piyasa eğitimi
         except Exception as e:
             print(f">> ❌ RL Training Failed: {e}")
-    else:
-        print(f">> 🤖 RL Agent active at {rl_model_path}")
 
     # --- 3. BOTU BAŞLAT ---
     print(">> 🚀 All systems ready. Launching Engine.")
