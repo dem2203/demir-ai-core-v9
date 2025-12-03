@@ -4,30 +4,34 @@ import numpy as np
 import joblib
 import os
 import json
-import asyncio
 from typing import Dict, List, Optional
 from tensorflow.keras.models import load_model
 
+# Kendi modüllerimiz
 from src.brain.feature_engineering import FeatureEngineer
+from src.brain.regime_classifier import RegimeClassifier # <-- YENİ MODÜL
 from src.validation.validator import SignalValidator
 from src.data_ingestion.macro_connector import MacroConnector
 
-logger = logging.getLogger("MARKET_ANALYZER_LSTM")
+logger = logging.getLogger("MARKET_ANALYZER_ADAPTIVE")
 
 class MarketAnalyzer:
     """
-    DEMIR AI V11.1 - MULTI-MODEL PREDICTOR
-    Her coini kendi özel eğitilmiş modeliyle analiz eder.
+    DEMIR AI V12.0 - ADAPTIVE INTELLIGENCE
+    
+    LSTM Tahmini + Piyasa Rejimi Filtresi.
+    Bot artık piyasa koşullarına göre stratejisini (Stop Loss, Güven Eşiği) değiştirir.
     """
     
     MODELS_DIR = "src/brain/models/storage"
     DASHBOARD_DATA_PATH = "dashboard_data.json"
-    LOOKBACK = 60
+    LOOKBACK = 60 
 
     def __init__(self):
-        self.models = {}  # { 'BTC/USDT': model_obj }
-        self.scalers = {} # { 'BTC/USDT': scaler_obj }
+        self.models = {} 
+        self.scalers = {}
         self.macro = MacroConnector()
+        self.regime_classifier = RegimeClassifier() # <-- Yeni Sınıflandırıcı
 
     def _get_paths(self, symbol):
         clean_sym = symbol.replace("/", "")
@@ -36,18 +40,14 @@ class MarketAnalyzer:
         return model_path, scaler_path
 
     def load_model_for_symbol(self, symbol):
-        """İlgili coinin modelini hafızaya yükler (Eğer yoksa)."""
-        if symbol in self.models: return True # Zaten yüklü
-        
+        if symbol in self.models: return True
         m_path, s_path = self._get_paths(symbol)
         if os.path.exists(m_path) and os.path.exists(s_path):
             try:
                 self.models[symbol] = load_model(m_path)
                 self.scalers[symbol] = joblib.load(s_path)
-                logger.info(f"🧠 Loaded Brain for {symbol}")
                 return True
-            except:
-                return False
+            except: return False
         return False
 
     async def analyze_market(self, symbol: str, raw_data: List[Dict]) -> Optional[Dict]:
@@ -55,17 +55,23 @@ class MarketAnalyzer:
         crypto_df = FeatureEngineer.process_data(raw_data)
         if crypto_df is None or len(crypto_df) < self.LOOKBACK + 5: return None
 
-        # 2. Makro Veri
+        # 2. Makro Veri & Füzyon
         macro_df = await self.macro.fetch_macro_data(period="5d", interval="1h")
         df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
         
         last_row = df.iloc[-1]
+        
+        # --- 3. PİYASA REJİMİNİ BELİRLE (ADAPTASYON) ---
+        current_regime = self.regime_classifier.identify_regime(df)
+        regime_settings = self.regime_classifier.get_risk_adjustment(current_regime)
+        
+        logger.info(f"MARKET REGIME ({symbol}): {current_regime} | Allowed: {regime_settings['trade_allowed']}")
+        
         ai_decision = "NEUTRAL"
         ai_confidence = 0.0
-        reason = "Insufficient Data"
+        reason = f"Market is {current_regime}"
 
-        # --- ÇOKLU MODEL TAHMİNİ ---
-        # Önce bu coin için model var mı kontrol et
+        # --- 4. LSTM TAHMİNİ ---
         has_brain = self.load_model_for_symbol(symbol)
         
         if has_brain:
@@ -73,70 +79,72 @@ class MarketAnalyzer:
                 model = self.models[symbol]
                 scaler = self.scalers[symbol]
                 
-                # Veriyi Hazırla
                 feature_cols = [c for c in df.columns if c not in ['timestamp', 'symbol', 'target', 'open', 'high', 'low', 'close', 'volume']]
                 recent_data = df[feature_cols].tail(self.LOOKBACK).values
-                
-                # Normalize Et (Kendi Scaler'ı ile)
                 recent_scaled = scaler.transform(recent_data)
                 X_input = np.array([recent_scaled])
                 
-                # Tahmin
                 prediction = model.predict(X_input, verbose=0)[0][0]
+                ai_confidence = prediction * 100
                 
-                logger.info(f"🧠 {symbol} AI Score: {prediction:.4f}")
+                # Dinamik Eşik Değerleri (Rejime Göre Değişir)
+                threshold = regime_settings['confidence_threshold']
                 
-                if prediction > 0.51:
-                    ai_decision = "BUY"
-                    ai_confidence = prediction * 100
-                    reason = "Deep Learning Bullish Pattern"
-                elif prediction < 0.40:
-                    ai_decision = "SELL"
-                    ai_confidence = (1 - prediction) * 100
-                    reason = "Deep Learning Bearish Pattern"
+                # Eğer o rejimde işlem yasaksa (Örn: Volatile), sinyali iptal et
+                if not regime_settings['trade_allowed']:
+                     ai_decision = "NEUTRAL"
+                     reason = f"Trade Blocked by Regime ({current_regime})"
+                else:
+                    if prediction > threshold:
+                        ai_decision = "BUY"
+                        reason = f"LSTM Bullish in {current_regime}"
+                    elif prediction < (1 - threshold):
+                        ai_decision = "SELL"
+                        reason = f"LSTM Bearish in {current_regime}"
+                    else:
+                        ai_decision = "NEUTRAL"
+                        reason = "Low Conviction"
+                        
             except Exception as e:
                 logger.error(f"Prediction Error {symbol}: {e}")
-        else:
-            # Model henüz eğitilmemişse yedek strateji (RSI)
-            if last_row['rsi'] < 30: ai_decision = "BUY"; reason = "Fallback RSI Strategy"
 
-        # --- Dashboard Kayıt ---
-        dxy_val = float(last_row.get('macro_DXY', 0))
-        vix_val = float(last_row.get('macro_VIX', 0))
-
+        # --- 5. Dashboard Kayıt ---
         snapshot = {
             "symbol": symbol,
             "price": float(last_row['close']),
-            "rsi": float(last_row['rsi']),
-            "macd": float(last_row['macd']),
-            "dxy": dxy_val,
-            "vix": vix_val,
+            "dxy": float(last_row.get('macro_DXY', 0)),
+            "vix": float(last_row.get('macro_VIX', 0)),
             "ai_decision": ai_decision,
             "ai_confidence": ai_confidence,
+            "regime": current_regime, # Dashboard'da göstereceğiz
+            "rsi": float(last_row['rsi']),
             "trend": "UP" if last_row['close'] > last_row['vwap'] else "DOWN",
-            "volatility": "HIGH" if last_row['bb_width'] > 0.1 else "LOW",
             "timestamp": pd.Timestamp.now().isoformat()
         }
         self._save_to_dashboard(snapshot)
 
         if ai_decision == "NEUTRAL": return None
 
+        # --- 6. Dinamik Stop Loss (Rejime Göre) ---
         price = float(last_row['close'])
         atr = float(last_row['atr'])
+        stop_multiplier = regime_settings['stop_loss_multiplier']
         
+        tp = price + (atr * 3) if ai_decision == "BUY" else price - (atr * 3)
+        sl = price - (atr * stop_multiplier) if ai_decision == "BUY" else price + (atr * stop_multiplier)
+
         signal = {
             "symbol": symbol,
             "side": ai_decision,
             "entry_price": price,
-            "tp_price": price + (atr * 3) if ai_decision == "BUY" else price - (atr * 3),
-            "sl_price": price - (atr * 1.5) if ai_decision == "BUY" else price + (atr * 1.5),
+            "tp_price": tp,
+            "sl_price": sl,
             "confidence": ai_confidence,
-            "reason": reason
+            "reason": reason,
+            "regime": current_regime
         }
         
-        if SignalValidator.validate_outgoing_signal(signal):
-            return signal
-        return None
+        return signal if SignalValidator.validate_outgoing_signal(signal) else None
 
     def _save_to_dashboard(self, data):
         try:
@@ -145,7 +153,6 @@ class MarketAnalyzer:
                     try: db = json.load(f)
                     except: db = {}
             else: db = {}
-            
             db[data['symbol']] = data
             with open(self.DASHBOARD_DATA_PATH, 'w') as f:
                 json.dump(db, f, indent=4)
