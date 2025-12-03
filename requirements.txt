@@ -12,14 +12,15 @@ joblib
 yfinance>=0.2.50
 pandas_datareader
 
-# --- Deep Learning (LSTM) ---
+# --- Deep Learning ---
 tensorflow
 
-# --- Reinforcement Learning (YENİ) ---
+# --- Reinforcement Learning ---
 stable-baselines3
 gymnasium
 shimmy>=0.2.1
 
-# --- Dashboard ---
+# --- Dashboard & Visuals (YENİ) ---
 streamlit
 watchdog
+plotly
