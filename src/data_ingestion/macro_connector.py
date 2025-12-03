@@ -1,7 +1,6 @@
 import yfinance as yf
 import pandas as pd
 import logging
-from datetime import datetime, timedelta
 
 logger = logging.getLogger("MACRO_DATA_CONNECTOR")
 
@@ -29,6 +28,7 @@ class MacroConnector:
         try:
             for name, ticker in self.tickers.items():
                 # Yahoo Finance'den veri çek
+                # interval='1h' için max period ~730 gündür (2 yıl)
                 data = yf.download(ticker, period=period, interval=interval, progress=False)
                 
                 if data.empty:
@@ -36,7 +36,14 @@ class MacroConnector:
                     continue
                 
                 # Sadece kapanış fiyatını al ve yeniden adlandır
-                df = data[['Close']].rename(columns={'Close': f'macro_{name}'})
+                # yfinance bazen MultiIndex döner, onu düzeltelim:
+                if isinstance(data.columns, pd.MultiIndex):
+                    df = data['Close'] # Eğer multiindex ise Close'u seç
+                else:
+                    df = data[['Close']] # Değilse DataFrame olarak al
+
+                # Sütun ismini düzelt (Örn: macro_DXY)
+                df.columns = [f'macro_{name}']
                 
                 # Saat dilimini kaldır (UTC uyumu için)
                 df.index = df.index.tz_localize(None)
@@ -50,7 +57,7 @@ class MacroConnector:
             # Eksik verileri (Piyasa tatilleri vb.) doldur
             master_df = master_df.ffill().bfill()
             
-            # Timestamp sütunu oluştur
+            # Timestamp sütunu oluştur (Unix ms formatında)
             master_df['timestamp'] = master_df.index.astype('int64') // 10**6
             
             logger.info(f"Macro Data Fetched. Shape: {master_df.shape}")
