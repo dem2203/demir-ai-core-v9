@@ -6,9 +6,8 @@ import asyncio
 import os
 from datetime import datetime
 from tensorflow.keras.models import load_model
-from stable_baselines3 import PPO # <-- YENİ: RL Ajanı için
+from stable_baselines3 import PPO 
 
-# Kendi modüllerimiz
 from src.brain.feature_engineering import FeatureEngineer
 from src.brain.regime_classifier import RegimeClassifier
 from src.data_ingestion.connectors.binance_connector import BinanceConnector
@@ -18,10 +17,10 @@ logger = logging.getLogger("BACKTESTER")
 
 class Backtester:
     """
-    DEMIR AI - TIME MACHINE (HYBRID EDITION)
+    DEMIR AI - TIME MACHINE (HYBRID + OPTIMIZABLE)
     
-    Canlı sistemdeki 'MarketAnalyzer' mantığının aynısını geçmiş veride simüle eder.
-    LSTM + RL + Makro Veri + Rejim Filtresi kombinasyonunu test eder.
+    Hem Hibrit Zekayı (LSTM+RL) kullanır hem de 'params' argümanı ile
+    farklı strateji ayarlarının test edilmesine izin verir.
     """
     
     LSTM_DIR = "src/brain/models/storage"
@@ -38,7 +37,6 @@ class Backtester:
         self.model_lstm = None
         self.scaler = None
         self.agent_rl = None
-        
         self.trade_log = []
 
     def _get_lstm_paths(self, symbol):
@@ -48,8 +46,7 @@ class Backtester:
         return model_path, scaler_path
 
     def load_brains(self, symbol):
-        """Hem LSTM hem de RL beyinlerini yükler."""
-        # 1. LSTM Yükle
+        # 1. LSTM
         m_path, s_path = self._get_lstm_paths(symbol)
         if os.path.exists(m_path) and os.path.exists(s_path):
             try:
@@ -58,28 +55,35 @@ class Backtester:
             except Exception as e:
                 logger.error(f"LSTM Load Error: {e}")
                 return False
-        else:
-            return False # LSTM olmadan test yapamayız
+        else: return False
 
-        # 2. RL Ajanı Yükle
+        # 2. RL Ajanı
         if os.path.exists(self.RL_MODEL_PATH + ".zip"):
             try:
                 self.agent_rl = PPO.load(self.RL_MODEL_PATH)
-            except Exception as e:
-                logger.warning(f"RL Agent Load Error: {e}. Running in LSTM-Only mode.")
-                self.agent_rl = None
+            except: self.agent_rl = None
         
         return True
 
-    async def run_backtest(self, symbol="BTC/USDT", days=30):
-        logger.info(f"Starting Hybrid Backtest for {symbol} ({days} days)...")
+    async def run_backtest(self, symbol="BTC/USDT", days=30, params=None):
+        """
+        params: {
+            'sl_mul': 1.5,   # Stop Loss ATR çarpanı
+            'tp_mul': 3.0,   # Take Profit ATR çarpanı
+            'threshold': 0.60 # LSTM Güven Eşiği
+        }
+        """
+        # Varsayılan Parametreler
+        if params is None:
+            params = {'sl_mul': 1.5, 'tp_mul': 3.0, 'threshold': 0.55}
+
+        logger.info(f"Backtesting {symbol} with params: {params}")
         
         if not self.load_brains(symbol):
-            return {"error": f"Brains (LSTM/Scaler) not found for {symbol}."}
+            return {"error": f"Brain not found for {symbol}."}
 
-        # 1. Veri Çek (Kripto + Makro)
+        # 1. Veri Çek
         limit = (days * 24) + 200 
-        
         raw_crypto = await self.crypto.fetch_candles(symbol, limit=limit)
         await self.crypto.close()
         if not raw_crypto: return {"error": "No crypto data."}
@@ -88,28 +92,25 @@ class Backtester:
         macro_df = await self.macro.fetch_macro_data(period="2y", interval="1h")
         df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
         
-        if df is None or len(df) < self.LOOKBACK:
-            return {"error": "Insufficient Data."}
+        if df is None or len(df) < self.LOOKBACK: return {"error": "Insufficient Data."}
 
-        # 2. Simülasyon Hazırlığı
-        # LSTM için verileri hazırla
-        feature_cols = [c for c in df.columns if c not in ['timestamp', 'symbol', 'target', 'open', 'high', 'low', 'close', 'volume']]
-        data_values = df[feature_cols].values
-        scaled_data = self.scaler.transform(data_values)
+        # 2. Batch Prediction (LSTM)
+        # Eğitimdeki sütunları seç (Yeni eklenen makro sütunları hariç tutuyoruz ki model patlamasın)
+        # NOT: Modeli makro veriyle tekrar eğitirsek burayı güncelleyeceğiz.
+        drop_cols = ['timestamp', 'symbol', 'target', 'open', 'high', 'low', 'close', 'volume', 
+                     'macro_GOLD', 'macro_SILVER', 'macro_OIL', 'corr_spx', 'corr_dxy']
+        feature_cols = [c for c in df.columns if c not in drop_cols]
+        
+        try:
+            data_values = df[feature_cols].values
+            scaled_data = self.scaler.transform(data_values)
+        except: return {"error": "Scaler/Model mismatch. Retrain required."}
         
         X_lstm = []
-        
-        # RL için verileri hazırla (Drop non-numeric)
-        drop_cols_rl = ['timestamp', 'symbol', 'target', 'open', 'high', 'low']
-        df_rl = df.drop(columns=[c for c in drop_cols_rl if c in df.columns], errors='ignore')
-        rl_values = df_rl.values.astype(np.float32)
-
         start_index = len(df) - (days * 24)
         if start_index < self.LOOKBACK: start_index = self.LOOKBACK
-        
         indices = range(start_index, len(df))
         
-        # Toplu LSTM Tahmini (Hız için)
         for i in indices:
             X_lstm.append(scaled_data[i-self.LOOKBACK:i])
         
@@ -118,7 +119,13 @@ class Backtester:
         
         lstm_predictions = self.model_lstm.predict(X_lstm, verbose=0)
         
-        # 3. Ticaret Döngüsü
+        # RL verisi hazırlığı
+        drop_cols_rl = ['timestamp', 'symbol', 'target', 'open', 'high', 'low', 
+                        'macro_GOLD', 'macro_SILVER', 'macro_OIL', 'corr_spx', 'corr_dxy']
+        df_rl = df.drop(columns=[c for c in drop_cols_rl if c in df.columns], errors='ignore')
+        rl_values = df_rl.values.astype(np.float32)
+
+        # 3. Simülasyon
         position = None 
         entry_price = 0
         
@@ -128,77 +135,75 @@ class Backtester:
             if i >= len(lstm_predictions): break
             
             current_price = row['close']
-            timestamp = row.get('timestamp', 0)
-            try: readable_time = datetime.fromtimestamp(timestamp / 1000).strftime('%Y-%m-%d %H:%M')
-            except: readable_time = str(timestamp)
+            atr = row['atr']
+            lstm_score = lstm_predictions[i][0]
             
-            # A. Piyasa Rejimi
-            # (Simülasyonda geçmiş veriye bakarak rejim belirlemek için küçük bir dilim alabiliriz ama 
-            # hız için şimdilik basitleştirilmiş mantık kullanacağız veya anlık veriyle hesaplayacağız)
-            # Burada row'daki indikatörler zaten hesaplı olduğu için direkt kullanabiliriz.
-            
-            # B. Sinyaller
-            lstm_score = lstm_predictions[i][0] # 0-1
-            
+            # RL Tahmini
             rl_action = 0
             if self.agent_rl:
-                # RL anlık gözlem istiyor
                 obs = rl_values[indices[i]]
                 rl_action, _ = self.agent_rl.predict(obs, deterministic=True)
             
-            # --- HİBRİT KARAR MANTIĞI (Canlı Botla Aynı) ---
-            decision = "NEUTRAL"
-            
-            # ALIM: RL 'Al' diyor (1) VE LSTM 'Yükseliş' (>0.5) diyor
-            if rl_action == 1 and lstm_score > 0.50:
-                decision = "BUY"
-            # YEDEK ALIM: RL kararsız ama LSTM çok emin (>0.60)
-            elif lstm_score > 0.60:
-                decision = "BUY"
-                
-            # SATIM: RL 'Sat' diyor (2) VEYA LSTM 'Düşüş' (<0.4) diyor
-            elif rl_action == 2 or lstm_score < 0.40:
-                decision = "SELL"
+            ts = row.get('timestamp', 0)
+            try: t_str = datetime.fromtimestamp(ts/1000).strftime('%Y-%m-%d %H:%M')
+            except: t_str = str(ts)
 
-            # --- İŞLEM YÖNETİMİ ---
+            # --- KARAR MEKANİZMASI (PARAMETRİK) ---
+            decision = "NEUTRAL"
+            threshold = params['threshold']
+            
+            # Alım
+            if rl_action == 1 and lstm_score > threshold: decision = "BUY"
+            elif lstm_score > (threshold + 0.1): decision = "BUY" # Çok güçlüyse RL'siz al
+            
+            # Satım
+            elif rl_action == 2 or lstm_score < (1 - threshold): decision = "SELL"
+
+            # İcra
             if position is None:
                 if decision == "BUY":
                     position = 'LONG'
                     entry_price = current_price
                     self.trade_log.append({
-                        "action": "BUY", "price": entry_price, "time": readable_time, 
-                        "score": f"L:{lstm_score:.2f}|R:{rl_action}", "balance": self.balance
+                        "action": "BUY", "price": entry_price, "time": t_str, 
+                        "score": f"L:{lstm_score:.2f}", "balance": self.balance
                     })
             
             elif position == 'LONG':
                 pnl_pct = (current_price - entry_price) / entry_price
                 
-                # Çıkış: Sinyal Sat'a döndü veya Stop/TP
-                if decision == "SELL" or pnl_pct < -0.03 or pnl_pct > 0.06:
+                # Dinamik Hedefler (Optimizer'dan gelen)
+                stop_pct = (atr * params['sl_mul']) / entry_price
+                take_pct = (atr * params['tp_mul']) / entry_price
+                
+                should_sell = False
+                reason = ""
+                
+                if pnl_pct < -stop_pct: should_sell = True; reason = "SL"
+                elif pnl_pct > take_pct: should_sell = True; reason = "TP"
+                elif decision == "SELL": should_sell = True; reason = "Signal"
+                
+                if should_sell:
                     position = None
                     pnl_amount = (self.balance * pnl_pct) - (self.balance * 0.001)
                     self.balance += pnl_amount
-                    
-                    reason = "Signal" if decision == "SELL" else ("TP" if pnl_pct > 0 else "SL")
-                    
                     self.trade_log.append({
-                        "action": "SELL", "price": current_price, "time": readable_time, 
-                        "score": f"L:{lstm_score:.2f}|R:{rl_action}", "pnl_pct": f"{pnl_pct*100:.2f}%", 
+                        "action": "SELL", "price": current_price, "time": t_str, 
+                        "score": f"L:{lstm_score:.2f}", "pnl_pct": f"{pnl_pct*100:.2f}%", 
                         "reason": reason, "balance": self.balance
                     })
 
-        # 4. Rapor
+        # Rapor
         sell_trades = [t for t in self.trade_log if t['action'] == 'SELL']
         total = len(sell_trades)
-        wins = len([t for t in sell_trades if float(t['pnl_pct'].replace('%','')) > 0])
+        wins = len([t for t in sell_trades if float(t['pnl_pct'].strip('%')) > 0])
         win_rate = (wins / total * 100) if total > 0 else 0
         roi = ((self.balance - self.initial_balance) / self.initial_balance) * 100
         
         return {
-            "initial_balance": self.initial_balance,
-            "final_balance": self.balance,
             "roi": roi,
             "total_trades": total,
             "win_rate": win_rate,
+            "final_balance": self.balance,
             "trades": self.trade_log
         }
