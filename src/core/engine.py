@@ -1,229 +1,187 @@
-import os
-import time
+import asyncio
 import logging
-import pandas as pd
-import ccxt
-import requests
+import os
+import json
+from typing import List, Dict, Optional
 from datetime import datetime
-from typing import Dict, List, Optional
 
-# --- ÖNCEKİ MODÜLLERİN ENTEGRASYONU ---
-# Not: Bu importların çalışması için ilgili dosyaların proje klasöründe olması gerekir.
-# Biz burada simüle edilmiş importlar yerine sınıfı doğrudan kullanacak şekilde tasarlıyoruz
-# veya dosya yapısının tam olduğunu varsayıyoruz.
-from src.core.risk_manager import RiskManager
-from src.brain.exit_strategy import SmartExitStrategy
+# --- MODÜL İMPORTLARI ---
+from src.config.settings import Config
+from src.data_ingestion.market_data_manager import MarketDataManager
+from src.brain.market_analyzer import MarketAnalyzer
+from src.utils.logger import setup_logger
+from src.utils.notifications import NotificationManager
+from src.execution.paper_trader import PaperTrader 
 
-# --- LOGGING SETUP ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("TradeEngine")
+# İleride Gerçek İşlem açmak istersek diye bu modülü pasif olarak tutuyoruz
+# from src.execution.order_manager import OrderManager 
 
-# --- TELEGRAM MESSENGER ---
-class TelegramBot:
-    def __init__(self):
-        self.token = os.getenv("TELEGRAM_TOKEN")
-        self.chat_id = os.getenv("TELEGRAM_CHAT_ID")
+logger = logging.getLogger("DEMIR_AI_CORE_ENGINE")
+
+class BotEngine:
+    """
+    DEMIR AI v13.0 - ENTERPRISE CORE ENGINE
     
-    def send_message(self, message: str):
-        if not self.token or not self.chat_id:
-            logger.warning("Telegram token veya Chat ID eksik! Mesaj gönderilemedi.")
-            return
-        
-        url = f"https://api.telegram.org/bot{self.token}/sendMessage"
-        payload = {"chat_id": self.chat_id, "text": message, "parse_mode": "HTML"}
-        try:
-            requests.post(url, json=payload, timeout=10)
-        except Exception as e:
-            logger.error(f"Telegram Hatası: {str(e)}")
-
-# --- MAIN ENGINE ---
-class TradeEngine:
+    Bu motor, sistemin kalbidir. Tüm organları (Veri, Beyin, Cüzdan, İletişim) yönetir.
+    
+    YETENEKLER:
+    1. Çoklu Varlık Yönetimi (BTC, ETH, LTC...)
+    2. Hibrit Zeka Entegrasyonu (LSTM + RL + Makro)
+    3. Paper Trading (Sanal Cüzdan) Yönetimi
+    4. Kesintisiz Çalışma (Fault Tolerance)
     """
-    Sistemin Kalbi. 7/24 Çalışan Ana Döngü.
-    Zero-Mock Policy: Tüm veriler ccxt üzerinden canlı çekilir.
-    """
-    def __init__(self, symbol: str = 'BTC/USDT', timeframe: str = '15m'):
-        self.symbol = symbol
-        self.timeframe = timeframe
+    
+    def __init__(self):
         self.is_running = False
+        self.loop_interval = 60 # Analiz döngüsü (saniye)
         
-        # API Bağlantıları
-        self.exchange = self._connect_exchange()
-        self.telegram = TelegramBot()
+        logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        logger.info("🚀 INITIALIZING DEMIR AI CORE SYSTEMS...")
+        logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         
-        # Alt Modüller
-        self.risk_manager = RiskManager(max_risk_per_trade=0.01) # %1 Risk
-        self.smart_exit = SmartExitStrategy()
+        # 1. Veri Yöneticisi (Gözler)
+        self.data_manager = MarketDataManager()
         
-        # Paper Trading Cüzdanı (Gerçek para öncesi simülasyon)
-        self.paper_balance = 10000.0 # Başlangıç Bakiyesi
-        self.active_position = None # { 'entry_price': float, 'amount': float, 'start_time': datetime }
+        # 2. Piyasa Analisti (Beyin)
+        self.analyzer = MarketAnalyzer()
         
-        logger.info(f"MOTOR BAŞLATILDI: {self.symbol} | {self.timeframe} | Bakiye: {self.paper_balance}$")
-        self.telegram.send_message(f"🚀 <b>DEMIR AI BAŞLATILDI</b>\nParite: {symbol}\nMod: Paper Trading\nBakiye: {self.paper_balance}$")
+        # 3. Bildirim Sistemi (Ses)
+        self.notifier = NotificationManager()
+        
+        # 4. İcra Sistemi (Eller - Sanal)
+        self.paper_trader = PaperTrader()
+        
+        # 5. Gerçek İcra Sistemi (Şu an Devre Dışı - Future Use)
+        # self.real_trader = OrderManager()
+        
+        logger.info("✅ All Sub-systems Initialized Successfully.")
 
-    def _connect_exchange(self):
-        """Binance Bağlantısı"""
-        api_key = os.getenv("BINANCE_API_KEY")
-        api_secret = os.getenv("BINANCE_API_SECRET")
+    async def start(self):
+        """
+        Botu başlatır ve ana döngüye sokar.
+        """
+        logger.info(f"🌍 ENVIRONMENT: {Config.ENVIRONMENT}")
+        logger.info(f"🦅 ACTIVE STRATEGY: Hybrid Intelligence (LSTM + RL + Macro)")
+        logger.info(f"💼 TRADING MODE: PAPER TRADING (Simulated Wallet)")
         
-        if not api_key:
-            logger.warning("BINANCE API KEY bulunamadı! Public verilerle çalışılacak.")
-        
-        return ccxt.binance({
-            'apiKey': api_key,
-            'secret': api_secret,
-            'enableRateLimit': True,
-            'options': {'defaultType': 'spot'} 
-        })
-
-    def fetch_live_data(self) -> pd.DataFrame:
-        """Canlı mum verisi çeker ve indikatörleri hesaplar."""
+        # Borsa Bağlantılarını Başlat
         try:
-            # 1. Veri Çekme (Limit 100 yeterli, analiz için)
-            ohlcv = self.exchange.fetch_ohlcv(self.symbol, self.timeframe, limit=100)
-            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-            
-            # 2. Data Integrity Check
-            if df.empty or df['close'].iloc[-1] <= 0:
-                raise ValueError("Bozuk veya boş veri alındı.")
-
-            # 3. İndikatör Hesaplamaları (Optimize edilmiş parametreler varsayılıyor)
-            # RSI
-            delta = df['close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rs = gain / loss
-            df['rsi'] = 100 - (100 / (1 + rs))
-            
-            # ATR (Volatilite için)
-            df['tr1'] = df['high'] - df['low']
-            df['tr2'] = abs(df['high'] - df['close'].shift())
-            df['tr3'] = abs(df['low'] - df['close'].shift())
-            df['tr'] = df[['tr1', 'tr2', 'tr3']].max(axis=1)
-            df['atr'] = df['tr'].rolling(window=14).mean()
-            
-            return df
-            
+            await self.data_manager.initialize()
         except Exception as e:
-            logger.error(f"Veri Hatası: {str(e)}")
-            return pd.DataFrame()
+            logger.critical(f"❌ CRITICAL: Failed to connect to Exchange: {e}")
+            return # Bağlantı yoksa başlama
 
-    def run_forever(self):
-        """Sonsuz Döngü"""
+        # Telegram'a "Ben Başladım" mesajı at
+        await self.notifier.send_message_raw("🦅 **DEMIR AI ONLINE**\nSistem başlatıldı. Piyasa taranıyor...")
+        
         self.is_running = True
-        logger.info("Döngü başladı. Piyasa izleniyor...")
+        await self.run_forever()
+
+    async def run_forever(self):
+        """
+        Sonsuz Yaşam Döngüsü. Hata olsa bile (internet kopması vb.) kendini toparlar.
+        """
+        error_count = 0
         
         while self.is_running:
-            try:
-                # 1. Veriyi Al
-                df = self.fetch_live_data()
-                if df.empty:
-                    time.sleep(60)
-                    continue
-                
-                last_row = df.iloc[-1]
-                current_price = float(last_row['close'])
-                current_rsi = float(last_row['rsi'])
-                current_atr = float(last_row['atr'])
-                
-                # Konsola bilgi bas (Railway logs)
-                logger.info(f"Fiyat: {current_price} | RSI: {current_rsi:.2f} | ATR: {current_atr:.2f}")
-
-                # 2. AKTİF POZİSYON YÖNETİMİ (Smart Exit)
-                if self.active_position:
-                    entry_price = self.active_position['entry_price']
-                    bars_held = (datetime.now() - self.active_position['start_time']).seconds // 900 # 15dk'lık bar sayısı tahmini
-                    
-                    should_exit, reason, stop_price = self.smart_exit.calculate_exit_signal(
-                        current_price=current_price,
-                        entry_price=entry_price,
-                        current_atr=current_atr,
-                        rsi_value=current_rsi,
-                        bars_held=bars_held
-                    )
-                    
-                    if should_exit:
-                        self._execute_sell(current_price, reason)
-                
-                # 3. YENİ GİRİŞ SİNYALİ ARAMA (Entry Strategy)
-                # Basit RSI aşırı satım stratejisi (Optimizer'dan gelen mantık buraya konur)
-                elif not self.active_position:
-                    if current_rsi < 30: # Aşırı Satım Bölgesi -> FIRSAT
-                        # Ekstra teyit: Fiyat düşüyor ama momentum (RSI) yükseliyorsa (Pozitif Uyumsuzluk)
-                        logger.info("RSI < 30. Alım fırsatı aranıyor...")
-                        
-                        # Risk Yönetimi: Pozisyon büyüklüğü hesapla
-                        stop_loss = current_price - (current_atr * 2) # 2 ATR altı stop
-                        pos_size = self.risk_manager.calculate_position_size(
-                            account_balance=self.paper_balance,
-                            entry_price=current_price,
-                            stop_loss_price=stop_loss,
-                            volatility_atr=current_atr
-                        )
-                        
-                        if pos_size > 0:
-                            self._execute_buy(current_price, pos_size, stop_loss)
-
-                # 4. Bekleme (API limitlerine saygı)
-                time.sleep(60) # Her dakika kontrol et
-                
-            except KeyboardInterrupt:
-                logger.info("Bot manuel olarak durduruldu.")
-                self.is_running = False
-            except Exception as e:
-                logger.error(f"Döngü Hatası: {str(e)}")
-                time.sleep(30)
-
-    def _execute_buy(self, price, amount, stop_loss):
-        """Paper Buy İşlemi"""
-        cost = price * amount
-        if cost > self.paper_balance:
-            amount = self.paper_balance / price
-            cost = self.paper_balance
+            start_time = datetime.now()
+            logger.info(f"--- ⏳ CYCLE START: {start_time.strftime('%H:%M:%S')} ---")
             
-        self.paper_balance -= cost
-        self.active_position = {
-            'entry_price': price,
-            'amount': amount,
-            'start_time': datetime.now(),
-            'stop_loss': stop_loss
-        }
-        
-        # Smart Exit'i sıfırla
-        self.smart_exit.reset()
-        self.smart_exit.trailing_stop_price = stop_loss # İlk stop seviyesini ata
-        
-        msg = (f"🟢 <b>ALIM SİNYALİ (BUY)</b>\n"
-               f"Fiyat: {price}\n"
-               f"Miktar: {amount:.4f}\n"
-               f"Stop Loss: {stop_loss:.2f}\n"
-               f"Bakiye: {self.paper_balance:.2f}$")
-        logger.info(msg)
-        self.telegram.send_message(msg)
+            try:
+                # Ana İşlem Bloğu
+                await self.process_market_cycle()
+                error_count = 0 # Başarılı turda hata sayacını sıfırla
+                
+            except Exception as e:
+                error_count += 1
+                logger.error(f"⚠️ CYCLE ERROR ({error_count}): {str(e)}")
+                
+                if error_count > 5:
+                    logger.critical("🚨 Too many consecutive errors! Pausing for 5 minutes.")
+                    await self.notifier.send_message_raw("⚠️ **SİSTEM UYARISI:** Üst üste hata alındı. 5dk soğuma moduna geçiliyor.")
+                    await asyncio.sleep(300)
+                else:
+                    await asyncio.sleep(5) # Kısa bekleme
+            
+            # Döngü Süresi Kontrolü
+            elapsed = (datetime.now() - start_time).total_seconds()
+            sleep_time = max(0, self.loop_interval - elapsed)
+            
+            if sleep_time > 0:
+                logger.info(f"✅ Cycle finished in {elapsed:.2f}s. Sleeping for {sleep_time:.2f}s...")
+                await asyncio.sleep(sleep_time)
+            else:
+                logger.warning(f"🐢 System is lagging! Cycle took {elapsed:.2f}s (Target: {self.loop_interval}s)")
 
-    def _execute_sell(self, price, reason):
-        """Paper Sell İşlemi"""
-        amount = self.active_position['amount']
-        entry_price = self.active_position['entry_price']
-        revenue = price * amount
-        profit = revenue - (entry_price * amount)
-        profit_pct = (profit / (entry_price * amount)) * 100
+    async def process_market_cycle(self):
+        """
+        Tek bir analiz turunun adımları.
+        """
+        # ADIM 1: Verileri Topla (Kripto + Makro)
+        # MarketDataManager artık 500 mumluk veriyi çekiyor.
+        market_data_list = await self.data_manager.get_live_market_snapshot()
         
-        self.paper_balance += revenue
-        self.active_position = None
-        
-        icon = "💰" if profit > 0 else "🛑"
-        msg = (f"{icon} <b>SATIŞ İŞLEMİ (SELL)</b>\n"
-               f"Çıkış Fiyatı: {price}\n"
-               f"Sebep: {reason}\n"
-               f"Kar/Zarar: {profit:.2f}$ (%{profit_pct:.2f})\n"
-               f"Yeni Bakiye: {self.paper_balance:.2f}$")
-        logger.info(msg)
-        self.telegram.send_message(msg)
+        if not market_data_list:
+            logger.warning("No market data received this cycle.")
+            return
 
-if __name__ == "__main__":
-    # Railway'de bu dosya doğrudan çalıştırılacak
-    engine = TradeEngine(symbol='BTC/USDT', timeframe='15m')
-    engine.run_forever()
+        # ADIM 2: Cüzdan Durumunu Güncelle (Live Portfolio Dashboard için)
+        # Anlık fiyatları çekip PaperTrader'a bildiriyoruz ki "Total Equity" hesaplasın.
+        current_prices = {}
+        for data in market_data_list:
+            if data and len(data) > 0:
+                symbol = data[-1]['symbol']
+                price = data[-1]['close']
+                current_prices[symbol] = price
+        
+        # Dashboard'daki 'Live Portfolio' sekmesi bu veriyi kullanır
+        self.paper_trader.get_portfolio_status(current_prices)
+        
+        # ADIM 3: Her Coin İçin Analiz Yap (Paralel İşlem)
+        tasks = []
+        for data in market_data_list:
+            if data:
+                tasks.append(self.analyze_and_execute(data))
+            
+        # Tüm analizleri aynı anda çalıştır (Hız artışı)
+        await asyncio.gather(*tasks)
+
+    async def analyze_and_execute(self, ticker_data: List[dict]):
+        """
+        Tek bir coinin kaderini belirleyen fonksiyon.
+        """
+        if not ticker_data or len(ticker_data) == 0:
+            return
+
+        symbol = ticker_data[0]['symbol']
+        
+        # --- BEYİN KATMANI (Brain Layer) ---
+        # MarketAnalyzer burada LSTM, RL ve Makro verileri birleştirip karar verir.
+        # Ayrıca Dashboard verisini (dxy, vix, prediction) JSON dosyasına yazar.
+        signal = await self.analyzer.analyze_market(symbol, ticker_data)
+        
+        # Eğer Nötr ise veya Güven yetersizse işlem yapma
+        if not signal:
+            return
+
+        # Sinyal bulundu! Logla.
+        logger.info(f"🎯 SIGNAL FOUND: {symbol} | {signal['side']} | Conf: {signal['confidence']:.2f}% | Reason: {signal.get('reason')}")
+
+        # --- İCRA KATMANI (Execution Layer) ---
+        # Paper Trader'a gönder. Bakiye yetiyorsa sanal işlem açar.
+        trade_executed = self.paper_trader.execute_trade(signal)
+        
+        if trade_executed:
+            # İşlem başarılıysa Telegram'dan müjdeyi ver
+            await self.notifier.send_signal(signal)
+            logger.info(f"✅ ACTION TAKEN: {signal['side']} {symbol} added to Portfolio.")
+        else:
+            # Bakiye yetersiz veya zaten pozisyon var
+            logger.info(f"⏸️ ACTION SKIPPED: {symbol} (Already in position or Insufficient Funds)")
+
+    async def stop(self):
+        """Sistemi güvenli kapatır."""
+        self.is_running = False
+        await self.data_manager.shutdown()
+        await self.notifier.send_message_raw("🛑 **DEMIR AI KAPATILIYOR**\nBakım veya yeniden başlatma.")
+        logger.info("SYSTEM SHUTDOWN COMPLETE.")
