@@ -2,14 +2,17 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional
 import logging
+from sklearn.ensemble import IsolationForest # <-- YENİ GÜÇ
 
 logger = logging.getLogger("ULTIMATE_FEATURE_ENGINEERING")
 
 class FeatureEngineer:
     """
-    DEMIR AI V14.1 - CORRELATION AWARE
+    DEMIR AI V15.0 - ANOMALY HUNTER
+    Eklenen: Hacim Anormalliği Tespiti (Balina İzleme)
     """
 
+    # --- KLASİK İNDİKATÖRLER (KORUNDU) ---
     @staticmethod
     def calculate_rsi(data: pd.DataFrame, period: int = 14) -> pd.Series:
         delta = data['close'].diff()
@@ -144,40 +147,26 @@ class FeatureEngineer:
             df_4h = temp_df.resample('4h').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'})
             df_4h['ema_50'] = df_4h['close'].ewm(span=50, adjust=False).mean()
             df_4h['ema_200'] = df_4h['close'].ewm(span=200, adjust=False).mean()
-            
             conditions = [
                 (df_4h['close'] > df_4h['ema_50']) & (df_4h['ema_50'] > df_4h['ema_200']),
                 (df_4h['close'] < df_4h['ema_50']) & (df_4h['ema_50'] < df_4h['ema_200'])
             ]
-            choices = [1, -1]
-            df_4h['trend_4h_val'] = np.select(conditions, choices, default=0)
+            df_4h['trend_4h_val'] = np.select(conditions, [1, -1], default=0)
             merged = temp_df.join(df_4h['trend_4h_val'], how='left')
             merged['trend_4h_val'] = merged['trend_4h_val'].ffill()
             return merged['trend_4h_val'].values
-        except Exception:
+        except:
             return pd.Series(0, index=df.index)
 
-    # --- YENİ: KORELASYON MATRİSİ ---
     @staticmethod
     def calculate_correlations(df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Bitcoin'in diğer makro varlıklarla (SPX, DXY) olan 60 mumluk korelasyonunu hesaplar.
-        """
         corrs = pd.DataFrame(index=df.index)
-        
-        if 'macro_SPX' in df.columns:
-            corrs['corr_spx'] = df['close'].rolling(60).corr(df['macro_SPX'])
-        else:
-            corrs['corr_spx'] = 0
-            
-        if 'macro_DXY' in df.columns:
-            corrs['corr_dxy'] = df['close'].rolling(60).corr(df['macro_DXY'])
-        else:
-            corrs['corr_dxy'] = 0
-            
+        if 'macro_SPX' in df.columns: corrs['corr_spx'] = df['close'].rolling(60).corr(df['macro_SPX'])
+        else: corrs['corr_spx'] = 0
+        if 'macro_DXY' in df.columns: corrs['corr_dxy'] = df['close'].rolling(60).corr(df['macro_DXY'])
+        else: corrs['corr_dxy'] = 0
         return corrs
 
-    # --- ANA İŞLEMCİ (FÜZYON) ---
     @staticmethod
     def merge_crypto_and_macro(crypto_df: pd.DataFrame, macro_df: pd.DataFrame) -> pd.DataFrame:
         if macro_df is None or macro_df.empty: return crypto_df
@@ -185,12 +174,23 @@ class FeatureEngineer:
         macro_df = macro_df.sort_values('timestamp')
         merged_df = pd.merge_asof(crypto_df, macro_df, on='timestamp', direction='backward')
         merged_df = merged_df.ffill().bfill()
-        
-        # Korelasyonu Veri Birleştikten Sonra Hesapla
         corrs = FeatureEngineer.calculate_correlations(merged_df)
         merged_df = pd.concat([merged_df, corrs], axis=1)
-        
         return merged_df
+
+    # --- YENİ: ANOMALİ TESPİTİ ---
+    @staticmethod
+    def detect_anomalies(df: pd.DataFrame) -> pd.Series:
+        """
+        Hacim verisindeki anormal artışları (Balina Aktivitesi) tespit eder.
+        """
+        try:
+            model = IsolationForest(contamination=0.05, random_state=42) # En garip %5'i bul
+            # -1: Anomali, 1: Normal
+            df['vol_anomaly'] = model.fit_predict(df[['volume']])
+            return df['vol_anomaly']
+        except:
+            return pd.Series(1, index=df.index)
 
     @classmethod
     def process_data(cls, raw_data: List[Dict]) -> Optional[pd.DataFrame]:
@@ -220,6 +220,9 @@ class FeatureEngineer:
             pivots = cls.calculate_pivots(df)
             df = pd.concat([df, pivots], axis=1)
             df['trend_4h'] = cls.calculate_4h_trend(df)
+            
+            # YENİ: Anomali Tespiti
+            df['vol_anomaly'] = cls.detect_anomalies(df)
 
             for lag in [1, 2, 3, 5, 8]:
                 df[f'close_lag_{lag}'] = df['close'].shift(lag)
@@ -233,5 +236,5 @@ class FeatureEngineer:
             logger.info(f"Feature Engineering Complete. Shape: {df.shape}")
             return df
         except Exception as e:
-            logger.error(f"FEATURE ENGINEERING CRITICAL FAIL: {e}")
+            logger.error(f"FEATURE ENGINEERING FAIL: {e}")
             return None
