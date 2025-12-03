@@ -86,7 +86,7 @@ class MarketAnalyzer:
                 
                 logger.info(f"🧠 {symbol} AI Score: {prediction:.4f}")
                 
-                if prediction > 0.60:
+                if prediction > 0.51:
                     ai_decision = "BUY"
                     ai_confidence = prediction * 100
                     reason = "Deep Learning Bullish Pattern"
