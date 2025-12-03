@@ -4,6 +4,7 @@ import logging
 import joblib
 import asyncio
 import os
+from datetime import datetime # Tarih çevirmek için
 from tensorflow.keras.models import load_model
 
 # Kendi modüllerimiz
@@ -15,13 +16,11 @@ logger = logging.getLogger("BACKTESTER")
 
 class Backtester:
     """
-    DEMIR AI - TIME MACHINE (MULTI-MODEL EDITION)
-    
-    Seçilen coin için ÖZEL eğitilmiş LSTM modelini bulur ve
-    geçmiş veriler (Kripto + Makro) üzerinde simülasyon yapar.
+    DEMIR AI - TIME MACHINE (OPTIMIZED EDITION)
     """
     
-    MODELS_DIR = "src/brain/models/storage"
+    MODEL_PATH = "src/brain/models/storage/lstm_v11.h5"
+    SCALER_PATH = "src/brain/models/storage/scaler.pkl"
     LOOKBACK = 60
 
     def __init__(self, initial_balance=10000.0):
@@ -34,86 +33,61 @@ class Backtester:
         self.trade_log = []
 
     def _get_paths(self, symbol):
-        """Coine özel model dosya yollarını oluşturur."""
         clean_sym = symbol.replace("/", "")
-        model_path = os.path.join(self.MODELS_DIR, f"lstm_v11_{clean_sym}.h5")
-        scaler_path = os.path.join(self.MODELS_DIR, f"scaler_{clean_sym}.pkl")
+        model_path = os.path.join("src/brain/models/storage", f"lstm_v11_{clean_sym}.h5")
+        scaler_path = os.path.join("src/brain/models/storage", f"scaler_{clean_sym}.pkl")
         return model_path, scaler_path
 
     def load_brain_for_symbol(self, symbol):
-        """İlgili coinin beynini yükler."""
         m_path, s_path = self._get_paths(symbol)
-        
         if os.path.exists(m_path) and os.path.exists(s_path):
             try:
                 self.model = load_model(m_path)
                 self.scaler = joblib.load(s_path)
                 return True
-            except Exception as e:
-                logger.error(f"Backtest Load Error for {symbol}: {e}")
-                return False
+            except: return False
         return False
 
     async def run_backtest(self, symbol="BTC/USDT", days=30):
-        """
-        Belirtilen gün sayısı kadar geriye gidip simülasyon yapar.
-        """
-        logger.info(f"Starting Backtest for {symbol} ({days} days)...")
+        logger.info(f"Starting Optimization Backtest for {symbol}...")
         
-        # 1. Doğru Beyni Yükle
         if not self.load_brain_for_symbol(symbol):
-            return {"error": f"Brain not found for {symbol}. Please wait for live training to finish."}
+            return {"error": f"Brain not found for {symbol}."}
 
-        # 2. Veri Hazırlığı (Kripto + Makro)
+        # 1. Veri Çek
         limit = (days * 24) + 200 
-        
-        # Kripto Verisi
         raw_crypto = await self.crypto.fetch_candles(symbol, limit=limit)
         await self.crypto.close()
-        if not raw_crypto: return {"error": "No crypto data fetched."}
+        if not raw_crypto: return {"error": "No Data"}
         
         crypto_df = FeatureEngineer.process_data(raw_crypto)
-        
-        # Makro Veri (Stooq)
         macro_df = await self.macro.fetch_macro_data(period="2y", interval="1h")
-        
-        # Füzyon
         df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
         
-        if df is None or len(df) < self.LOOKBACK:
-            return {"error": "Not enough data for simulation."}
+        if df is None or len(df) < self.LOOKBACK: return {"error": "Insufficient Data"}
 
-        # 3. Toplu Tahmin (Batch Prediction)
-        # Eğitimde kullanılan sütunların aynısını seç (Target vs hariç)
+        # 2. Toplu Tahmin
         feature_cols = [c for c in df.columns if c not in ['timestamp', 'symbol', 'target', 'open', 'high', 'low', 'close', 'volume']]
-        
         data_values = df[feature_cols].values
         
-        # Normalizasyon (Kaydedilen Scaler ile)
         try:
             scaled_data = self.scaler.transform(data_values)
-        except Exception as e:
-            return {"error": f"Scaler mismatch: {e}. Retrain model."}
+        except: return {"error": "Scaler Mismatch. Retrain model."}
         
         X = []
-        # Sadece simülasyon yapılacak kısmı al
         start_index = len(df) - (days * 24)
         if start_index < self.LOOKBACK: start_index = self.LOOKBACK
-        
         indices = range(start_index, len(df))
         
         for i in indices:
             X.append(scaled_data[i-self.LOOKBACK:i])
-            
+        
         X = np.array(X)
+        if len(X) == 0: return {"error": "No X data"}
         
-        if len(X) == 0:
-             return {"error": "No data points for prediction window."}
-
-        # Yapay Zeka Tahminlerini Al
-        predictions = self.model.predict(X, verbose=0) 
+        predictions = self.model.predict(X, verbose=0)
         
-        # 4. Ticaret Simülasyonu
+        # 3. TİCARET SİMÜLASYONU (STRATEJİ BURADA)
         position = None 
         entry_price = 0
         
@@ -123,60 +97,52 @@ class Backtester:
             if i >= len(predictions): break
             
             current_price = row['close']
-            ai_score = predictions[i][0] # Modelin yükseliş inancı (0-1)
-            timestamp = row.get('timestamp', 'Unknown')
+            ai_score = predictions[i][0]
             
-            # --- ALIM MANTIĞI ---
+            # Unix Timestamp'i okunabilir tarihe çevir
+            ts = row.get('timestamp', 0)
+            readable_time = datetime.fromtimestamp(ts / 1000).strftime('%Y-%m-%d %H:%M')
+            
+            # --- OPTİMİZE EDİLMİŞ STRATEJİ ---
+            
+            # ALIM: Güven eşiğini %60'a çıkardık (Daha az ama öz işlem)
             if position is None:
-                # Eğer AI %60'tan fazla eminse AL
-                if ai_score > 0.51: 
+                if ai_score > 0.60: 
                     position = 'LONG'
                     entry_price = current_price
-                    
                     self.trade_log.append({
-                        "action": "BUY",
-                        "price": entry_price,
-                        "time": timestamp,
-                        "score": float(ai_score),
-                        "balance": self.balance
+                        "action": "BUY", "price": entry_price, "time": readable_time, 
+                        "score": f"{ai_score:.2f}", "balance": self.balance
                     })
 
-            # --- SATIM MANTIĞI ---
+            # SATIM: Kar Al %5, Zarar Durdur %3 (Biraz gevşettik)
             elif position == 'LONG':
                 pnl_pct = (current_price - entry_price) / entry_price
                 
-                # ÇIKIŞ KURALLARI:
-                # 1. AI fikrini değiştirdi: Skor < 0.40 (Düşüş bekliyor)
-                # 2. Stop Loss: %2 Zarar
-                # 3. Take Profit: %5 Kar
-                
-                if ai_score < 0.40 or pnl_pct < -0.02 or pnl_pct > 0.05:
+                # AI "Çöküş var" derse (<0.30) veya Stop/TP tetiklenirse sat
+                if ai_score < 0.30 or pnl_pct < -0.03 or pnl_pct > 0.05:
                     position = None
-                    # Kar/Zarar hesapla (Komisyon %0.1)
-                    pnl_amount = (self.balance * pnl_pct) - (self.balance * 0.002) 
+                    pnl_amount = (self.balance * pnl_pct) - (self.balance * 0.001) # %0.1 komisyon
                     self.balance += pnl_amount
                     
                     self.trade_log.append({
-                        "action": "SELL",
-                        "price": current_price,
-                        "time": timestamp,
-                        "score": float(ai_score),
-                        "pnl_pct": pnl_pct * 100,
+                        "action": "SELL", "price": current_price, "time": readable_time, 
+                        "score": f"{ai_score:.2f}", "pnl_pct": f"{pnl_pct*100:.2f}%", 
                         "balance": self.balance
                     })
 
-        # 5. Raporlama
+        # Rapor
         sell_trades = [t for t in self.trade_log if t['action'] == 'SELL']
-        total_trades = len(sell_trades)
-        winning_trades = len([t for t in sell_trades if t.get('pnl_pct', 0) > 0])
-        win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+        total = len(sell_trades)
+        wins = len([t for t in sell_trades if float(t['pnl_pct'].strip('%')) > 0])
+        win_rate = (wins / total * 100) if total > 0 else 0
         roi = ((self.balance - self.initial_balance) / self.initial_balance) * 100
         
         return {
             "initial_balance": self.initial_balance,
             "final_balance": self.balance,
             "roi": roi,
-            "total_trades": total_trades,
+            "total_trades": total,
             "win_rate": win_rate,
             "trades": self.trade_log
         }
