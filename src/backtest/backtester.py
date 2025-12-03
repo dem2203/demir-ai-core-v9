@@ -16,10 +16,10 @@ logger = logging.getLogger("BACKTESTER")
 
 class Backtester:
     """
-    DEMIR AI - TIME MACHINE (FRACTAL EDITION)
+    DEMIR AI - TIME MACHINE (OPTIMIZABLE EDITION)
     
-    Canlı botun '4H Trend Filtresi' mantığını birebir simüle eder.
-    Böylece backtest sonuçları ile canlı performans tutarlı olur.
+    Artık dışarıdan 'parametre' alabilir.
+    Böylece Optimizer farklı Stop Loss/Take Profit oranlarını deneyebilir.
     """
     
     MODELS_DIR = "src/brain/models/storage"
@@ -48,57 +48,57 @@ class Backtester:
                 self.scaler = joblib.load(s_path)
                 return True
             except Exception as e:
-                logger.error(f"Backtest Load Error: {e}")
                 return False
         return False
 
-    async def run_backtest(self, symbol="BTC/USDT", days=30):
-        logger.info(f"Starting Fractal Backtest for {symbol} ({days} days)...")
+    async def run_backtest(self, symbol="BTC/USDT", days=30, params=None):
+        """
+        params: { 'sl_mul': 1.5, 'tp_mul': 3.0, 'threshold': 0.50 }
+        """
+        # Varsayılan parametreler (Eğer Optimizer'dan gelmezse)
+        if params is None:
+            params = {'sl_mul': 1.5, 'tp_mul': 3.0, 'threshold': 0.51}
+
+        logger.info(f"Starting Backtest for {symbol} with params: {params}")
         
         if not self.load_brain_for_symbol(symbol):
             return {"error": f"Brain not found for {symbol}."}
 
         # 1. Veri Çek
         limit = (days * 24) + 200 
-        
         raw_crypto = await self.crypto.fetch_candles(symbol, limit=limit)
         await self.crypto.close()
         if not raw_crypto: return {"error": "No crypto data fetched."}
         
-        # Feature Engineering (Burada 4H Trend ve Pivotlar hesaplanır)
         crypto_df = FeatureEngineer.process_data(raw_crypto)
-        
-        # Makro Veri
         macro_df = await self.macro.fetch_macro_data(period="2y", interval="1h")
         df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
         
         if df is None or len(df) < self.LOOKBACK:
-            return {"error": "Not enough data for simulation."}
+            return {"error": "Not enough data."}
 
-        # 2. Toplu Tahmin (Batch Prediction)
+        # 2. Tahmin Hazırlığı
         feature_cols = [c for c in df.columns if c not in ['timestamp', 'symbol', 'target', 'open', 'high', 'low', 'close', 'volume']]
+        data_values = df[feature_cols].values
         
         try:
-            data_values = df[feature_cols].values
             scaled_data = self.scaler.transform(data_values)
-        except Exception as e:
-            return {"error": f"Scaler Mismatch: {e}"}
+        except: return {"error": "Scaler Mismatch."}
         
         X = []
         start_index = len(df) - (days * 24)
         if start_index < self.LOOKBACK: start_index = self.LOOKBACK
-        
         indices = range(start_index, len(df))
         
         for i in indices:
             X.append(scaled_data[i-self.LOOKBACK:i])
             
         X = np.array(X)
-        if len(X) == 0: return {"error": "No data points for prediction."}
+        if len(X) == 0: return {"error": "No data for period."}
         
         predictions = self.model.predict(X, verbose=0) 
         
-        # 3. Ticaret Simülasyonu
+        # 3. Simülasyon (Parametrik)
         position = None 
         entry_price = 0
         
@@ -108,45 +108,48 @@ class Backtester:
             if i >= len(predictions): break
             
             current_price = row['close']
+            atr = row['atr'] # Volatilite verisi
             ai_score = predictions[i][0]
             
-            # --- YENİ: 4 SAATLİK TREND VERİSİ ---
-            # 1: Yükseliş, -1: Düşüş, 0: Nötr
-            trend_4h = row.get('trend_4h', 0) 
-            
             ts = row.get('timestamp', 0)
-            try:
-                readable_time = datetime.fromtimestamp(ts / 1000).strftime('%Y-%m-%d %H:%M')
+            try: readable_time = datetime.fromtimestamp(ts / 1000).strftime('%Y-%m-%d %H:%M')
             except: readable_time = str(ts)
             
-            # --- ALIM MANTIĞI (FİLTRELİ) ---
+            # --- DİNAMİK STRATEJİ ---
+            
+            # ALIM
             if position is None:
-                # KURAL: Yapay Zeka "AL" diyor VE 4H Trend "DÜŞÜŞ" DEĞİL
-                if ai_score > 0.51: 
-                    if trend_4h == -1:
-                        # FİLTRE: Büyük trend düşüşte, işlem iptal.
-                        pass
-                    else:
-                        # ONAY: Büyük trend destekliyor veya nötr.
-                        position = 'LONG'
-                        entry_price = current_price
-                        
-                        self.trade_log.append({
-                            "action": "BUY",
-                            "price": entry_price,
-                            "time": readable_time,
-                            "score": f"{ai_score:.2f}",
-                            "trend_4h": "BEAR" if trend_4h == -1 else ("BULL" if trend_4h == 1 else "NEUT"),
-                            "balance": self.balance
-                        })
+                if ai_score > params['threshold']: 
+                    position = 'LONG'
+                    entry_price = current_price
+                    
+                    self.trade_log.append({
+                        "action": "BUY",
+                        "price": entry_price,
+                        "time": readable_time,
+                        "score": f"{ai_score:.2f}",
+                        "balance": self.balance
+                    })
 
-            # --- SATIM MANTIĞI ---
+            # SATIM (ATR Bazlı Dinamik Stop/TP)
             elif position == 'LONG':
-                pnl_pct = (current_price - entry_price) / entry_price
+                # Dinamik Hedefler
+                stop_price = entry_price - (atr * params['sl_mul'])
+                target_price = entry_price + (atr * params['tp_mul'])
                 
-                # Çıkış: AI vazgeçti veya Stop/TP
-                if ai_score < 0.45 or pnl_pct < -0.03 or pnl_pct > 0.06:
+                should_sell = False
+                reason = ""
+                
+                if current_price <= stop_price:
+                    should_sell = True; reason = "Stop Loss (ATR)"
+                elif current_price >= target_price:
+                    should_sell = True; reason = "Take Profit (ATR)"
+                elif ai_score < 0.40: # AI fikrini değiştirdi
+                    should_sell = True; reason = "AI Exit Signal"
+                
+                if should_sell:
                     position = None
+                    pnl_pct = (current_price - entry_price) / entry_price
                     pnl_amount = (self.balance * pnl_pct) - (self.balance * 0.001) 
                     self.balance += pnl_amount
                     
@@ -156,21 +159,21 @@ class Backtester:
                         "time": readable_time,
                         "score": f"{ai_score:.2f}",
                         "pnl_pct": f"{pnl_pct*100:.2f}%",
+                        "reason": reason,
                         "balance": self.balance
                     })
 
-        # 5. Rapor
+        # Rapor
         sell_trades = [t for t in self.trade_log if t['action'] == 'SELL']
-        total_trades = len(sell_trades)
-        winning_trades = len([t for t in sell_trades if float(t['pnl_pct'].replace('%','')) > 0])
-        win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+        total = len(sell_trades)
+        wins = len([t for t in sell_trades if float(t['pnl_pct'].replace('%','')) > 0])
+        win_rate = (wins / total * 100) if total > 0 else 0
         roi = ((self.balance - self.initial_balance) / self.initial_balance) * 100
         
         return {
-            "initial_balance": self.initial_balance,
-            "final_balance": self.balance,
             "roi": roi,
-            "total_trades": total_trades,
+            "total_trades": total,
             "win_rate": win_rate,
+            "final_balance": self.balance,
             "trades": self.trade_log
         }
