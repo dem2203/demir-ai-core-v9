@@ -152,6 +152,56 @@ class OrderBookAnalyzer:
         
         return analysis
     
+    def generate_liquidity_heatmap(self, orderbook: Dict, current_price: float, price_range_pct: float = 0.05) -> Dict:
+        """
+        Generates liquidity heatmap data for visualization.
+        
+        Args:
+            orderbook: Order book dict
+            current_price: Current market price
+            price_range_pct: +/- percentage range to visualize (default 5%)
+        
+        Returns:
+            {
+                'price_levels': [99000, 99100, 99200, ...],
+                'bid_volumes': [10.5, 8.2, ...],
+                'ask_volumes': [0, 0, 9.3, ...]
+            }
+        """
+        if not orderbook or 'bids' not in orderbook or 'asks' not in orderbook:
+            return {}
+        
+        # Define price range
+        min_price = current_price * (1 - price_range_pct)
+        max_price = current_price * (1 + price_range_pct)
+        
+        # Create price bins ($100 increments)
+        price_increment = 100
+        price_levels = np.arange(min_price, max_price, price_increment)
+        
+        bid_volumes = np.zeros(len(price_levels))
+        ask_volumes = np.zeros(len(price_levels))
+        
+        # Aggregate bids
+        for price, amount in orderbook['bids']:
+            if min_price <= price <= max_price:
+                idx = int((price - min_price) / price_increment)
+                if 0 <= idx < len(bid_volumes):
+                    bid_volumes[idx] += amount
+        
+        # Aggregate asks
+        for price, amount in orderbook['asks']:
+            if min_price <= price <= max_price:
+                idx = int((price - min_price) / price_increment)
+                if 0 <= idx < len(ask_volumes):
+                    ask_volumes[idx] += amount
+        
+        return {
+            'price_levels': price_levels.tolist(),
+            'bid_volumes': bid_volumes.tolist(),
+            'ask_volumes': ask_volumes.tolist()
+        }
+    
     async def close(self):
         if self.exchange:
             await self.exchange.close()
