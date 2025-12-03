@@ -8,6 +8,7 @@ from src.backtest.backtester import Backtester
 from src.config.settings import Config
 from src.execution.paper_trader import PaperTrader
 from src.brain.optimizer import StrategyOptimizer 
+from src.core.risk_manager import RiskManager # Yeni
 
 # --- Sayfa Ayarları ---
 st.set_page_config(
@@ -46,20 +47,11 @@ st.markdown("""
         font-weight: 800;
     }
     
-    .status-badge {
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-size: 12px;
-        font-weight: 600;
-    }
-    .status-live { background-color: #238636; color: white; }
-    .status-offline { background-color: #da3633; color: white; }
-    
 </style>
 """, unsafe_allow_html=True)
 
 st.title("🦅 DEMIR AI - Institutional Trading Terminal")
-st.caption("v9.0 | Zero-Mock Architecture | Advisory Mode")
+st.caption("v19.0 | Zero-Mock | Fractal Confluence | Dynamic Risk")
 
 # --- Yan Menü ---
 page = st.sidebar.radio("System Modules", [
@@ -78,6 +70,8 @@ def load_json(filename):
                 return json.loads(content)
         except: return {}
     return {}
+
+risk_manager = RiskManager()
 
 # ==========================================
 # 1. CANLI İZLEME (Live Market Intelligence)
@@ -114,7 +108,6 @@ if page == "📡 Live Market Intelligence":
         # Global Metrics
         c1, c2, c3, c4 = st.columns(4)
         
-        # Zero-Mock Handling: 0 ise "N/A" göster
         dxy = main_info.get('dxy', 0)
         vix = main_info.get('vix', 0)
         price = main_info.get('price', 0)
@@ -136,9 +129,20 @@ if page == "📡 Live Market Intelligence":
         
         # Detaylı Tablo
         st.markdown("### 📊 Market Analysis Board")
-        df_display = pd.DataFrame(data.values())
         
-        cols = ['symbol', 'price', 'ai_decision', 'ai_confidence', 'regime', 'funding_rate', 'rsi']
+        # Veriyi zenginleştir (Kelly Size ekle)
+        display_data = []
+        for sym, info in data.items():
+            info_copy = info.copy()
+            conf = info.get('ai_confidence', 0)
+            # Kelly Hesapla
+            kelly_size = risk_manager.calculate_kelly_size(conf) if info.get('ai_decision') != 'NEUTRAL' else 0
+            info_copy['kelly_size'] = kelly_size
+            display_data.append(info_copy)
+            
+        df_display = pd.DataFrame(display_data)
+        
+        cols = ['symbol', 'price', 'ai_decision', 'ai_confidence', 'kelly_size', 'fractal_score', 'hurst']
         valid_cols = [c for c in cols if c in df_display.columns]
         
         if not df_display.empty:
@@ -148,8 +152,9 @@ if page == "📡 Live Market Intelligence":
                 column_config={
                     "price": st.column_config.NumberColumn("Price", format="$%.2f"),
                     "ai_confidence": st.column_config.ProgressColumn("Confidence", format="%.1f%%", min_value=0, max_value=100),
-                    "funding_rate": st.column_config.NumberColumn("Funding Rate", format="%.4f%%"),
-                    "rsi": st.column_config.NumberColumn("RSI", format="%.1f"),
+                    "kelly_size": st.column_config.NumberColumn("Kelly Risk (%)", format="%.2f%%"),
+                    "fractal_score": st.column_config.NumberColumn("Fractal Score", format="%.1f"),
+                    "hurst": st.column_config.NumberColumn("Hurst Exp", format="%.2f"),
                 }
             )
 
@@ -162,11 +167,16 @@ if page == "📡 Live Market Intelligence":
             with col:
                 with st.expander(f"🔍 {symbol} Analysis Details", expanded=True):
                     st.write(f"**Decision:** {info.get('ai_decision')}")
+                    st.write(f"**Reason:** {info.get('reason', 'N/A')}")
+                    
+                    # Fractal Göstergesi
+                    f_score = info.get('fractal_score', 0)
+                    if f_score > 80: st.success(f"Fractal Alignment: PERFECT ({f_score:.0f})")
+                    elif f_score > 50: st.warning(f"Fractal Alignment: MODERATE ({f_score:.0f})")
+                    else: st.error(f"Fractal Alignment: WEAK ({f_score:.0f})")
+                    
                     st.write(f"**Regime:** {info.get('regime', 'UNKNOWN')}")
                     st.write(f"**Funding Risk:** {info.get('funding_rate', 0):.4f}%")
-                    
-                    spx = info.get('spx', 0)
-                    st.caption(f"Macro Context: SPX {spx if spx > 0 else 'N/A'} | Gold {info.get('gold', 0) if info.get('gold', 0) > 0 else 'N/A'}")
 
 # ==========================================
 # 2. SANAL CÜZDAN (Advisory Portfolio)

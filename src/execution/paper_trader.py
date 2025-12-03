@@ -40,11 +40,11 @@ class PaperTrader:
         with open(self.DB_FILE, 'w') as f:
             json.dump(self.portfolio, f, indent=4)
 
-    def calculate_position_size(self, entry_price, stop_loss_price, balance):
+    def calculate_position_size(self, entry_price, stop_loss_price, balance, risk_pct=0.01):
         """
         PROFESYONEL LOT HESABI
         Formül: (Kasa * Risk%) / (Giriş - Stop)
-        Amaç: Stop olursam kasamın sadece %1'i gitsin.
+        Amaç: Stop olursam kasamın sadece Risk% kadarı gitsin.
         """
         if entry_price <= 0 or stop_loss_price <= 0: return 0.0
         
@@ -52,8 +52,8 @@ class PaperTrader:
         risk_per_share = abs(entry_price - stop_loss_price)
         if risk_per_share == 0: return 0.0
         
-        # Riske atılacak toplam dolar (Örn: 10.000$ * 0.01 = 100$)
-        money_at_risk = balance * self.RISK_PER_TRADE
+        # Riske atılacak toplam dolar (Örn: 10.000$ * 0.02 = 200$)
+        money_at_risk = balance * risk_pct
         
         # Alınacak adet (Size)
         quantity = money_at_risk / risk_per_share
@@ -111,7 +111,11 @@ class PaperTrader:
             sl_price = float(signal.get('sl_price', price * 0.98))
             
             # Profesyonel Büyüklük Hesabı
-            quantity = self.calculate_position_size(price, sl_price, self.portfolio['balance'])
+            # Kelly Size varsa onu kullan (Yüzde olarak gelir, örn 2.5 -> 0.025)
+            risk_pct = signal.get('kelly_size', 1.0) / 100.0
+            if risk_pct <= 0: risk_pct = 0.01 # Güvenlik
+            
+            quantity = self.calculate_position_size(price, sl_price, self.portfolio['balance'], risk_pct)
             trade_cost = quantity * price
             
             # Min işlem limiti (10$)

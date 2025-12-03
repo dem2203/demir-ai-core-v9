@@ -12,6 +12,7 @@ from src.brain.market_analyzer import MarketAnalyzer
 from src.utils.logger import setup_logger
 from src.utils.notifications import NotificationManager
 from src.execution.paper_trader import PaperTrader 
+from src.core.risk_manager import RiskManager # Yeni 
 
 logger = logging.getLogger("DEMIR_AI_CORE_ENGINE")
 
@@ -45,6 +46,9 @@ class BotEngine:
         
         # 4. İcra Sistemi (Eller - Sanal/Advisory)
         self.paper_trader = PaperTrader()
+        
+        # 5. Risk Yöneticisi (Kasa)
+        self.risk_manager = RiskManager()
         
         logger.info("✅ All Sub-systems Initialized Successfully.")
 
@@ -153,6 +157,12 @@ class BotEngine:
         logger.info(f"🎯 SIGNAL FOUND: {symbol} | {signal['side']} | Conf: {signal['confidence']:.2f}% | Reason: {signal.get('reason')}")
 
         # --- İCRA KATMANI (Execution Layer - Advisory) ---
+        # Kelly Kriteri ile Pozisyon Büyüklüğü Hesapla
+        kelly_size = self.risk_manager.calculate_kelly_size(signal['confidence'])
+        signal['kelly_size'] = kelly_size
+        
+        logger.info(f"💰 KELLY SUGGESTION: Risk {kelly_size}% of Equity")
+
         # Advisory modunda olduğumuz için sadece 'Paper Trade' yapıyoruz ve bildiriyoruz.
         # Gerçek borsaya emir GİTMİYOR.
         trade_executed = self.paper_trader.execute_trade(signal)

@@ -1,71 +1,60 @@
-import pandas as pd
 import logging
-from typing import Dict, Optional
+import numpy as np
 
-# --- LOGGING ---
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("RiskManager")
+logger = logging.getLogger("RISK_MANAGER_PRO")
 
 class RiskManager:
     """
-    Sermaye Koruma ve Pozisyon Büyüklüğü Hesaplama Motoru.
-    Sabit Lot YOK. Volatilite Bazlı (ATR) Dinamik Risk Yönetimi VAR.
-    Sentiment (Duygu Analizi) iptal edilmiştir.
+    DEMIR AI V19.0 - DYNAMIC RISK MANAGER
+    
+    Yenilikler:
+    1. Kelly Criterion: Güvene dayalı dinamik pozisyon büyüklüğü.
+    2. Chandelier Exit: Volatilite tabanlı akıllı takip eden stop.
     """
     
-    def __init__(self, max_risk_per_trade: float = 0.01, max_account_risk: float = 0.05):
-        """
-        :param max_risk_per_trade: Tek bir işlemde kasanın kaybedilebilecek maksimum oranı (Örn: %1 -> 0.01)
-        :param max_account_risk: Açık tüm pozisyonların toplam riski (Örn: %5)
-        """
-        self.max_risk_per_trade = max_risk_per_trade
-        self.max_account_risk = max_account_risk
+    def __init__(self, initial_balance=10000):
+        self.balance = initial_balance
+        self.win_rate = 0.55 # Varsayılan (Zamanla güncellenebilir)
+        self.risk_reward_ratio = 2.0 # Hedef R:R
 
-    def calculate_position_size(self, 
-                              account_balance: float, 
-                              entry_price: float, 
-                              stop_loss_price: float, 
-                              volatility_atr: float) -> float:
+    def calculate_kelly_size(self, confidence: float) -> float:
         """
-        Kelly Kriteri ve ATR bazlı güvenli pozisyon büyüklüğünü hesaplar.
-        Asla rastgele veya hardcoded bir rakam döndürmez.
-        Duygu analizi parametresi kaldırılmıştır.
+        Kelly Kriteri Formülü: f* = (bp - q) / b
+        b = oran (odds) - biz burada Risk/Reward kullanıyoruz
+        p = kazanma olasılığı (confidence)
+        q = kaybetme olasılığı (1-p)
         """
-        if account_balance <= 0 or entry_price <= 0:
-            logger.error("Hatalı bakiye veya fiyat verisi.")
-            return 0.0
-
-        # 1. İşlem başına riske edilecek baz miktar
-        risk_amount = account_balance * self.max_risk_per_trade
+        # Güven skorunu olasılığa çevir (0-100 -> 0.5-0.95)
+        # 50'nin altı zaten işlem açmaz.
+        p = max(0.51, min(0.95, confidence / 100.0))
+        q = 1 - p
+        b = self.risk_reward_ratio
         
-        # 2. Stop Loss mesafesi (Fiyat farkı)
-        # Eğer stop price belirtilmediyse ATR'ye göre dinamik belirle
-        if stop_loss_price == 0:
-            stop_dist = volatility_atr * 2.0
+        kelly_fraction = (b * p - q) / b
+        
+        # Tam Kelly çok risklidir, "Half Kelly" kullanıyoruz (Daha güvenli)
+        safe_kelly = kelly_fraction * 0.5
+        
+        # Sınırlar: Asla kasanın %20'sinden fazlasını veya %1'inden azını riske atma
+        final_size = max(0.01, min(0.20, safe_kelly))
+        
+        return round(final_size * 100, 2) # Yüzde olarak dön
+
+    @staticmethod
+    def calculate_chandelier_exit(high_prices: list, atr: float, multiplier: float = 3.0, side: str = "BUY") -> float:
+        """
+        Chandelier Exit: En yüksek tepeden ATR katı kadar aşağıda stop.
+        """
+        if not high_prices: return 0.0
+        
+        highest_high = max(high_prices)
+        lowest_low = min(high_prices)
+        
+        if side == "BUY":
+            # Long için: En yüksek tepeden aşağı sarkma
+            stop_level = highest_high - (atr * multiplier)
         else:
-            stop_dist = abs(entry_price - stop_loss_price)
+            # Short için: En düşük dipten yukarı sarkma
+            stop_level = lowest_low + (atr * multiplier)
             
-        if stop_dist == 0:
-            logger.warning("Stop mesafesi 0, işlem çok riskli. İşlem iptal ediliyor.")
-            return 0.0
-
-        # 3. Alınacak miktar (Size) = Risk Miktarı / Stop Mesafesi
-        position_size = risk_amount / stop_dist
-        
-        # 4. Kaldıraçsız sistem kontrolü (Spot piyasa için)
-        total_cost = position_size * entry_price
-        if total_cost > account_balance:
-            logger.info(f"Hesaplanan pozisyon ({total_cost:.2f}$) bakiyeyi aşıyor. Max bakiyeye göre düzeltiliyor.")
-            position_size = (account_balance * 0.98) / entry_price 
-
-        logger.info(f"Risk Analizi: Bakiye={account_balance}$, Giriş={entry_price}$, Size={position_size:.4f}")
-        return position_size
-
-    def check_market_regime_allowance(self, regime: str) -> bool:
-        """
-        Piyasa rejimine göre işlem izni verir.
-        """
-        if regime == "CRASH" or regime == "EXTREME_VOLATILITY":
-            logger.warning(f"Piyasa Rejimi TEHLİKELİ ({regime}). Risk yöneticisi işlem izni vermiyor.")
-            return False
-        return True
+        return stop_level

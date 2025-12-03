@@ -17,6 +17,7 @@ tensorflow
 
 # --- Reinforcement Learning ---
 stable-baselines3
+sb3-contrib>=2.1.0
 gymnasium
 shimmy>=0.2.1
 

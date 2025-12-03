@@ -3,21 +3,22 @@ import logging
 import pandas as pd
 import numpy as np
 from stable_baselines3 import PPO
+from sb3_contrib import RecurrentPPO # LSTM Destekli PPO
 from src.brain.trading_env import TradingEnv
 from src.brain.feature_engineering import FeatureEngineer
 from src.data_ingestion.connectors.binance_connector import BinanceConnector
 from src.data_ingestion.macro_connector import MacroConnector
 import asyncio
 
-logger = logging.getLogger("RL_TRAINER")
+logger = logging.getLogger("RL_TRAINER_PRO")
 
 class RLTrainer:
     """
-    PEKİŞTİRMELİ ÖĞRENME EĞİTMENİ (Reinforcement Learning)
-    PPO Algoritması ile Trader Ajanı eğitir.
+    PEKİŞTİRMELİ ÖĞRENME EĞİTMENİ (Deep Recurrent RL)
+    RecurrentPPO (LSTM) kullanarak piyasanın 'hafızasını' tutar.
     """
     
-    MODEL_PATH = "src/brain/models/storage/rl_agent_v1" # .zip otomatik eklenir
+    MODEL_PATH = "src/brain/models/storage/rl_agent_v2_recurrent"
     
     def __init__(self):
         self.connector = BinanceConnector()
@@ -27,8 +28,8 @@ class RLTrainer:
         """Eğitim için veriyi hazırlar ve temizler."""
         logger.info("Fetching data for RL Training...")
         
-        # 1. Veri Çek
-        raw_crypto = await self.connector.fetch_candles(symbol, limit=2000)
+        # 1. Veri Çek (Daha fazla veri = Daha iyi eğitim)
+        raw_crypto = await self.connector.fetch_candles(symbol, limit=5000)
         await self.connector.close()
         
         if not raw_crypto: return None
@@ -39,20 +40,15 @@ class RLTrainer:
         # 2. Birleştir
         df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
         
-        # 3. TEMİZLİK (ÇOK ÖNEMLİ)
-        # Gym ortamı sadece SAYI kabul eder. Tarih, sembol gibi stringleri atıyoruz.
+        # 3. TEMİZLİK
         drop_cols = ['timestamp', 'symbol', 'target', 'open', 'high', 'low'] 
-        # close ve volume kalsın, AI fiyatı bilsin.
-        
         numeric_df = df.drop(columns=[c for c in drop_cols if c in df.columns], errors='ignore')
-        
-        # NaN temizliği
         numeric_df.fillna(0, inplace=True)
         
         return numeric_df
 
     async def train_agent(self, symbol="BTC/USDT"):
-        logger.info("🚀 Starting RL Agent Training (PPO)...")
+        logger.info("🚀 Starting Deep Recurrent RL Training (LSTM-PPO)...")
         
         df = await self.prepare_data(symbol)
         if df is None:
@@ -64,12 +60,18 @@ class RLTrainer:
         # Ortamı Kur
         env = TradingEnv(df)
         
-        # Modeli Tanımla (MlpPolicy: Çok Katmanlı Perceptron)
-        model = PPO("MlpPolicy", env, verbose=1)
+        # Modeli Tanımla (RecurrentPPO - LSTM Policy)
+        # MlpLstmPolicy: Girdi -> LSTM -> Karar
+        try:
+            model = RecurrentPPO("MlpLstmPolicy", env, verbose=1, learning_rate=0.0003, n_steps=128)
+            logger.info("Using RecurrentPPO (LSTM) Architecture.")
+        except ImportError:
+            logger.warning("sb3-contrib not found. Falling back to standard PPO.")
+            model = PPO("MlpPolicy", env, verbose=1)
         
-        # Eğit (Timesteps ne kadar yüksekse o kadar zeki olur)
-        # Başlangıç için 10.000 adım yeterli, gerçekte 1M+ gerekir.
-        model.learn(total_timesteps=20000)
+        # Eğit
+        # Superhuman seviyesi için çok uzun eğitim gerekir ama şimdilik demo
+        model.learn(total_timesteps=50000)
         
         # Kaydet
         if not os.path.exists("src/brain/models/storage"):
@@ -79,7 +81,6 @@ class RLTrainer:
         logger.info(f"✅ RL AGENT SAVED at {self.MODEL_PATH}.zip")
 
 if __name__ == "__main__":
-    # Manuel test için
     trainer = RLTrainer()
     loop = asyncio.get_event_loop()
     loop.run_until_complete(trainer.train_agent())
