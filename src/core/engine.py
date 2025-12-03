@@ -12,19 +12,22 @@ from src.brain.market_analyzer import MarketAnalyzer
 from src.utils.logger import setup_logger
 from src.utils.notifications import NotificationManager
 from src.execution.paper_trader import PaperTrader 
-from src.core.risk_manager import RiskManager # Yeni 
+from src.core.risk_manager import RiskManager
+from src.brain.strategy_selector import StrategySelector
+from src.execution.hedge_manager import HedgeManager 
 
 logger = logging.getLogger("DEMIR_AI_CORE_ENGINE")
 
 class BotEngine:
     """
-    DEMIR AI v18.2 - ENTERPRISE CORE ENGINE
+    DEMIR AI v20.0 - INSTITUTIONAL ENGINE
     
-    YETENEKLER:
-    1. Çoklu Varlık Yönetimi (BTC, ETH, LTC...)
-    2. Hibrit Zeka Entegrasyonu (LSTM + RL + Makro)
-    3. Advisory Mode (Sadece Sinyal, Otomatik İşlem Yok)
-    4. Kesintisiz Çalışma (Fault Tolerance)
+    Features:
+    1. Multi-Asset & Multi-Exchange (Binance, Bybit, Coinbase)
+    2. Hybrid Intelligence (LSTM + RL + Macro + Fractal + Whale Detection)
+    3. Advisory Mode + Multi-Channel Alerts (Telegram/Discord/Email)
+    4. Adaptive Strategy Switching & Position Hedging
+    5. Fault Tolerance & Zero-Mock Architecture
     """
     
     def __init__(self):
@@ -49,6 +52,10 @@ class BotEngine:
         
         # 5. Risk Yöneticisi (Kasa)
         self.risk_manager = RiskManager()
+        
+        # 6. PHASE 4B: Adaptive Strategy & Hedging
+        self.strategy_selector = StrategySelector()
+        self.hedge_manager = HedgeManager()
         
         logger.info("✅ All Sub-systems Initialized Successfully.")
 
