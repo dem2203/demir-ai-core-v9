@@ -18,10 +18,13 @@ logger = logging.getLogger("MARKET_ANALYZER_ADAPTIVE")
 
 class MarketAnalyzer:
     """
-    DEMIR AI V12.2 - JSON FIX EDITION
+    DEMIR AI V14.0 - FRACTAL AWARE
     
-    Düzeltme: Numpy veri tiplerinin JSON serileştirme hatası giderildi.
-    Artık Dashboard verileri %100 sorunsuz kaydedilecek.
+    Özellikler:
+    1. LSTM Tahmini
+    2. Piyasa Rejimi Filtresi
+    3. Makro Veri Füzyonu
+    4. YENİ: 4H Trend Filtresi (Counter-Trend İşlemleri Engeller)
     """
     
     MODELS_DIR = "src/brain/models/storage"
@@ -52,7 +55,7 @@ class MarketAnalyzer:
         return False
 
     async def analyze_market(self, symbol: str, raw_data: List[Dict]) -> Optional[Dict]:
-        # 1. Veri İşleme
+        # 1. Veri İşleme (4H Trend Dahil)
         crypto_df = FeatureEngineer.process_data(raw_data)
         if crypto_df is None or len(crypto_df) < self.LOOKBACK + 5: return None
 
@@ -62,17 +65,15 @@ class MarketAnalyzer:
         
         last_row = df.iloc[-1]
         
-        # --- 3. PİYASA REJİMİNİ BELİRLE ---
+        # 3. Rejim
         current_regime = self.regime_classifier.identify_regime(df)
         regime_settings = self.regime_classifier.get_risk_adjustment(current_regime)
-        
-        logger.info(f"MARKET REGIME ({symbol}): {current_regime} | Allowed: {regime_settings['trade_allowed']}")
         
         ai_decision = "NEUTRAL"
         ai_confidence = 0.0
         reason = f"Market is {current_regime}"
 
-        # --- 4. LSTM TAHMİNİ ---
+        # 4. LSTM Tahmini
         has_brain = self.load_model_for_symbol(symbol)
         
         if has_brain:
@@ -86,39 +87,50 @@ class MarketAnalyzer:
                 X_input = np.array([recent_scaled])
                 
                 prediction = model.predict(X_input, verbose=0)[0][0]
-                
-                # KRİTİK DÜZELTME: float() dönüşümü
                 ai_confidence = float(prediction * 100)
                 
-                # Dinamik Eşik Değerleri
+                # --- YENİ: 4H TREND FİLTRESİ (BÜYÜK RESİM) ---
+                # trend_4h_val: 1 (Yükseliş), -1 (Düşüş), 0 (Yatay)
+                trend_4h = last_row.get('trend_4h', 0)
+                
                 threshold = regime_settings['confidence_threshold']
                 
-                # Test modu için eşiği düşük tutuyoruz (0.50)
-                # Gerçek işlem için burayı yükseltebilirsin
                 if not regime_settings['trade_allowed']:
                      ai_decision = "NEUTRAL"
-                     reason = f"Trade Blocked by Regime ({current_regime})"
+                     reason = f"Blocked by Regime ({current_regime})"
                 else:
-                    if prediction > 0.50: # Test için %50 yaptık
-                        ai_decision = "BUY"
-                        reason = f"LSTM Bullish in {current_regime}"
-                    elif prediction < 0.50: # Test için
-                        ai_decision = "SELL" # Veya NEUTRAL
-                        reason = f"LSTM Bearish in {current_regime}"
+                    # ALIM SİNYALİ
+                    if prediction > 0.51: # Eşik
+                        if trend_4h == -1: # Eğer Büyük Trend Düşüşse ALMA!
+                            ai_decision = "NEUTRAL"
+                            reason = "LSTM BUY but 4H Trend is BEARISH (Safety Lock)"
+                        else:
+                            ai_decision = "BUY"
+                            reason = f"Bullish Signal (4H Trend Confirmed)"
+
+                    # SATIM SİNYALİ
+                    elif prediction < 0.49:
+                        if trend_4h == 1: # Büyük Trend Yükselişse SATMA!
+                            ai_decision = "NEUTRAL"
+                            reason = "LSTM SELL but 4H Trend is BULLISH (Safety Lock)"
+                        else:
+                            ai_decision = "SELL"
+                            reason = f"Bearish Signal (4H Trend Confirmed)"
                         
             except Exception as e:
                 logger.error(f"Prediction Error {symbol}: {e}")
 
-        # --- 5. DASHBOARD VERİ KAYDI ---
-        # Tüm numpy değerlerini float'a çeviriyoruz
+        # 5. Dashboard Kayıt
         dxy_val = float(last_row.get('macro_DXY', 0))
         vix_val = float(last_row.get('macro_VIX', 0))
         
-        # Veri yaması (0.00 ise geçmişten al)
         if dxy_val == 0 and 'macro_DXY' in df.columns:
              dxy_val = float(df['macro_DXY'].replace(0, np.nan).ffill().iloc[-1])
         if vix_val == 0 and 'macro_VIX' in df.columns:
              vix_val = float(df['macro_VIX'].replace(0, np.nan).ffill().iloc[-1])
+
+        # Dashboard'a Trend Yönünü de Yazalım
+        trend_str = "UP" if last_row.get('trend_4h', 0) == 1 else ("DOWN" if last_row.get('trend_4h', 0) == -1 else "SIDEWAYS")
 
         snapshot = {
             "symbol": symbol,
@@ -126,10 +138,10 @@ class MarketAnalyzer:
             "dxy": dxy_val,
             "vix": vix_val,
             "ai_decision": ai_decision,
-            "ai_confidence": ai_confidence, # Artık float, hata vermez
+            "ai_confidence": ai_confidence,
             "regime": current_regime,
             "rsi": float(last_row['rsi']),
-            "trend": "UP" if last_row['close'] > last_row['vwap'] else "DOWN",
+            "trend": trend_str, # 4H Trendi Göster
             "volatility": "HIGH" if last_row['bb_width'] > 0.1 else "LOW",
             "timestamp": pd.Timestamp.now().isoformat()
         }
@@ -137,7 +149,7 @@ class MarketAnalyzer:
 
         if ai_decision == "NEUTRAL": return None
 
-        # --- 6. Sinyal Paketi ---
+        # 6. Sinyal
         price = float(last_row['close'])
         atr = float(last_row['atr'])
         stop_multiplier = regime_settings['stop_loss_multiplier']
@@ -165,11 +177,7 @@ class MarketAnalyzer:
                     try: db = json.load(f)
                     except: db = {}
             else: db = {}
-            
             db[data['symbol']] = data
-            
             with open(self.DASHBOARD_DATA_PATH, 'w') as f:
                 json.dump(db, f, indent=4)
-        except Exception as e:
-            # Hata olursa loga yaz ki görelim
-            logger.error(f"Dashboard Save Error: {e}")
+        except: pass
