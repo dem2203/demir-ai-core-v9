@@ -51,7 +51,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🦅 DEMIR AI - Institutional Trading Terminal")
-st.caption("v19.0 | Zero-Mock | Fractal Confluence | Dynamic Risk")
+st.caption("v20.0 | Zero-Mock | Fractal Confluence | Whale Detection | Correlation Matrix")
 
 # --- Yan Menü ---
 page = st.sidebar.radio("System Modules", [
@@ -130,7 +130,7 @@ if page == "📡 Live Market Intelligence":
         # Detaylı Tablo
         st.markdown("### 📊 Market Analysis Board")
         
-        # Veriyi zenginleştir (Kelly Size ekle)
+        # Veriyi zenginleştir (Kelly Size + Whale Walls ekle)
         display_data = []
         for sym, info in data.items():
             info_copy = info.copy()
@@ -138,11 +138,17 @@ if page == "📡 Live Market Intelligence":
             # Kelly Hesapla
             kelly_size = risk_manager.calculate_kelly_size(conf) if info.get('ai_decision') != 'NEUTRAL' else 0
             info_copy['kelly_size'] = kelly_size
+            
+            # Whale Walls (Order Book)
+            info_copy['whale_support'] = info.get('whale_support', 0)
+            info_copy['whale_resistance'] = info.get('whale_resistance', 0)
+            
             display_data.append(info_copy)
             
         df_display = pd.DataFrame(display_data)
         
-        cols = ['symbol', 'price', 'ai_decision', 'ai_confidence', 'kelly_size', 'fractal_score', 'hurst']
+        cols = ['symbol', 'price', 'ai_decision', 'ai_confidence', 'kelly_size', 'fractal_score', 
+                'whale_support', 'whale_resistance', 'orderbook_imbalance', 'hurst']
         valid_cols = [c for c in cols if c in df_display.columns]
         
         if not df_display.empty:
@@ -155,6 +161,9 @@ if page == "📡 Live Market Intelligence":
                     "kelly_size": st.column_config.NumberColumn("Kelly Risk (%)", format="%.2f%%"),
                     "fractal_score": st.column_config.NumberColumn("Fractal Score", format="%.1f"),
                     "hurst": st.column_config.NumberColumn("Hurst Exp", format="%.2f"),
+                    "whale_support": st.column_config.NumberColumn("Whale Support", format="$%.0f"),
+                    "whale_resistance": st.column_config.NumberColumn("Whale Resistance", format="$%.0f"),
+                    "orderbook_imbalance": st.column_config.NumberColumn("OB Imbalance", format="%.2f"),
                 }
             )
 
@@ -177,6 +186,19 @@ if page == "📡 Live Market Intelligence":
                     
                     st.write(f"**Regime:** {info.get('regime', 'UNKNOWN')}")
                     st.write(f"**Funding Risk:** {info.get('funding_rate', 0):.4f}%")
+                    
+                    # PHASE 4A: Whale Walls
+                    whale_sup = info.get('whale_support', 0)
+                    whale_res = info.get('whale_resistance', 0)
+                    if whale_sup > 0:
+                        st.info(f"🐋 **Whale Support:** ${whale_sup:,.0f}")
+                    if whale_res > 0:
+                        st.warning(f"🐋 **Whale Resistance:** ${whale_res:,.0f}")
+                    
+                    # Order Book Imbalance
+                    imbalance = info.get('orderbook_imbalance', 0)
+                    if abs(imbalance) > 0.1:
+                        st.caption(f"Order Book Imbalance: {imbalance*100:.1f}% ({'BULLISH' if imbalance > 0 else 'BEARISH'})")
 
 # ==========================================
 # 2. SANAL CÜZDAN (Advisory Portfolio)

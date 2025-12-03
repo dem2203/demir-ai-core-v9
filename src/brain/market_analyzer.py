@@ -18,16 +18,18 @@ from src.data_ingestion.macro_connector import MacroConnector
 from src.data_ingestion.connectors.binance_connector import BinanceConnector
 from src.data_ingestion.connectors.bybit_connector import BybitConnector
 from src.data_ingestion.connectors.coinbase_connector import CoinbaseConnector
+from src.data_ingestion.orderbook_analyzer import OrderBookAnalyzer
+from src.brain.correlation_engine import CorrelationEngine
 
 logger = logging.getLogger("MARKET_ANALYZER_PRO")
 
 class MarketAnalyzer:
     """
-    DEMIR AI V19.0 - FRACTAL STRATEGIST
+    DEMIR AI V20.0 - INSTITUTIONAL STRATEGIST
     
-    Yenilikler (Faz 3):
-    1. Multi-Timeframe Analysis: 15m (Giriş), 1H (Sinyal), 4H (Trend).
-    2. Fractal Confluence: Sadece tüm zaman dilimleri uyumluysa işlem açar.
+    Yenilikler (Faz 4A):
+    1. Order Book Depth Analysis: Balina duvarlarını tespit eder.
+    2. Correlation Matrix: Varlıklar arası korelasyon riski kontrolü.
     """
     
     LSTM_DIR = "src/brain/models/storage"
@@ -45,6 +47,10 @@ class MarketAnalyzer:
         self.binance = BinanceConnector()
         self.bybit = BybitConnector()
         self.coinbase = CoinbaseConnector()
+        
+        # PHASE 4A: Market Intelligence
+        self.orderbook_analyzer = OrderBookAnalyzer()
+        self.correlation_engine = CorrelationEngine()
         
         self.regime_classifier = RegimeClassifier()
         
@@ -168,8 +174,31 @@ class MarketAnalyzer:
         hurst = float(last_row.get('hurst', 0.5))
         vah = float(last_row.get('vah', 0))
         
-        # 6. FRACTAL CONFLUENCE (YENİ)
+        # 6. FRACTAL CONFLUENCE
         fractal_decision, fractal_score = self.check_fractal_confluence(mtf_data)
+        
+        # 7. PHASE 4A: ORDER BOOK ANALYSIS
+        orderbook_data = await self.orderbook_analyzer.analyze_orderbook(symbol, float(last_row['close']))
+        whale_support = orderbook_data.get('whale_support', 0) if orderbook_data else 0
+        whale_resistance = orderbook_data.get('whale_resistance', 0) if orderbook_data else 0
+        orderbook_imbalance = orderbook_data.get('orderbook_imbalance', 0) if orderbook_data else 0
+        
+        # 8. PHASE 4A: CORRELATION RISK CHECK
+        # Build data dict for correlation (BTC, ETH, SPX, etc)
+        corr_data = {
+            symbol.replace('/', ''): df[['close']],
+        }
+        if not macro_df.empty:
+            for col in ['macro_SPX', 'macro_NDQ', 'macro_DXY']:
+                if col in df.columns:
+                    corr_data[col.replace('macro_', '')] = df[[col]].rename(columns={col: 'close'})
+        
+        corr_matrix = self.correlation_engine.calculate_correlation_matrix(corr_data)
+        corr_risk = self.correlation_engine.check_signal_correlation_risk(
+            corr_matrix, 
+            symbol.replace('/', ''),
+            ['SPX', 'NDQ', 'DXY']
+        )
 
         # --- KARAR MEKANİZMASI ---
         ai_decision = "NEUTRAL"
@@ -227,6 +256,27 @@ class MarketAnalyzer:
             else:
                 ai_decision = "NEUTRAL"
                 reason = "Fractal Sell but LSTM Bullish"
+        
+        # --- PHASE 4A: INSTITUTIONAL FILTERS ---
+        
+        # Filter 1: Order Book Check
+        if ai_decision == "BUY" and whale_resistance:
+            if float(last_row['close']) > whale_resistance * 0.99:  # Price near resistance
+                ai_decision = "NEUTRAL"
+                reason = f"Whale Resistance Wall at ${whale_resistance:,.0f}"
+                logger.warning(f"🐋 BUY SIGNAL BLOCKED: Whale resistance at ${whale_resistance:,.0f}")
+        
+        if ai_decision == "SELL" and whale_support:
+            if float(last_row['close']) < whale_support * 1.01:  # Price near support
+                ai_decision = "NEUTRAL"
+                reason = f"Whale Support Wall at ${whale_support:,.0f}"
+                logger.warning(f"🐋 SELL SIGNAL BLOCKED: Whale support at ${whale_support:,.0f}")
+        
+        # Filter 2: Correlation Risk Check
+        if ai_decision != "NEUTRAL" and not corr_risk.get('safe_to_trade', True):
+            ai_decision = "NEUTRAL"
+            reason = f"Correlation Risk: {corr_risk.get('risk_reason')}"
+            logger.warning(f"⚠️ SIGNAL BLOCKED: {corr_risk.get('risk_reason')}")
 
         # --- DASHBOARD VERİSİ ---
         snapshot = {
@@ -239,7 +289,11 @@ class MarketAnalyzer:
             "ai_confidence": ai_confidence,
             "regime": current_regime,
             "hurst": hurst,
-            "fractal_score": fractal_score, # Yeni
+            "fractal_score": fractal_score,
+            "whale_support": whale_support if whale_support else 0,
+            "whale_resistance": whale_resistance if whale_resistance else 0,
+            "orderbook_imbalance": orderbook_imbalance,
+            "correlations": corr_risk.get('correlations', {}) if corr_risk else {},
             "timestamp": pd.Timestamp.now().isoformat()
         }
         self._save_to_dashboard(snapshot)
