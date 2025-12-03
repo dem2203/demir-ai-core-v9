@@ -4,11 +4,14 @@ import sys
 class Config:
     """
     Railway Environment Variables Configuration.
-    Kesinlikle hardcoded veri içermez. Sadece os.environ üzerinden okur.
     """
     
+    # --- İZLENECEK COINLER (Merkezi Liste) ---
+    # Buraya istediğin coini ekleyebilirsin.
+    TARGET_COINS = ["BTC/USDT", "ETH/USDT", "LTC/USDT"] 
+    
     # --- System Settings ---
-    VERSION = os.getenv("VERSION", "9.0")
+    VERSION = os.getenv("VERSION", "11.0")
     ENVIRONMENT = os.getenv("ENVIRONMENT", "production")
     DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
     PYTHON_VERSION = os.getenv("PYTHON_VERSION", "3.11.9")
