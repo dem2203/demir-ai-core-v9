@@ -4,9 +4,10 @@ import json
 import os
 import time
 import asyncio
-from src.backtest.backtester import Backtester # <--- Yeni Modül İmportu
+from src.backtest.backtester import Backtester
+from src.config.settings import Config  # <-- Ayar dosyasını dahil ettik
 
-# Sayfa Ayarları
+# --- Sayfa Ayarları ---
 st.set_page_config(
     page_title="DEMIR AI - Command Center",
     page_icon="🦅",
@@ -14,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Başlık ve Stil
+# --- Başlık ve Stil ---
 st.markdown("""
 <style>
     .metric-card {background-color: #1e1e1e; padding: 15px; border-radius: 10px; border: 1px solid #333;} 
@@ -24,11 +25,10 @@ st.markdown("""
 
 st.title("🦅 DEMIR AI - Institutional Trading Terminal")
 
-# --- YAN MENÜ (NAVİGASYON) ---
-# Burası yeni eklendi, sayfalar arası geçiş sağlar.
+# --- Yan Menü ---
 page = st.sidebar.radio("System Modules", ["📡 Live Dashboard", "🧪 Backtest Lab (Time Machine)"])
 
-# Veri Okuma Fonksiyonu (Hata Korumalı)
+# --- Veri Okuma Fonksiyonu (Hata Korumalı) ---
 def load_data():
     if os.path.exists("dashboard_data.json"):
         try:
@@ -41,10 +41,10 @@ def load_data():
     return {}
 
 # ==========================================
-# SAYFA 1: CANLI İZLEME (Mevcut Kodlar)
+# SAYFA 1: CANLI İZLEME
 # ==========================================
 if page == "📡 Live Dashboard":
-    st.caption("Deep Learning (LSTM) • Global Macro Fusion • Real-Time Analysis")
+    st.caption(f"Tracking Assets: {', '.join(Config.TARGET_COINS)}")
     
     if st.button('🔄 Refresh System Data'):
         st.rerun()
@@ -56,16 +56,20 @@ if page == "📡 Live Dashboard":
         time.sleep(2)
         st.rerun()
     else:
-        # BTC Verisini Bul
-        btc_data = data.get("BTC/USDT", {})
+        # Varsayılan olarak BTC verisini göster, yoksa listedeki ilk coini al
+        main_symbol = Config.TARGET_COINS[0] # Genelde BTC/USDT
+        btc_data = data.get(main_symbol, {})
+        
         if not btc_data:
-            main_info = list(data.values())[0] # BTC yoksa ilkini al
+            # Eğer BTC henüz gelmediyse (veya listede yoksa) ilk gelen veriyi göster
+            first_key = list(data.keys())[0]
+            main_info = data[first_key]
             display_symbol = main_info['symbol']
         else:
             main_info = btc_data
-            display_symbol = "BTC/USDT"
+            display_symbol = main_symbol
         
-        # --- ÜST PANEL ---
+        # --- ÜST PANEL (Global Göstergeler) ---
         st.markdown("### 🌍 Global Market Pulse")
         c1, c2, c3, c4 = st.columns(4)
         
@@ -91,12 +95,17 @@ if page == "📡 Live Dashboard":
 
         st.markdown("---")
 
-        # --- ORTA PANEL ---
+        # --- ORTA PANEL (Tablo) ---
         st.markdown("### 📊 Asset Analysis Board")
         df_display = pd.DataFrame(data.values())
         
+        # Tabloda gösterilecek sütunları seç
+        cols_to_show = ['symbol', 'price', 'ai_decision', 'ai_confidence', 'rsi', 'macd', 'trend', 'volatility']
+        # Veri eksikse hata vermemesi için kontrol
+        available_cols = [c for c in cols_to_show if c in df_display.columns]
+        
         st.dataframe(
-            df_display[['symbol', 'price', 'ai_decision', 'ai_confidence', 'rsi', 'macd', 'trend', 'volatility']],
+            df_display[available_cols],
             use_container_width=True,
             column_config={
                 "ai_confidence": st.column_config.ProgressColumn(
@@ -105,22 +114,26 @@ if page == "📡 Live Dashboard":
             }
         )
 
-        # --- ALT PANEL ---
+        # --- ALT PANEL (Yapay Zeka Yorumu) ---
         st.markdown("### 🤖 AI Reasoning Engine")
         for symbol, info in data.items():
             with st.expander(f"🔍 Inspect Logic: {symbol}", expanded=False):
                 col1, col2 = st.columns([1, 2])
                 with col1:
                     st.write(f"**LSTM Model Prediction:**")
-                    if info['ai_decision'] == "BUY": st.success(f"BULLISH ({info['ai_confidence']:.1f}%)")
-                    elif info['ai_decision'] == "SELL": st.error(f"BEARISH ({info['ai_confidence']:.1f}%)")
+                    decision = info.get('ai_decision', 'NEUTRAL')
+                    conf = info.get('ai_confidence', 0)
+                    
+                    if decision == "BUY": st.success(f"BULLISH ({conf:.1f}%)")
+                    elif decision == "SELL": st.error(f"BEARISH ({conf:.1f}%)")
                     else: st.warning("NEUTRAL / UNCERTAIN")
+                
                 with col2:
                     factors = []
                     if info.get('dxy', 0) > 104: factors.append("⚠️ Strong Dollar (DXY > 104).")
                     if info.get('vix', 0) > 20: factors.append("⚠️ High Market Fear (VIX > 20).")
-                    if info['rsi'] < 30: factors.append("✅ RSI Oversold (< 30).")
-                    if info['trend'] == "UP": factors.append("✅ Trend is Bullish.")
+                    if info.get('rsi', 50) < 30: factors.append("✅ RSI Oversold (< 30).")
+                    if info.get('trend', 'SIDEWAYS') == "UP": factors.append("✅ Trend is Bullish.")
                     
                     if not factors: st.write("Market is choppy. AI is waiting.")
                     else: 
@@ -129,7 +142,7 @@ if page == "📡 Live Dashboard":
         st.caption(f"Last Update: {main_info.get('timestamp', 'Unknown')}")
 
 # ==========================================
-# SAYFA 2: BACKTEST LAB (YENİ!)
+# SAYFA 2: BACKTEST LAB (Zaman Makinesi)
 # ==========================================
 elif page == "🧪 Backtest Lab (Time Machine)":
     st.header("⏳ Time Machine Simulation")
@@ -138,19 +151,18 @@ elif page == "🧪 Backtest Lab (Time Machine)":
     *"Eğer bu botu geçen ay kullansaydım ne olurdu?"* sorusunun cevabını verir.
     """)
     
-    # Ayarlar
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        symbol = st.selectbox("Select Asset", ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "AVAX/USDT"])
-    with col2:
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        # LİSTEYİ CONFIG DOSYASINDAN ALIYORUZ
+        symbol = st.selectbox("Select Asset", Config.TARGET_COINS)
+    with c2:
         days = st.slider("Lookback Period (Days)", 7, 60, 30)
-    with col3:
+    with c3:
         start_bal = st.number_input("Starting Balance ($)", value=10000)
         
     if st.button("🚀 START SIMULATION"):
         with st.spinner(f"AI is traveling {days} days back in time... Downloading Data & Calculating..."):
             
-            # Async fonksiyonu Streamlit içinde çalıştırmak için wrapper
             async def run_test():
                 bt = Backtester(initial_balance=start_bal)
                 return await bt.run_backtest(symbol, days)
@@ -161,30 +173,30 @@ elif page == "🧪 Backtest Lab (Time Machine)":
                 result = loop.run_until_complete(run_test())
                 
                 if "error" in result:
-                    st.error(f"Simulation Failed: {result['error']}")
+                    st.error(f"Backtest Failed: {result['error']}")
                 else:
-                    # --- SONUÇ KARTLARI ---
                     st.success("Simulation Complete!")
                     m1, m2, m3, m4 = st.columns(4)
                     
-                    roi_color = "normal" if result['roi'] >= 0 else "inverse"
-                    m1.metric("Net ROI", f"{result['roi']:.2f}%", delta_color=roi_color)
+                    roi = result['roi']
+                    pnl = result['final_balance'] - start_bal
+                    
+                    roi_color = "normal" if roi >= 0 else "inverse"
+                    
+                    m1.metric("Net ROI", f"{roi:.2f}%", delta_color=roi_color)
                     m2.metric("Win Rate", f"{result['win_rate']:.1f}%")
                     m3.metric("Total Trades", result['total_trades'])
-                    
-                    pnl = result['final_balance'] - start_bal
                     m4.metric("Net Profit", f"${pnl:,.2f}", delta_color="normal" if pnl >= 0 else "inverse")
                     
                     st.metric("Final Wallet Balance", f"${result['final_balance']:,.2f}")
                     
-                    # --- GRAFİK VE TABLO ---
                     if result['trades']:
                         trades_df = pd.DataFrame(result['trades'])
                         
                         st.subheader("📈 Portfolio Growth Curve")
-                        # Sadece bakiye değişimini çiz
+                        # Sadece satış işlemlerindeki bakiye değişimini çiz
                         if 'balance' in trades_df.columns:
-                            chart_data = trades_df.set_index('time')['balance']
+                            chart_data = trades_df[trades_df['action'] == 'SELL'][['time', 'balance']].set_index('time')
                             st.line_chart(chart_data)
                         
                         st.subheader("📜 Transaction History")
