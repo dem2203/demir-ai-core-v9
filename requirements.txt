@@ -9,7 +9,7 @@ numpy
 ccxt
 scikit-learn
 joblib
-yfinance  # <--- YENİ (Makro Veri)
+yfinance>=0.2.40  # <--- YENİ (Makro Veri)
 
 # --- Deep Learning ---
 tensorflow # <--- YENİ (LSTM Beyni)
