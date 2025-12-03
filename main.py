@@ -3,42 +3,37 @@ import os
 from src.core.engine import BotEngine
 from src.utils.logger import setup_logger
 from src.config.settings import Config
-from src.brain.trainer import AITrainer  # <--- YENİ EKLENEN EĞİTMEN
-
-# --- SİSTEM BAŞLANGIÇ NOKTASI ---
+from src.brain.trainer import AITrainer
 
 async def main():
-    # 1. Loglama Sistemini Kur
     setup_logger()
-    
-    # 2. Ortam Değişkenlerini Kontrol Et
     print(f">> Starting DEMIR AI v{Config.VERSION}")
-    print(f">> Mode: {Config.ENVIRONMENT}")
     
-    # 3. YAPAY ZEKA EĞİTİM KONTROLÜ (YENİ!)
-    # Botun beyni (Model dosyası) var mı kontrol et. Yoksa oluştur.
+    # --- ÇOKLU MODEL EĞİTİM KONTROLÜ ---
     trainer = AITrainer()
     
-    if not os.path.exists(AITrainer.MODEL_PATH):
-        print(">> 🧠 AI Brain not found (First Run). Starting initial training sequence...")
-        print(">> ⏳ Downloading historical data and training Random Forest model...")
-        try:
-            await trainer.train_new_model()
-            print(">> ✅ Training Complete. Brain saved.")
-        except Exception as e:
-            print(f">> ❌ Training Failed: {e}")
-            # Eğitim başarısız olsa bile botu başlatmayı deneyebiliriz (Fallback modunda çalışır)
-    else:
-        print(f">> 🧠 AI Brain found at {AITrainer.MODEL_PATH}. Skipping training.")
-
-    # 4. Bot Motorunu Oluştur ve Başlat
-    bot = BotEngine()
+    print(">> 🧠 Checking AI Brains for Target Assets...")
     
+    for symbol in Config.TARGET_COINS:
+        # Model dosyasının yolunu al
+        model_path, _ = trainer._get_paths(symbol)
+        
+        if not os.path.exists(model_path):
+            print(f">> ⏳ Brain missing for {symbol}. Starting training...")
+            try:
+                await trainer.train_model_for_symbol(symbol)
+                print(f">> ✅ Training Complete for {symbol}.")
+            except Exception as e:
+                print(f">> ❌ Training Failed for {symbol}: {e}")
+        else:
+            print(f">> 🧠 Brain active for {symbol}.")
+
+    # --- BOTU BAŞLAT ---
+    print(">> 🚀 All systems ready. Launching Engine.")
+    bot = BotEngine()
     try:
-        # 5. Sonsuz Döngüyü Başlat
         await bot.start()
     except KeyboardInterrupt:
-        print("\n>> Manual Stop Signal Received.")
         await bot.stop()
     except Exception as e:
         print(f">> FATAL ERROR: {e}")
