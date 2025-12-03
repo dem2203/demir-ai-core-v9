@@ -4,12 +4,13 @@ import numpy as np
 import joblib
 import os
 import json
+import asyncio
 from typing import Dict, List, Optional
 from tensorflow.keras.models import load_model
 
 # Kendi modüllerimiz
 from src.brain.feature_engineering import FeatureEngineer
-from src.brain.regime_classifier import RegimeClassifier # <-- YENİ MODÜL
+from src.brain.regime_classifier import RegimeClassifier
 from src.validation.validator import SignalValidator
 from src.data_ingestion.macro_connector import MacroConnector
 
@@ -17,10 +18,13 @@ logger = logging.getLogger("MARKET_ANALYZER_ADAPTIVE")
 
 class MarketAnalyzer:
     """
-    DEMIR AI V12.0 - ADAPTIVE INTELLIGENCE
+    DEMIR AI V12.1 - ADAPTIVE INTELLIGENCE & DATA PATCHING
     
-    LSTM Tahmini + Piyasa Rejimi Filtresi.
-    Bot artık piyasa koşullarına göre stratejisini (Stop Loss, Güven Eşiği) değiştirir.
+    Özellikler:
+    1. LSTM Tahmini (Yön)
+    2. Piyasa Rejimi Filtresi (Strateji Değişimi)
+    3. Makro Veri Füzyonu
+    4. Dashboard Veri İyileştirmesi (0.00 hatasını düzeltir)
     """
     
     MODELS_DIR = "src/brain/models/storage"
@@ -31,7 +35,7 @@ class MarketAnalyzer:
         self.models = {} 
         self.scalers = {}
         self.macro = MacroConnector()
-        self.regime_classifier = RegimeClassifier() # <-- Yeni Sınıflandırıcı
+        self.regime_classifier = RegimeClassifier()
 
     def _get_paths(self, symbol):
         clean_sym = symbol.replace("/", "")
@@ -61,7 +65,7 @@ class MarketAnalyzer:
         
         last_row = df.iloc[-1]
         
-        # --- 3. PİYASA REJİMİNİ BELİRLE (ADAPTASYON) ---
+        # --- 3. PİYASA REJİMİNİ BELİRLE ---
         current_regime = self.regime_classifier.identify_regime(df)
         regime_settings = self.regime_classifier.get_risk_adjustment(current_regime)
         
@@ -87,10 +91,9 @@ class MarketAnalyzer:
                 prediction = model.predict(X_input, verbose=0)[0][0]
                 ai_confidence = prediction * 100
                 
-                # Dinamik Eşik Değerleri (Rejime Göre Değişir)
+                # Dinamik Eşik Değerleri
                 threshold = regime_settings['confidence_threshold']
                 
-                # Eğer o rejimde işlem yasaksa (Örn: Volatile), sinyali iptal et
                 if not regime_settings['trade_allowed']:
                      ai_decision = "NEUTRAL"
                      reason = f"Trade Blocked by Regime ({current_regime})"
@@ -108,24 +111,35 @@ class MarketAnalyzer:
             except Exception as e:
                 logger.error(f"Prediction Error {symbol}: {e}")
 
-        # --- 5. Dashboard Kayıt ---
+        # --- 5. DASHBOARD VERİ DÜZELTME (PATCH) ---
+        # Anlık veri 0 gelirse, geçmiş veriden son geçerli değeri bul.
+        dxy_val = float(last_row.get('macro_DXY', 0))
+        vix_val = float(last_row.get('macro_VIX', 0))
+        
+        if (dxy_val == 0 or pd.isna(dxy_val)) and 'macro_DXY' in df.columns:
+             dxy_val = float(df['macro_DXY'].replace(0, np.nan).ffill().iloc[-1])
+             
+        if (vix_val == 0 or pd.isna(vix_val)) and 'macro_VIX' in df.columns:
+             vix_val = float(df['macro_VIX'].replace(0, np.nan).ffill().iloc[-1])
+
         snapshot = {
             "symbol": symbol,
             "price": float(last_row['close']),
-            "dxy": float(last_row.get('macro_DXY', 0)),
-            "vix": float(last_row.get('macro_VIX', 0)),
+            "dxy": dxy_val,
+            "vix": vix_val,
             "ai_decision": ai_decision,
             "ai_confidence": ai_confidence,
-            "regime": current_regime, # Dashboard'da göstereceğiz
+            "regime": current_regime,
             "rsi": float(last_row['rsi']),
             "trend": "UP" if last_row['close'] > last_row['vwap'] else "DOWN",
+            "volatility": "HIGH" if last_row['bb_width'] > 0.1 else "LOW",
             "timestamp": pd.Timestamp.now().isoformat()
         }
         self._save_to_dashboard(snapshot)
 
         if ai_decision == "NEUTRAL": return None
 
-        # --- 6. Dinamik Stop Loss (Rejime Göre) ---
+        # --- 6. Dinamik Stop Loss ---
         price = float(last_row['close'])
         atr = float(last_row['atr'])
         stop_multiplier = regime_settings['stop_loss_multiplier']
