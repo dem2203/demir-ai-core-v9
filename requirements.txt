@@ -8,22 +8,6 @@ pandas
 numpy
 ccxt
 scikit-learn
-joblib
-yfinance>=0.2.50
-pandas_datareader
-
-# --- Deep Learning ---
-tensorflow
-
-# --- Reinforcement Learning ---
-stable-baselines3
-sb3-contrib>=2.1.0
-gymnasium
-shimmy>=0.2.1
-
-# --- Dashboard & Visuals (YENİ) ---
-streamlit
-watchdog
 plotly
 
 # --- Phase 4A: Institutional Arsenal ---
