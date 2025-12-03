@@ -9,10 +9,10 @@ numpy
 ccxt
 scikit-learn
 joblib
-yfinance  # <--- YENİ: DÜNYA PİYASALARI İÇİN
+yfinance  # <--- YENİ (Makro Veri)
 
 # --- Deep Learning ---
-tensorflow
+tensorflow # <--- YENİ (LSTM Beyni)
 
 # --- Dashboard ---
 streamlit
