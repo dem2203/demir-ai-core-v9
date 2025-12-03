@@ -54,18 +54,6 @@ class Config:
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
     TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
     
-    # Discord (Phase 4B)
-    DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
-    
-    # Email (Phase 4B)
-    EMAIL_ENABLED = os.getenv("EMAIL_ENABLED", "false")
-    EMAIL_FROM = os.getenv("EMAIL_FROM")
-    EMAIL_TO = os.getenv("EMAIL_TO")
-    SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-    SMTP_USER = os.getenv("SMTP_USER")
-    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
-    
     # --- Streamlit Settings ---
     STREAMLIT_SERVER_HEADLESS = os.getenv("STREAMLIT_SERVER_HEADLESS", "true")
 

@@ -28,4 +28,3 @@ plotly
 
 # --- Phase 4A: Institutional Arsenal ---
 websockets>=11.0
-discord-webhook>=1.0
