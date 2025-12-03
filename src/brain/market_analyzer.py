@@ -8,109 +8,99 @@ import asyncio
 from typing import Dict, List, Optional
 from tensorflow.keras.models import load_model
 
-# Kendi modüllerimiz
 from src.brain.feature_engineering import FeatureEngineer
 from src.validation.validator import SignalValidator
-from src.data_ingestion.macro_connector import MacroConnector # <--- Makro veriyi canlıda da çekeceğiz
+from src.data_ingestion.macro_connector import MacroConnector
 
 logger = logging.getLogger("MARKET_ANALYZER_LSTM")
 
 class MarketAnalyzer:
     """
-    DEMIR AI V11.0 - LSTM PREDICTOR & MACRO AWARENESS
-    
-    Özellikler:
-    1. Canlı Kripto ve Makro veriyi birleştirir.
-    2. Eğitilmiş LSTM modelini kullanır.
-    3. Dashboard için veriyi kaydeder.
-    4. Telegram sinyali üretir.
+    DEMIR AI V11.1 - MULTI-MODEL PREDICTOR
+    Her coini kendi özel eğitilmiş modeliyle analiz eder.
     """
     
-    MODEL_PATH = "src/brain/models/storage/lstm_v11.h5"
-    SCALER_PATH = "src/brain/models/storage/scaler.pkl"
+    MODELS_DIR = "src/brain/models/storage"
     DASHBOARD_DATA_PATH = "dashboard_data.json"
-    LOOKBACK = 60 # Modelin ihtiyaç duyduğu geçmiş mum sayısı
+    LOOKBACK = 60
 
     def __init__(self):
-        self.model = None
-        self.scaler = None
-        self.macro = MacroConnector() # Makro veri bağlantısı
-        self.load_brain()
+        self.models = {}  # { 'BTC/USDT': model_obj }
+        self.scalers = {} # { 'BTC/USDT': scaler_obj }
+        self.macro = MacroConnector()
 
-    def load_brain(self):
-        """Modeli ve Scaler'ı diskten yükler"""
-        if os.path.exists(self.MODEL_PATH) and os.path.exists(self.SCALER_PATH):
+    def _get_paths(self, symbol):
+        clean_sym = symbol.replace("/", "")
+        model_path = os.path.join(self.MODELS_DIR, f"lstm_v11_{clean_sym}.h5")
+        scaler_path = os.path.join(self.MODELS_DIR, f"scaler_{clean_sym}.pkl")
+        return model_path, scaler_path
+
+    def load_model_for_symbol(self, symbol):
+        """İlgili coinin modelini hafızaya yükler (Eğer yoksa)."""
+        if symbol in self.models: return True # Zaten yüklü
+        
+        m_path, s_path = self._get_paths(symbol)
+        if os.path.exists(m_path) and os.path.exists(s_path):
             try:
-                self.model = load_model(self.MODEL_PATH)
-                self.scaler = joblib.load(self.SCALER_PATH)
-                logger.info("🧠 LSTM BRAIN & SCALER LOADED.")
-            except Exception as e:
-                logger.error(f"Brain load error: {e}")
-        else:
-            logger.warning("🧠 Brain not found! Waiting for training...")
+                self.models[symbol] = load_model(m_path)
+                self.scalers[symbol] = joblib.load(s_path)
+                logger.info(f"🧠 Loaded Brain for {symbol}")
+                return True
+            except:
+                return False
+        return False
 
     async def analyze_market(self, symbol: str, raw_data: List[Dict]) -> Optional[Dict]:
-        """
-        Canlı veriyi analiz eder.
-        """
-        # 1. Kripto Verisini İşle
+        # 1. Veri İşleme
         crypto_df = FeatureEngineer.process_data(raw_data)
-        if crypto_df is None or len(crypto_df) < self.LOOKBACK + 5:
-            return None
+        if crypto_df is None or len(crypto_df) < self.LOOKBACK + 5: return None
 
-        # 2. Canlı Makro Veriyi Çek (Hızlı olması için son 5 gün yeterli)
+        # 2. Makro Veri
         macro_df = await self.macro.fetch_macro_data(period="5d", interval="1h")
-        
-        # 3. Verileri Birleştir (Füzyon)
-        # Eğer makro veri çekilemezse, sadece kripto verisiyle devam etmeye çalışır
         df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
         
         last_row = df.iloc[-1]
         ai_decision = "NEUTRAL"
         ai_confidence = 0.0
-        reason = "Market Noise"
+        reason = "Insufficient Data"
 
-        # --- LSTM TAHMİNİ ---
-        if self.model and self.scaler:
+        # --- ÇOKLU MODEL TAHMİNİ ---
+        # Önce bu coin için model var mı kontrol et
+        has_brain = self.load_model_for_symbol(symbol)
+        
+        if has_brain:
             try:
-                # Modeli eğitirken kullandığımız sütunları seç (Target vs hariç)
-                feature_cols = [c for c in df.columns if c not in ['timestamp', 'symbol', 'target', 'open', 'high', 'low', 'close', 'volume']]
+                model = self.models[symbol]
+                scaler = self.scalers[symbol]
                 
-                # Son 60 mumu al (Lookback)
+                # Veriyi Hazırla
+                feature_cols = [c for c in df.columns if c not in ['timestamp', 'symbol', 'target', 'open', 'high', 'low', 'close', 'volume']]
                 recent_data = df[feature_cols].tail(self.LOOKBACK).values
                 
-                # Veriyi Normalize Et (Eğitimdeki aynı oranlarla)
-                recent_scaled = self.scaler.transform(recent_data)
-                
-                # Boyutlandır: (1, 60, Features) -> Model tek bir tahmin yapacak
+                # Normalize Et (Kendi Scaler'ı ile)
+                recent_scaled = scaler.transform(recent_data)
                 X_input = np.array([recent_scaled])
                 
-                # Tahmin Et
-                prediction = self.model.predict(X_input, verbose=0)[0][0] # 0 ile 1 arası bir sayı döner
+                # Tahmin
+                prediction = model.predict(X_input, verbose=0)[0][0]
                 
-                logger.info(f"🧠 AI RAW OUTPUT ({symbol}): {prediction:.4f}")
+                logger.info(f"🧠 {symbol} AI Score: {prediction:.4f}")
                 
-                # Karar Mantığı
-                if prediction > 0.60: # %60'tan fazla yükseliş ihtimali
+                if prediction > 0.60:
                     ai_decision = "BUY"
                     ai_confidence = prediction * 100
                     reason = "Deep Learning Bullish Pattern"
-                    
-                elif prediction < 0.40: # %40'tan az (Yani %60 düşüş ihtimali)
+                elif prediction < 0.40:
                     ai_decision = "SELL"
                     ai_confidence = (1 - prediction) * 100
                     reason = "Deep Learning Bearish Pattern"
-
             except Exception as e:
-                logger.error(f"Prediction Error: {e}")
-                # Hata durumunda yedek (Fallback) strateji
-                if last_row['rsi'] < 30: ai_decision = "BUY"
+                logger.error(f"Prediction Error {symbol}: {e}")
         else:
-            # Beyin yoksa yedek strateji
-            if last_row['rsi'] < 30: ai_decision = "BUY"
+            # Model henüz eğitilmemişse yedek strateji (RSI)
+            if last_row['rsi'] < 30: ai_decision = "BUY"; reason = "Fallback RSI Strategy"
 
-        # --- DASHBOARD İÇİN VERİ KAYDETME ---
-        # Makro verilerin varlığını kontrol et, yoksa 0 yaz (Hata almamak için)
+        # --- Dashboard Kayıt ---
         dxy_val = float(last_row.get('macro_DXY', 0))
         vix_val = float(last_row.get('macro_VIX', 0))
 
@@ -119,8 +109,8 @@ class MarketAnalyzer:
             "price": float(last_row['close']),
             "rsi": float(last_row['rsi']),
             "macd": float(last_row['macd']),
-            "dxy": dxy_val,  # Dashboard'da Dolar Endeksini de görelim
-            "vix": vix_val,  # Korku Endeksini de görelim
+            "dxy": dxy_val,
+            "vix": vix_val,
             "ai_decision": ai_decision,
             "ai_confidence": ai_confidence,
             "trend": "UP" if last_row['close'] > last_row['vwap'] else "DOWN",
@@ -129,10 +119,8 @@ class MarketAnalyzer:
         }
         self._save_to_dashboard(snapshot)
 
-        # Eğer Nötr ise sinyal üretme
         if ai_decision == "NEUTRAL": return None
 
-        # Sinyal Paketi Hazırla
         price = float(last_row['close'])
         atr = float(last_row['atr'])
         
@@ -146,24 +134,19 @@ class MarketAnalyzer:
             "reason": reason
         }
         
-        # Validatörden geçir ve gönder
         if SignalValidator.validate_outgoing_signal(signal):
             return signal
         return None
 
     def _save_to_dashboard(self, data):
-        """Veriyi JSON dosyasına yazar"""
         try:
             if os.path.exists(self.DASHBOARD_DATA_PATH):
                 with open(self.DASHBOARD_DATA_PATH, 'r') as f:
                     try: db = json.load(f)
                     except: db = {}
-            else:
-                db = {}
+            else: db = {}
             
             db[data['symbol']] = data
-            
             with open(self.DASHBOARD_DATA_PATH, 'w') as f:
                 json.dump(db, f, indent=4)
-        except Exception as e:
-            pass # Dashboard hatası botu durdurmasın
+        except: pass
