@@ -10,8 +10,21 @@ from src.execution.paper_trader import PaperTrader
 from src.brain.optimizer import StrategyOptimizer 
 from src.utils.visualizer import MarketVisualizer 
 
-st.set_page_config(page_title="DEMIR AI", page_icon="🦅", layout="wide", initial_sidebar_state="expanded")
-st.markdown("""<style>.metric-card {background-color: #1e1e1e; padding: 15px; border-radius: 10px; border: 1px solid #333;} .stMetric {text-align: center;} .stDataFrame {font-size: 12px;}</style>""", unsafe_allow_html=True)
+# --- Ayarlar ---
+st.set_page_config(
+    page_title="DEMIR AI - Command Center",
+    page_icon="🦅",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+st.markdown("""
+<style>
+    .metric-card {background-color: #1e1e1e; padding: 15px; border-radius: 10px; border: 1px solid #333;} 
+    .stMetric {text-align: center;}
+    .stDataFrame {font-size: 12px;}
+</style>
+""", unsafe_allow_html=True)
 
 st.title("🦅 DEMIR AI - Institutional Trading Terminal")
 
@@ -27,43 +40,38 @@ def load_json(filename):
         except: return {}
     return {}
 
-# --- 1. LIVE DASHBOARD ---
+# --- 1. LIVE ---
 if page == "📡 Live Dashboard":
     st.caption(f"Tracking Assets: {', '.join(Config.TARGET_COINS)}")
-    if st.button('🔄 Refresh'): st.rerun()
+    if st.button('🔄 Refresh Market Data'): st.rerun()
     data = load_json("dashboard_data.json")
-    
+
     if not data:
         st.info("📡 System is initializing... Waiting for Data Fusion...")
         time.sleep(2)
         st.rerun()
     else:
-        main_sym = Config.TARGET_COINS[0]
-        info = data.get(main_sym, list(data.values())[0])
+        main_sym = Config.TARGET_COINS[0] 
+        btc_data = data.get(main_sym, list(data.values())[0])
         
-        # --- MAKRO PANEL (GENİŞLETİLMİŞ) ---
-        st.markdown("### 🌍 Global Macro Pulse")
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("🇺🇸 DXY", f"{info.get('dxy', 0):.2f}")
-        c2.metric("😨 VIX", f"{info.get('vix', 0):.2f}")
-        c3.metric("📈 SPX", f"{info.get('spx', 0):.0f}")
-        c4.metric("🟡 GOLD", f"${info.get('gold', 0):.1f}")
+        st.markdown("### 🌍 Global Macro Conditions")
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
         
-        c5, c6, c7, c8 = st.columns(4)
-        c5.metric("⚪ SILVER", f"${info.get('silver', 0):.2f}")
-        c6.metric("🛢️ OIL", f"${info.get('oil', 0):.2f}")
-        corr = info.get('corr_spx', 0)
-        c7.metric("🔗 Correlation", f"{corr:.2f}", delta_color="normal" if corr > 0.5 else "off")
-        c8.metric(f"₿ {info.get('symbol')}", f"${info.get('price', 0):,.2f}")
+        c1.metric("🇺🇸 DXY", f"{btc_data.get('dxy', 0):.2f}")
+        c2.metric("😨 VIX", f"{btc_data.get('vix', 0):.2f}")
+        c3.metric("📈 SPX", f"{btc_data.get('spx', 0):.0f}")
+        c4.metric("🟡 GOLD", f"${btc_data.get('gold', 0):.1f}")
+        c5.metric("🔗 CORR", f"{btc_data.get('corr_spx', 0):.2f}")
+        c6.metric(f"₿ {btc_data.get('symbol')}", f"${btc_data.get('price', 0):,.2f}")
         
         st.markdown("---")
         
-        dec = info.get('ai_decision', 'NEUTRAL')
+        dec = btc_data.get('ai_decision', 'NEUTRAL')
         color = "normal"
         if dec == "BUY": color = "inverse"
         elif dec == "SELL": color = "off"
-        st.metric("🧠 AI Decision (LSTM)", dec, f"{info.get('ai_confidence', 0):.1f}%", delta_color=color)
-        
+        st.metric("🧠 AI Decision (LSTM)", dec, f"{btc_data.get('ai_confidence', 0):.1f}% Conf.", delta_color=color)
+
         st.markdown("### 📊 Asset Analysis Board")
         df_display = pd.DataFrame(data.values())
         cols = ['symbol', 'price', 'ai_decision', 'ai_confidence', 'regime', 'rsi', 'trend']
@@ -92,17 +100,18 @@ elif page == "💼 Live Portfolio (Paper)":
             st.subheader("📜 Trade History")
             st.dataframe(pd.DataFrame(portfolio['history']).iloc[::-1])
 
-# --- 3. BACKTEST ---
+# --- 3. BACKTEST LAB (GÜNCELLENDİ) ---
 elif page == "🧪 Backtest Lab":
     st.header("⏳ Time Machine Simulation")
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     with c1: symbol = st.selectbox("Asset", Config.TARGET_COINS)
     with c2: days = st.slider("Days", 7, 60, 30)
+    with c3: start_bal = st.number_input("Start Balance", value=10000)
     
-    if st.button("🚀 Run Backtest"):
-        with st.spinner("Simulating..."):
+    if st.button("🚀 START SIMULATION"):
+        with st.spinner("Running AI Simulation..."):
             async def run():
-                bt = Backtester()
+                bt = Backtester(initial_balance=start_bal)
                 return await bt.run_backtest(symbol, days)
             
             loop = asyncio.new_event_loop()
@@ -115,20 +124,42 @@ elif page == "🧪 Backtest Lab":
                 c1.metric("ROI", f"{res['roi']:.2f}%")
                 c2.metric("Win Rate", f"{res['win_rate']:.1f}%")
                 c3.metric("Trades", res['total_trades'])
-                if res['trades']: 
-                    df = pd.DataFrame(res['trades'])
-                    st.line_chart(df[df['action']=='SELL'].set_index('time')['balance'])
-                    st.dataframe(df)
+                
+                if res['trades']:
+                    st.success("Simulation Successful!")
+                    
+                    # --- PROFESYONEL GRAFİK ÇİZİMİ ---
+                    st.markdown("### 🕯️ Trade Analysis Chart")
+                    
+                    # Backtester'dan dönen veriyi ve trade logunu kullan
+                    df_sim = res.get('df')
+                    
+                    if df_sim is not None and not df_sim.empty:
+                        # Timestamp'i datetime'a çevir (Plotly için)
+                        df_sim['timestamp'] = pd.to_datetime(df_sim['timestamp'], unit='ms')
+                        
+                        # Visualizer'ı çağır
+                        fig = MarketVisualizer.create_advanced_chart(df_sim, symbol, res['trades'])
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.warning("No price data available for charting.")
+                    
+                    st.subheader("📜 Detailed Logs")
+                    st.dataframe(pd.DataFrame(res['trades']))
+                else:
+                    st.warning("No trades executed in this period.")
 
 # --- 4. OPTIMIZER ---
 elif page == "⚙️ Strategy Optimizer":
     st.header("🧬 Genetic Strategy Optimizer")
-    target_sym = st.selectbox("Target", Config.TARGET_COINS)
+    target_sym = st.selectbox("Target", Config.TARGET_COINS, key="opt_sym")
+    opt_days = st.slider("Period", 15, 60, 30, key="opt_days")
+    
     if st.button("🧬 FIND BEST"):
         with st.spinner("Optimizing..."):
             async def run_opt():
                 opt = StrategyOptimizer()
-                return await opt.optimize(target_sym, 30)
+                return await opt.optimize(target_sym, opt_days)
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             best = loop.run_until_complete(run_opt())['best_config']
