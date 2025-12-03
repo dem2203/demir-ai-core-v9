@@ -129,7 +129,7 @@ class Backtester:
             # --- ALIM MANTIĞI ---
             if position is None:
                 # Eğer AI %60'tan fazla eminse AL
-                if ai_score > 0.60: 
+                if ai_score > 0.51: 
                     position = 'LONG'
                     entry_price = current_price
                     
