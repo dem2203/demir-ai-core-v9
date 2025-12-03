@@ -17,10 +17,9 @@ logger = logging.getLogger("BACKTESTER")
 
 class Backtester:
     """
-    DEMIR AI - TIME MACHINE (HYBRID + OPTIMIZABLE)
+    DEMIR AI - TIME MACHINE (VISUAL EDITION)
     
-    Hem Hibrit Zekayı (LSTM+RL) kullanır hem de 'params' argümanı ile
-    farklı strateji ayarlarının test edilmesine izin verir.
+    Grafik çizimi için 'df' (Fiyat Verisi) nesnesini de sonuçlarla birlikte döndürür.
     """
     
     LSTM_DIR = "src/brain/models/storage"
@@ -66,13 +65,6 @@ class Backtester:
         return True
 
     async def run_backtest(self, symbol="BTC/USDT", days=30, params=None):
-        """
-        params: {
-            'sl_mul': 1.5,   # Stop Loss ATR çarpanı
-            'tp_mul': 3.0,   # Take Profit ATR çarpanı
-            'threshold': 0.60 # LSTM Güven Eşiği
-        }
-        """
         # Varsayılan Parametreler
         if params is None:
             params = {'sl_mul': 1.5, 'tp_mul': 3.0, 'threshold': 0.55}
@@ -94,9 +86,7 @@ class Backtester:
         
         if df is None or len(df) < self.LOOKBACK: return {"error": "Insufficient Data."}
 
-        # 2. Batch Prediction (LSTM)
-        # Eğitimdeki sütunları seç (Yeni eklenen makro sütunları hariç tutuyoruz ki model patlamasın)
-        # NOT: Modeli makro veriyle tekrar eğitirsek burayı güncelleyeceğiz.
+        # 2. Batch Prediction
         drop_cols = ['timestamp', 'symbol', 'target', 'open', 'high', 'low', 'close', 'volume', 
                      'macro_GOLD', 'macro_SILVER', 'macro_OIL', 'corr_spx', 'corr_dxy']
         feature_cols = [c for c in df.columns if c not in drop_cols]
@@ -104,7 +94,7 @@ class Backtester:
         try:
             data_values = df[feature_cols].values
             scaled_data = self.scaler.transform(data_values)
-        except: return {"error": "Scaler/Model mismatch. Retrain required."}
+        except: return {"error": "Scaler Mismatch. Retrain required."}
         
         X_lstm = []
         start_index = len(df) - (days * 24)
@@ -113,7 +103,7 @@ class Backtester:
         
         for i in indices:
             X_lstm.append(scaled_data[i-self.LOOKBACK:i])
-        
+            
         X_lstm = np.array(X_lstm)
         if len(X_lstm) == 0: return {"error": "No X data."}
         
@@ -138,7 +128,6 @@ class Backtester:
             atr = row['atr']
             lstm_score = lstm_predictions[i][0]
             
-            # RL Tahmini
             rl_action = 0
             if self.agent_rl:
                 obs = rl_values[indices[i]]
@@ -148,31 +137,24 @@ class Backtester:
             try: t_str = datetime.fromtimestamp(ts/1000).strftime('%Y-%m-%d %H:%M')
             except: t_str = str(ts)
 
-            # --- KARAR MEKANİZMASI (PARAMETRİK) ---
             decision = "NEUTRAL"
             threshold = params['threshold']
             
-            # Alım
             if rl_action == 1 and lstm_score > threshold: decision = "BUY"
-            elif lstm_score > (threshold + 0.1): decision = "BUY" # Çok güçlüyse RL'siz al
-            
-            # Satım
+            elif lstm_score > (threshold + 0.1): decision = "BUY"
             elif rl_action == 2 or lstm_score < (1 - threshold): decision = "SELL"
 
-            # İcra
             if position is None:
                 if decision == "BUY":
                     position = 'LONG'
                     entry_price = current_price
                     self.trade_log.append({
                         "action": "BUY", "price": entry_price, "time": t_str, 
-                        "score": f"L:{lstm_score:.2f}", "balance": self.balance
+                        "score": f"L:{lstm_score:.2f}|R:{rl_action}", "balance": self.balance
                     })
             
             elif position == 'LONG':
                 pnl_pct = (current_price - entry_price) / entry_price
-                
-                # Dinamik Hedefler (Optimizer'dan gelen)
                 stop_pct = (atr * params['sl_mul']) / entry_price
                 take_pct = (atr * params['tp_mul']) / entry_price
                 
@@ -189,11 +171,10 @@ class Backtester:
                     self.balance += pnl_amount
                     self.trade_log.append({
                         "action": "SELL", "price": current_price, "time": t_str, 
-                        "score": f"L:{lstm_score:.2f}", "pnl_pct": f"{pnl_pct*100:.2f}%", 
+                        "score": f"L:{lstm_score:.2f}|R:{rl_action}", "pnl_pct": f"{pnl_pct*100:.2f}%", 
                         "reason": reason, "balance": self.balance
                     })
 
-        # Rapor
         sell_trades = [t for t in self.trade_log if t['action'] == 'SELL']
         total = len(sell_trades)
         wins = len([t for t in sell_trades if float(t['pnl_pct'].strip('%')) > 0])
@@ -205,5 +186,6 @@ class Backtester:
             "total_trades": total,
             "win_rate": win_rate,
             "final_balance": self.balance,
-            "trades": self.trade_log
+            "trades": self.trade_log,
+            "df": sim_df # <-- YENİ: Grafik çizimi için veriyi döndür
         }
