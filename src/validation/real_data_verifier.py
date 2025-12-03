@@ -6,6 +6,19 @@ from typing import Dict, List, Union
 
 logger = logging.getLogger(__name__)
 
+class RealDataVerifier:
+    """
+    Gerçek Veri Doğrulayıcı.
+    Verinin zamansal ve fiziksel olarak gerçek dünya ile uyumlu olup olmadığını denetler.
+    """
+    
+    MAX_DATA_AGE = 300  # Seconds (Railway için daha esnek: 5 dakika)
+    MIN_VOLATILITY_THRESHOLD = 0.000001  # Fiyat hiç oynamıyorsa şüphelidir
+
+    @staticmethod
+    def verify_market_data(data: Union[Dict, List[Dict]]) -> bool:
+        """
+        Gelen piyasa verisinin tutarlılığını kontrol eder.
         """
         # Liste gelirse son elemana bak (en güncel veri)
         if isinstance(data, list):
@@ -35,8 +48,8 @@ logger = logging.getLogger(__name__)
                 logger.warning(f"VALIDATION WARNING: Data is from the future? ({delay}s). Clock sync issue possible.")
                 
             # Çok eski veri?
-            if delay > RealDataVerifier.MAX_DATA_DELAY_SECONDS:
-                logger.error(f"VALIDATION FAIL: Data is stale. Delay: {delay:.2f}s > Limit: {RealDataVerifier.MAX_DATA_DELAY_SECONDS}s")
+            if delay > RealDataVerifier.MAX_DATA_AGE:
+                logger.error(f"VALIDATION FAIL: Data is stale. Delay: {delay:.2f}s > Limit: {RealDataVerifier.MAX_DATA_AGE}s")
                 return False
                 
         except Exception as e:
