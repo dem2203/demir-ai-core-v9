@@ -7,20 +7,13 @@ logger = logging.getLogger("ULTIMATE_FEATURE_ENGINEERING")
 
 class FeatureEngineer:
     """
-    DEMIR AI V13.0 - QUANTITATIVE MAP MAKER (FULL)
+    DEMIR AI V14.0 - FRACTAL INTELLIGENCE (FULL)
     
-    Özellikler:
-    1. Klasik Teknik Analiz (RSI, MACD, Bollinger, ATR, ADX)
-    2. İleri Matematik (Hurst Exponent, Ichimoku)
-    3. Formasyon Tanıma (Candlestick Patterns)
-    4. Veri Füzyonu (Crypto + Macro)
-    5. Fiyat Haritalama (Pivot Points & Fibonacci)
+    Yenilik: Multi-Timeframe Analysis (MTF).
+    Tek zaman dilimine (1H) sıkışıp kalmak yerine, 4H trendi de hesaplar.
     """
 
-    # ==========================================
-    # 1. MOMENTUM VE OSİLATÖRLER
-    # ==========================================
-    
+    # --- 1. MOMENTUM VE OSİLATÖRLER ---
     @staticmethod
     def calculate_rsi(data: pd.DataFrame, period: int = 14) -> pd.Series:
         delta = data['close'].diff()
@@ -52,10 +45,7 @@ class FeatureEngineer:
         mfi = 100 - (100 / (1 + (positive_mf / negative_mf)))
         return mfi
 
-    # ==========================================
-    # 2. TREND VE VOLATİLİTE
-    # ==========================================
-
+    # --- 2. TREND VE VOLATİLİTE ---
     @staticmethod
     def calculate_adx(data: pd.DataFrame, period: int = 14) -> pd.Series:
         df = data.copy()
@@ -114,10 +104,7 @@ class FeatureEngineer:
         tp = (data['high'] + data['low'] + data['close']) / 3
         return (tp * v).cumsum() / v.cumsum()
 
-    # ==========================================
-    # 3. İLERİ MATEMATİK (KAOS & FORMASYON)
-    # ==========================================
-
+    # --- 3. İLERİ MATEMATİK ---
     @staticmethod
     def calculate_hurst_exponent(series: pd.Series, max_lag: int = 20) -> float:
         try:
@@ -130,8 +117,7 @@ class FeatureEngineer:
             val = poly[0] * 2.0
             if np.isnan(val) or np.isinf(val): return 0.5
             return val
-        except:
-            return 0.5
+        except: return 0.5
 
     @staticmethod
     def detect_patterns(df: pd.DataFrame) -> pd.DataFrame:
@@ -147,16 +133,8 @@ class FeatureEngineer:
         )
         return df[['is_doji', 'is_hammer', 'is_engulfing']]
 
-    # ==========================================
-    # 4. YENİ: PIVOT & HARİTALAMA
-    # ==========================================
-    
     @staticmethod
     def calculate_pivots(df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Destek/Direnç seviyelerini hesaplar.
-        """
-        # Pivotlar bir önceki mumun verisine göre hesaplanır
         high = df['high'].shift(1)
         low = df['low'].shift(1)
         close = df['close'].shift(1)
@@ -166,13 +144,49 @@ class FeatureEngineer:
         s1 = (2 * pivot) - high
         r2 = pivot + (high - low)
         s2 = pivot - (high - low)
-        
         return pd.DataFrame({'pivot': pivot, 'r1': r1, 's1': s1, 'r2': r2, 's2': s2})
 
-    # ==========================================
-    # 5. VERİ FÜZYONU (KORUNDU)
-    # ==========================================
+    # --- 4. YENİ: MULTI-TIMEFRAME (4H TREND) ---
+    @staticmethod
+    def calculate_4h_trend(df: pd.DataFrame) -> pd.Series:
+        """
+        1 Saatlik veriyi 4 Saatliğe çevirir (Resample),
+        4H üzerindeki EMA50 ve EMA200'e bakar ve trendi belirler.
+        Sonra bu veriyi tekrar 1H verisine yayar.
+        """
+        try:
+            # Geçici kopyalama ve zaman indeksleme
+            temp_df = df.copy()
+            temp_df['timestamp'] = pd.to_datetime(temp_df['timestamp'], unit='ms')
+            temp_df.set_index('timestamp', inplace=True)
+            
+            # 4H Resampling (OHLC mantığıyla)
+            df_4h = temp_df.resample('4h').agg({
+                'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
+            })
+            
+            # 4H Trend İndikatörleri (EMA 50 ve 200)
+            df_4h['ema_50'] = df_4h['close'].ewm(span=50, adjust=False).mean()
+            df_4h['ema_200'] = df_4h['close'].ewm(span=200, adjust=False).mean()
+            
+            # Trend Kararı: Fiyat > EMA50 > EMA200 ise GÜÇLÜ BOĞA
+            conditions = [
+                (df_4h['close'] > df_4h['ema_50']) & (df_4h['ema_50'] > df_4h['ema_200']),
+                (df_4h['close'] < df_4h['ema_50']) & (df_4h['ema_50'] < df_4h['ema_200'])
+            ]
+            choices = [1, -1] # 1: Bullish, -1: Bearish, 0: Neutral
+            df_4h['trend_4h_val'] = np.select(conditions, choices, default=0)
+            
+            # 1H verisine geri yayma (Upsample & Forward Fill)
+            # Orijinal indeks ile eşleştir
+            merged = temp_df.join(df_4h['trend_4h_val'], how='left')
+            merged['trend_4h_val'] = merged['trend_4h_val'].ffill() # Son 4H değeri neyse, şimdiki 1H de odur.
+            
+            return merged['trend_4h_val'].values
+        except Exception:
+            return pd.Series(0, index=df.index) # Hata olursa Nötr dön
 
+    # --- 5. VERİ FÜZYONU ---
     @staticmethod
     def merge_crypto_and_macro(crypto_df: pd.DataFrame, macro_df: pd.DataFrame) -> pd.DataFrame:
         if macro_df is None or macro_df.empty: return crypto_df
@@ -182,10 +196,7 @@ class FeatureEngineer:
         merged_df = merged_df.ffill().bfill()
         return merged_df
 
-    # ==========================================
-    # ANA İŞLEMCİ
-    # ==========================================
-
+    # --- ANA İŞLEMCİ ---
     @classmethod
     def process_data(cls, raw_data: List[Dict]) -> Optional[pd.DataFrame]:
         if not raw_data: return None
@@ -212,13 +223,15 @@ class FeatureEngineer:
             df['z_score'] = cls.calculate_z_score(df['close'])
             df['log_ret'] = np.log(df['close'] / df['close'].shift(1))
             df['hurst'] = df['close'].rolling(window=100).apply(lambda x: cls.calculate_hurst_exponent(x))
-
+            
             patterns = cls.detect_patterns(df)
             df = pd.concat([df, patterns], axis=1)
 
-            # YENİ: PIVOTS
             pivots = cls.calculate_pivots(df)
             df = pd.concat([df, pivots], axis=1)
+
+            # YENİ: 4 Saatlik Trendi Ekle
+            df['trend_4h'] = cls.calculate_4h_trend(df)
 
             for lag in [1, 2, 3, 5, 8]:
                 df[f'close_lag_{lag}'] = df['close'].shift(lag)
