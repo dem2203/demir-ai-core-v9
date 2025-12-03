@@ -9,10 +9,11 @@ numpy
 ccxt
 scikit-learn
 joblib
-yfinance>=0.2.50  # <--- YENİ (Makro Veri)
+yfinance>=0.2.50
+pandas_datareader  # <--- YENİ: Profesyonel Veri Okuyucu
 
 # --- Deep Learning ---
-tensorflow # <--- YENİ (LSTM Beyni)
+tensorflow
 
 # --- Dashboard ---
 streamlit
