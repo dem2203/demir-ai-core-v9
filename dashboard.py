@@ -23,11 +23,18 @@ st.markdown("""
 st.title("🦅 DEMIR AI - Institutional Trading Terminal")
 st.caption("Deep Learning (LSTM) • Global Macro Fusion • Sentiment Free")
 
-# Veri Okuma
+# Mevcut load_data fonksiyonunu sil ve bunu yapıştır:
 def load_data():
     if os.path.exists("dashboard_data.json"):
-        with open("dashboard_data.json", 'r') as f:
-            return json.load(f)
+        try:
+            with open("dashboard_data.json", 'r') as f:
+                # Dosya boşsa hata verebilir, kontrol edelim
+                content = f.read()
+                if not content: return {} 
+                return json.loads(content)
+        except (json.JSONDecodeError, ValueError):
+            # Dosya o an yazılıyordur veya bozuktur, çökme, boş dön
+            return {}
     return {}
 
 if st.button('🔄 Refresh System Data'):
