@@ -3,45 +3,41 @@ import logging
 from typing import List
 from datetime import datetime
 
-# --- MODÜLLERİMİZİ ÇAĞIRIYORUZ ---
+# --- MODÜLLER ---
 from src.config.settings import Config
 from src.data_ingestion.market_data_manager import MarketDataManager
 from src.brain.market_analyzer import MarketAnalyzer
 from src.utils.logger import setup_logger
-from src.utils.notifications import NotificationManager # <-- YENİ EKLENDİ
+from src.utils.notifications import NotificationManager
+from src.execution.paper_trader import PaperTrader # <-- YENİ MODÜL EKLENDİ
 
 logger = logging.getLogger("DEMIR_AI_CORE_ENGINE")
 
 class BotEngine:
     """
-    DEMIR AI v10.1 - ANALYST ENGINE
+    DEMIR AI v11.3 - FULLY INTEGRATED ENGINE (PAPER TRADING EDITION)
     
-    Bu motor artık işlem açmaz (Execution Layer devre dışı).
-    Bunun yerine:
-    1. Piyasayı izler.
-    2. AI ile analiz eder.
-    3. Dashboard verisini günceller.
-    4. Telegram üzerinden Sinyal/Rapor gönderir.
+    Görevi:
+    1. Veri Çek (Crypto + Macro)
+    2. Analiz Et (LSTM Brain)
+    3. İşlem Yap (Paper Trader - Sanal Cüzdan)
+    4. Bildir (Telegram + Dashboard)
     """
     
     def __init__(self):
         self.is_running = False
-        
-        # --- Alt Sistemlerin Yüklenmesi ---
         logger.info("Initializing Sub-systems...")
         
         self.data_manager = MarketDataManager()
         self.analyzer = MarketAnalyzer()
-        self.notifier = NotificationManager() # <-- OrderManager yerine geldi
+        self.notifier = NotificationManager()
+        self.paper_trader = PaperTrader() # <-- Sanal Broker Devrede
         
-        # Takip Edilecek Coinler (Otomatik algılamaya geçene kadar manuel liste)
-        self.target_symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "AVAX/USDT"]
-        
-        self.loop_interval = 60 # Saniye (1 Dakika)
+        self.loop_interval = 60 # 1 Dakika
 
     async def start(self):
         """Botu Başlatır"""
-        logger.info(f"STARTING DEMIR AI v{Config.VERSION} - MODE: AI CO-PILOT")
+        logger.info(f"STARTING DEMIR AI v{Config.VERSION} - MODE: PAPER TRADING")
         
         # Borsa Bağlantılarını Aç
         await self.data_manager.initialize()
@@ -77,29 +73,36 @@ class BotEngine:
         # Toplu Veri Çekme (OHLCV Listesi)
         market_data_list = await self.data_manager.get_live_market_snapshot()
         
-        # Analist modunda bakiyeye ihtiyacımız yok ama fonksiyon yapısını bozmamak için dummy veri.
-        current_balance = 0.0 
+        # --- YENİ: Canlı Fiyatları PaperTrader'a bildir (Equity hesabı için) ---
+        # Bu sayede işlem açmasak bile cüzdandaki varlıkların anlık değerini biliriz.
+        current_prices = {}
+        for data in market_data_list:
+            if data and len(data) > 0:
+                symbol = data[-1]['symbol'] # Son mumun sembolü
+                price = data[-1]['close']   # Son kapanış fiyatı
+                current_prices[symbol] = price
+        
+        self.paper_trader.get_portfolio_status(current_prices)
+        # ---------------------------------------------------------------------
         
         tasks = []
         for data in market_data_list:
             # Her coin için analiz görevi oluştur
-            task = self.analyze_and_report(data)
-            tasks.append(task)
+            tasks.append(self.analyze_and_execute(data))
             
         # Tüm analizleri paralel çalıştır
         await asyncio.gather(*tasks)
 
-    async def analyze_and_report(self, ticker_data: List[dict]):
+    async def analyze_and_execute(self, ticker_data: List[dict]):
         """
-        TEK BİR COIN İÇİN ANALİZ VE RAPORLAMA
+        TEK BİR COIN İÇİN ANALİZ VE İCRA
         """
         if not ticker_data or len(ticker_data) == 0:
             return
 
         symbol = ticker_data[0]['symbol']
         
-        # --- A. ANALİZ KATMANI ---
-        # AI burada devreye giriyor, analiz yapıyor ve dashboard için veri kaydediyor.
+        # 1. ANALİZ KATMANI (BEYİN)
         signal = await self.analyzer.analyze_market(symbol, ticker_data)
         
         # Eğer kayda değer bir sinyal yoksa çık
@@ -108,11 +111,18 @@ class BotEngine:
 
         logger.info(f"SIGNAL DETECTED: {symbol} -> {signal['side']} (Conf: {signal['confidence']}%)")
 
-        # --- B. BİLDİRİM KATMANI (EXECUTION YOK) ---
-        # Sinyali Telegram'a gönder
-        await self.notifier.send_signal(signal)
+        # 2. İCRA KATMANI (SANAL CÜZDAN)
+        # Sinyali Paper Trader'a gönder, o karar versin (Bakiye var mı? Pozisyon var mı?)
+        trade_executed = self.paper_trader.execute_trade(signal)
         
-        logger.info(f"📨 TELEGRAM REPORT SENT: {signal['side']} {symbol}")
+        # 3. BİLDİRİM KATMANI
+        # Eğer işlem gerçekten yapıldıysa Telegram at
+        if trade_executed:
+            await self.notifier.send_signal(signal)
+            logger.info(f"✅ PAPER TRADE EXECUTED: {signal['side']} {symbol}")
+        else:
+            # İşlem açılmadıysa (Bakiye yetersiz veya zaten pozisyon var) log düş
+            logger.info(f"⏸️ Signal Valid but Trade Skipped (Already Open/No Balance): {symbol}")
 
     async def stop(self):
         """Güvenli Kapatma"""
