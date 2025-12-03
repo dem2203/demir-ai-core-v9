@@ -14,20 +14,21 @@ from src.utils.notifications import NotificationManager
 from src.execution.paper_trader import PaperTrader 
 from src.core.risk_manager import RiskManager
 from src.brain.strategy_selector import StrategySelector
-from src.execution.hedge_manager import HedgeManager 
+from src.execution.hedge_manager import HedgeManager
+from src.brain.anomaly_detector import AnomalyDetector
+from src.utils.alert_manager import AlertManager 
 
 logger = logging.getLogger("DEMIR_AI_CORE_ENGINE")
 
 class BotEngine:
     """
-    DEMIR AI v20.0 - INSTITUTIONAL ENGINE
+    DEMIR AI v22.0 - OPPORTUNITY HUNTER ENGINE
     
     Features:
-    1. Multi-Asset & Multi-Exchange (Binance, Bybit, Coinbase)
-    2. Hybrid Intelligence (LSTM + RL + Macro + Fractal + Whale Detection)
-    3. Advisory Mode + Multi-Channel Alerts (Telegram/Discord/Email)
-    4. Adaptive Strategy Switching & Position Hedging
-    5. Fault Tolerance & Zero-Mock Architecture
+    1. Real-Time Anomaly Detection
+    2. Order Flow Imbalance Monitoring
+    3. Funding Rate Divergence Alerts
+    4. All previous institutional features
     """
     
     def __init__(self):
@@ -56,6 +57,10 @@ class BotEngine:
         # 6. PHASE 4B: Adaptive Strategy & Hedging
         self.strategy_selector = StrategySelector()
         self.hedge_manager = HedgeManager()
+        
+        # 7. PHASE 6: Opportunity Hunter
+        self.anomaly_detectors = {}  # One per symbol
+        self.alert_manager = AlertManager()
         
         logger.info("✅ All Sub-systems Initialized Successfully.")
 

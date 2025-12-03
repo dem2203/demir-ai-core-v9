@@ -16,6 +16,7 @@ class OrderBookAnalyzer:
     
     WHALE_THRESHOLD_USD = 1_000_000  # $1M+ orders are "whale walls"
     DEPTH_LIMIT = 100  # How many price levels to fetch
+    IMBALANCE_THRESHOLD_USD = 5_000_000  # $5M imbalance triggers alert
     
     def __init__(self):
         self.exchange = None
@@ -25,6 +26,7 @@ class OrderBookAnalyzer:
             'enableRateLimit': True,
             'options': {'defaultType': 'future'}
         }
+        self.last_orderbook = None  # For flow calculation
     
     async def connect(self):
         try:
@@ -201,6 +203,49 @@ class OrderBookAnalyzer:
             'bid_volumes': bid_volumes.tolist(),
             'ask_volumes': ask_volumes.tolist()
         }
+    
+    def calculate_order_flow_imbalance(self, orderbook: Dict, current_price: float) -> Optional[Dict]:
+        """
+        Calculates buy/sell pressure from order book changes.
+        
+        Returns:
+            {
+                'bid_volume_usd': 123456,
+                'ask_volume_usd': 98765,
+                'net_flow_usd': 24691,  # positive = buy pressure
+                'imbalance_ratio': 1.25,  # bid/ask ratio
+                'is_significant': True
+            }
+        """
+        if not orderbook or 'bids' not in orderbook or 'asks' not in orderbook:
+            return None
+        
+        try:
+            # Calculate total bid/ask volume in USD
+            bid_volume_usd = sum([price * amount for price, amount in orderbook['bids'][:20]])  # Top 20 levels
+            ask_volume_usd = sum([price * amount for price, amount in orderbook['asks'][:20]])
+            
+            net_flow = bid_volume_usd - ask_volume_usd
+            imbalance_ratio = bid_volume_usd / ask_volume_usd if ask_volume_usd > 0 else 0
+            
+            # Significant if net flow > threshold
+            is_significant = abs(net_flow) > self.IMBALANCE_THRESHOLD_USD
+            
+            if is_significant:
+                direction = "BULLISH" if net_flow > 0 else "BEARISH"
+                logger.warning(f"📈 ORDER FLOW IMBALANCE: {direction} | Net: ${net_flow/1e6:.2f}M | Ratio: {imbalance_ratio:.2f}")
+            
+            return {
+                'bid_volume_usd': bid_volume_usd,
+                'ask_volume_usd': ask_volume_usd,
+                'net_flow_usd': net_flow,
+                'imbalance_ratio': imbalance_ratio,
+                'is_significant': is_significant,
+                'direction': 'BUY' if net_flow > 0 else 'SELL'
+            }
+        except Exception as e:
+            logger.error(f"Order flow calculation error: {e}")
+            return None
     
     async def close(self):
         if self.exchange:
