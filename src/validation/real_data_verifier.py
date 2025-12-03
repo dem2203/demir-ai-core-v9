@@ -1,5 +1,24 @@
 import pandas as pd
 import numpy as np
+from datetime import datetime, timedelta
+import logging
+from typing import Dict, List, Union
+
+logger = logging.getLogger(__name__)
+
+class RealDataVerifier:
+    """
+    Gerçek Veri Doğrulayıcı.
+    Verinin zamansal ve fiziksel olarak gerçek dünya ile uyumlu olup olmadığını denetler.
+    """
+    
+    MAX_DATA_AGE = 3600  # 1 saat (Railway için çok esnek)
+    MIN_VOLATILITY_THRESHOLD = 0.000001  # Fiyat hiç oynamıyorsa şüphelidir
+
+    @staticmethod
+    def verify_market_data(data: Union[Dict, List[Dict]]) -> bool:
+        """
+        Gelen piyasa verisinin tutarlılığını kontrol eder.
         """
         # Liste gelirse son elemana bak (en güncel veri)
         if isinstance(data, list):
