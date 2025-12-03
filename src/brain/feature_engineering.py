@@ -249,3 +249,27 @@ class FeatureEngineer:
         except Exception as e:
             logger.error(f"FEATURE ENGINEERING CRITICAL FAIL: {e}")
             return None
+
+@staticmethod
+    def merge_crypto_and_macro(crypto_df: pd.DataFrame, macro_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        VERİ FÜZYONU: Kripto verisi ile Dünya Ekonomisi verisini birleştirir.
+        """
+        if macro_df is None or macro_df.empty:
+            return crypto_df
+
+        # Zaman damgasına göre en yakın eşleşmeyi bul (Merge asof)
+        # Kripto 7/24 açık, Borsa hafta içi açık. Bu yüzden 'nearest' eşleşme yapıyoruz.
+        crypto_df = crypto_df.sort_values('timestamp')
+        macro_df = macro_df.sort_values('timestamp')
+
+        merged_df = pd.merge_asof(
+            crypto_df, 
+            macro_df, 
+            on='timestamp', 
+            direction='backward' # Geçmişteki en son bilinen borsa verisini al
+        )
+        
+        # Boşlukları doldur
+        merged_df = merged_df.ffill().bfill()
+        return merged_df
