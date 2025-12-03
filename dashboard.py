@@ -6,7 +6,7 @@ import time
 
 # Sayfa Ayarları
 st.set_page_config(
-    page_title="DEMIR AI - Global Macro Command",
+    page_title="DEMIR AI - Strategic Command",
     page_icon="🦅",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -23,17 +23,15 @@ st.markdown("""
 st.title("🦅 DEMIR AI - Institutional Trading Terminal")
 st.caption("Deep Learning (LSTM) • Global Macro Fusion • Sentiment Free")
 
-# Mevcut load_data fonksiyonunu sil ve bunu yapıştır:
+# Veri Okuma (Çökme Korumalı)
 def load_data():
     if os.path.exists("dashboard_data.json"):
         try:
             with open("dashboard_data.json", 'r') as f:
-                # Dosya boşsa hata verebilir, kontrol edelim
                 content = f.read()
                 if not content: return {} 
                 return json.loads(content)
-        except (json.JSONDecodeError, ValueError):
-            # Dosya o an yazılıyordur veya bozuktur, çökme, boş dön
+        except:
             return {}
     return {}
 
@@ -43,30 +41,39 @@ if st.button('🔄 Refresh System Data'):
 data = load_data()
 
 if not data:
-    st.info("📡 System is initializing... Waiting for Data Fusion (Crypto + Macro)...")
-    time.sleep(2)
+    st.info("📡 System is initializing... Waiting for Data Fusion...")
+    time.sleep(3)
     st.rerun()
 else:
-    # --- ÜST PANEL: KÜRESEL GÖSTERGELER (Macro) ---
+    # --- ÜST PANEL: KÜRESEL GÖSTERGELER ---
     st.markdown("### 🌍 Global Market Pulse")
     
-    # Veriyi al (Genelde BTC/USDT ana veri taşır)
-    main_info = list(data.values())[0]
+    # DÜZELTME BURADA: Rastgele ilk veriyi alma, BTC'yi bul.
+    btc_data = data.get("BTC/USDT", {})
+    
+    # Eğer BTC yoksa (henüz çekilmediyse) ilk veriyi al ama başlığına dikkat et
+    if not btc_data:
+        main_info = list(data.values())[0]
+        display_symbol = main_info['symbol']
+    else:
+        main_info = btc_data
+        display_symbol = "BTC/USDT"
     
     c1, c2, c3, c4 = st.columns(4)
     
     with c1:
-        st.metric("🇺🇸 DXY (Dollar Index)", f"{main_info.get('dxy', 0):.2f}", help="Dolar güçlenirse Kripto düşer.")
+        val = main_info.get('dxy', 0)
+        st.metric("🇺🇸 DXY (Dollar Index)", f"{val:.2f}" if val > 0 else "Loading...")
     
     with c2:
-        st.metric("😨 VIX (Fear Index)", f"{main_info.get('vix', 0):.2f}", help="Korku artarsa (20+) nakite geç.")
+        val = main_info.get('vix', 0)
+        st.metric("😨 VIX (Fear Index)", f"{val:.2f}" if val > 0 else "Loading...")
         
     with c3:
         price = main_info.get('price', 0)
-        st.metric("₿ BTC Price", f"${price:,.2f}")
+        st.metric(f"₿ {display_symbol} Price", f"${price:,.2f}")
 
     with c4:
-        # AI Güveni
         conf = main_info.get('ai_confidence', 0)
         decision = main_info.get('ai_decision', 'NEUTRAL')
         color = "off"
@@ -81,7 +88,6 @@ else:
     
     df_display = pd.DataFrame(data.values())
     
-    # Tabloyu düzenle
     st.dataframe(
         df_display[['symbol', 'price', 'ai_decision', 'ai_confidence', 'rsi', 'macd', 'trend', 'volatility']],
         use_container_width=True,
@@ -92,7 +98,6 @@ else:
                 min_value=0,
                 max_value=100,
             ),
-            "trend": st.column_config.TextColumn("Trend Status"),
         }
     )
 
@@ -100,7 +105,7 @@ else:
     st.markdown("### 🤖 AI Reasoning Engine")
     
     for symbol, info in data.items():
-        with st.expander(f"🔍 Inspect Logic: {symbol}", expanded=True):
+        with st.expander(f"🔍 Inspect Logic: {symbol}", expanded=False):
             col1, col2 = st.columns([1, 2])
             
             with col1:
@@ -113,10 +118,9 @@ else:
                     st.warning("NEUTRAL / UNCERTAIN")
             
             with col2:
-                # Mantık zinciri
                 factors = []
-                if info['dxy'] > 104: factors.append("⚠️ Strong Dollar (DXY > 104) is suppressing assets.")
-                if info['vix'] > 20: factors.append("⚠️ High Market Fear (VIX > 20).")
+                if info.get('dxy', 0) > 104: factors.append("⚠️ Strong Dollar (DXY > 104) is suppressing assets.")
+                if info.get('vix', 0) > 20: factors.append("⚠️ High Market Fear (VIX > 20).")
                 if info['rsi'] < 30: factors.append("✅ Technicals are Oversold (RSI < 30).")
                 if info['trend'] == "UP": factors.append("✅ Trend is technically Bullish.")
                 
