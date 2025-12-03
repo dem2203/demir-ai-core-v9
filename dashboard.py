@@ -21,20 +21,17 @@ st.markdown("""
 <style>
     .metric-card {background-color: #1e1e1e; padding: 15px; border-radius: 10px; border: 1px solid #333;} 
     .stMetric {text-align: center;}
-    .stDataFrame {font-size: 12px;}
 </style>
 """, unsafe_allow_html=True)
 
 st.title("🦅 DEMIR AI - Institutional Trading Terminal")
 
-# --- Yan Menü ---
 page = st.sidebar.radio("System Modules", [
     "📡 Live Dashboard", 
     "💼 Live Portfolio (Paper)", 
     "🧪 Backtest Lab (Time Machine)"
 ])
 
-# --- Veri Okuma Fonksiyonu ---
 def load_json(filename):
     if os.path.exists(filename):
         try:
@@ -46,13 +43,11 @@ def load_json(filename):
     return {}
 
 # ==========================================
-# SAYFA 1: CANLI PİYASA İZLEME (GÜNCELLENDİ)
+# SAYFA 1: CANLI PİYASA İZLEME
 # ==========================================
 if page == "📡 Live Dashboard":
     st.caption(f"Tracking Assets: {', '.join(Config.TARGET_COINS)}")
-    
-    if st.button('🔄 Refresh Market Data'):
-        st.rerun()
+    if st.button('🔄 Refresh Market Data'): st.rerun()
 
     data = load_json("dashboard_data.json")
 
@@ -61,8 +56,7 @@ if page == "📡 Live Dashboard":
         time.sleep(2)
         st.rerun()
     else:
-        # BTC Verisini Bul
-        main_symbol = Config.TARGET_COINS[0] 
+        main_symbol = Config.TARGET_COINS[0]
         btc_data = data.get(main_symbol)
         
         if btc_data:
@@ -73,7 +67,6 @@ if page == "📡 Live Dashboard":
             main_info = data[first_key]
             display_symbol = main_info['symbol']
         
-        # --- ÜST PANEL ---
         st.markdown("### 🌍 Global Market Pulse")
         c1, c2, c3, c4 = st.columns(4)
         
@@ -93,12 +86,8 @@ if page == "📡 Live Dashboard":
         c4.metric("🧠 AI Decision (LSTM)", dec, f"{conf:.1f}% Conviction", delta_color=color)
 
         st.markdown("---")
-
-        # --- ORTA PANEL (TABLO GÜNCELLENDİ) ---
         st.markdown("### 📊 Asset Analysis Board")
         df_display = pd.DataFrame(data.values())
-        
-        # 'regime' sütunu eklendi
         cols = ['symbol', 'price', 'ai_decision', 'ai_confidence', 'regime', 'rsi', 'trend']
         valid_cols = [c for c in cols if c in df_display.columns]
         
@@ -109,118 +98,100 @@ if page == "📡 Live Dashboard":
                 "ai_confidence": st.column_config.ProgressColumn(
                     "AI Conviction", format="%.1f%%", min_value=0, max_value=100
                 ),
-                "regime": st.column_config.TextColumn(
-                    "Market Regime",
-                    help="Trend: Yönlü Piyasa | Ranging: Yatay Piyasa | Volatile: Tehlikeli Piyasa"
-                ),
-                "price": st.column_config.NumberColumn("Price", format="$%.2f")
             }
         )
 
-        # --- ALT PANEL ---
         st.markdown("### 🤖 AI Reasoning Engine")
         for symbol, info in data.items():
             with st.expander(f"🔍 Inspect Logic: {symbol}", expanded=False):
-                col1, col2 = st.columns([1, 2])
-                with col1:
-                    st.write(f"**LSTM Model Prediction:**")
-                    decision = info.get('ai_decision', 'NEUTRAL')
-                    conf = info.get('ai_confidence', 0)
-                    if decision == "BUY": st.success(f"BULLISH ({conf:.1f}%)")
-                    elif decision == "SELL": st.error(f"BEARISH ({conf:.1f}%)")
-                    else: st.warning("NEUTRAL / UNCERTAIN")
-                    
-                    # Rejim Göstergesi
-                    regime = info.get('regime', 'UNKNOWN')
-                    st.info(f"📡 Detected Regime: **{regime}**")
-                
-                with col2:
-                    factors = []
-                    if info.get('dxy', 0) > 104: factors.append("⚠️ Strong Dollar (DXY > 104).")
-                    if info.get('vix', 0) > 20: factors.append("⚠️ High Market Fear (VIX > 20).")
-                    
-                    # Rejime göre yorum
-                    if "TRENDING" in regime: factors.append("✅ Market is Trending. Trend strategies active.")
-                    elif "RANGING" in regime: factors.append("⚠️ Market is Ranging (Choppy). AI is cautious.")
-                    elif "VOLATILE" in regime: factors.append("🚨 High Volatility detected. Defensive mode.")
-                    
-                    if not factors: st.write("Market is stable. Standard AI analysis active.")
-                    else: 
-                        for f in factors: st.write(f"- {f}")
-        
-        st.caption(f"Last Update: {main_info.get('timestamp', 'Unknown')}")
+                st.write(f"**LSTM Prediction:** {info.get('ai_decision')} ({info.get('ai_confidence'):.1f}%)")
+                st.info(f"Regime: {info.get('regime', 'UNKNOWN')}")
 
 # ==========================================
-# SAYFA 2: SANAL CÜZDAN
+# SAYFA 2: SANAL CÜZDAN (DÜZELTİLDİ)
 # ==========================================
 elif page == "💼 Live Portfolio (Paper)":
     st.header("💼 Active Paper Trading Portfolio")
-    st.caption("Gerçek para riske atılmadan yapılan canlı simülasyon sonuçları.")
     
-    if st.button('🔄 Refresh Portfolio'):
-        st.rerun()
+    if st.button('🔄 Refresh Portfolio'): st.rerun()
     
     portfolio = load_json("portfolio.json")
+    market_data = load_json("dashboard_data.json") # Canlı fiyatları buradan alacağız
     
     if not portfolio:
         st.warning("⚠️ No portfolio data found yet. Wait for the AI to execute the first trade.")
-        equity = 10000.0
-        balance = 10000.0
-        pnl = 0.0
     else:
-        equity = portfolio.get('equity', 0)
         balance = portfolio.get('balance', 0)
         start_bal = PaperTrader.INITIAL_BALANCE
-        pnl = equity - start_bal
-    
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Total Equity", f"${equity:,.2f}")
-    m2.metric("Available Cash", f"${balance:,.2f}")
-    pnl_color = "normal" if pnl >= 0 else "inverse"
-    m3.metric("Total PnL", f"${pnl:,.2f}", delta_color=pnl_color)
-    
-    st.markdown("---")
-    
-    st.subheader("🔓 Open Positions")
-    if portfolio and portfolio.get('positions'):
-        pos_list = []
-        for sym, data in portfolio['positions'].items():
-            row = data.copy()
-            row['symbol'] = sym
-            pos_list.append(row)
-        df_pos = pd.DataFrame(pos_list)
-        st.dataframe(
-            df_pos[['symbol', 'entry_price', 'current', 'amount', 'pnl', 'pnl_pct']],
-            use_container_width=True,
-            column_config={
-                "pnl": st.column_config.NumberColumn("PnL ($)", format="$%.2f"),
-                "pnl_pct": st.column_config.NumberColumn("PnL (%)", format="%.2f%%"),
-            }
-        )
-    else:
-        st.info("No open positions currently. AI is scanning for opportunities.")
         
-    st.subheader("📜 Trade History")
-    if portfolio and portfolio.get('history'):
-        df_hist = pd.DataFrame(portfolio['history'])
-        df_hist = df_hist.iloc[::-1]
-        st.dataframe(df_hist, use_container_width=True)
-    else:
-        st.caption("No completed trades yet.")
+        # Equity Hesapla (Nakit + Açık Pozisyon Değeri)
+        equity = balance
+        positions_data = []
+        
+        if portfolio.get('positions'):
+            for sym, pos in portfolio['positions'].items():
+                # Canlı fiyatı bul
+                current_price = pos['entry_price'] # Varsayılan (Veri yoksa giriş fiyatı)
+                if market_data and sym in market_data:
+                    current_price = market_data[sym]['price']
+                
+                market_val = pos['amount'] * current_price
+                equity += market_val
+                
+                unrealized_pnl = market_val - pos['cost']
+                pnl_pct = (unrealized_pnl / pos['cost']) * 100
+                
+                positions_data.append({
+                    "symbol": sym,
+                    "entry": pos['entry_price'],
+                    "current": current_price,
+                    "amount": pos['amount'],
+                    "cost": pos['cost'],
+                    "pnl": unrealized_pnl,
+                    "pnl_pct": pnl_pct
+                })
+        
+        pnl_total = equity - start_bal
+        
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Total Equity", f"${equity:,.2f}")
+        m2.metric("Available Cash", f"${balance:,.2f}")
+        m3.metric("Total PnL", f"${pnl_total:,.2f}", delta_color="normal" if pnl_total >= 0 else "inverse")
+        
+        st.markdown("---")
+        
+        st.subheader("🔓 Open Positions")
+        if positions_data:
+            df_pos = pd.DataFrame(positions_data)
+            st.dataframe(
+                df_pos[['symbol', 'entry', 'current', 'amount', 'pnl', 'pnl_pct']],
+                use_container_width=True,
+                column_config={
+                    "pnl": st.column_config.NumberColumn("PnL ($)", format="$%.2f"),
+                    "pnl_pct": st.column_config.NumberColumn("PnL (%)", format="%.2f%%"),
+                    "current": st.column_config.NumberColumn("Current Price", format="$%.2f"),
+                }
+            )
+        else:
+            st.info("No open positions currently.")
+            
+        st.subheader("📜 Trade History")
+        if portfolio.get('history'):
+            df_hist = pd.DataFrame(portfolio['history'])
+            st.dataframe(df_hist.iloc[::-1], use_container_width=True)
 
 # ==========================================
 # SAYFA 3: BACKTEST LAB
 # ==========================================
 elif page == "🧪 Backtest Lab (Time Machine)":
     st.header("⏳ Time Machine Simulation")
-    
     col1, col2, col3 = st.columns(3)
     with col1: symbol = st.selectbox("Select Asset", Config.TARGET_COINS)
     with col2: days = st.slider("Lookback Period (Days)", 7, 60, 30)
     with col3: start_bal = st.number_input("Starting Balance ($)", value=10000)
         
     if st.button("🚀 START SIMULATION"):
-        with st.spinner(f"AI is traveling {days} days back in time..."):
+        with st.spinner(f"AI is simulating {days} days..."):
             async def run_test():
                 bt = Backtester(initial_balance=start_bal)
                 return await bt.run_backtest(symbol, days)
@@ -230,19 +201,15 @@ elif page == "🧪 Backtest Lab (Time Machine)":
                 result = loop.run_until_complete(run_test())
                 if "error" in result: st.error(f"Backtest Failed: {result['error']}")
                 else:
-                    st.success("Simulation Complete!")
                     m1, m2, m3, m4 = st.columns(4)
                     roi = result['roi']
                     pnl = result['final_balance'] - start_bal
-                    roi_color = "normal" if roi >= 0 else "inverse"
-                    m1.metric("Net ROI", f"{roi:.2f}%", delta_color=roi_color)
+                    m1.metric("Net ROI", f"{roi:.2f}%")
                     m2.metric("Win Rate", f"{result['win_rate']:.1f}%")
-                    m3.metric("Total Trades", result['total_trades'])
-                    m4.metric("Net Profit", f"${pnl:,.2f}")
-                    st.metric("Final Wallet Balance", f"${result['final_balance']:,.2f}")
+                    m3.metric("Trades", result['total_trades'])
+                    m4.metric("Profit", f"${pnl:,.2f}")
                     if result['trades']:
                         trades_df = pd.DataFrame(result['trades'])
                         st.line_chart(trades_df[trades_df['action']=='SELL'].set_index('time')['balance'])
                         st.dataframe(trades_df)
-                    else: st.warning("No trades executed.")
             except Exception as e: st.error(f"Error: {e}")
