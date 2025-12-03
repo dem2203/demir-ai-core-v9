@@ -7,10 +7,12 @@ asyncio
 pandas
 numpy
 ccxt
-
-# --- AI & Machine Learning ---
 scikit-learn
 joblib
+yfinance  # <--- YENİ: DÜNYA PİYASALARI İÇİN
+
+# --- Deep Learning ---
+tensorflow
 
 # --- Dashboard ---
 streamlit
