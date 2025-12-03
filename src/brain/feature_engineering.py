@@ -7,13 +7,9 @@ logger = logging.getLogger("ULTIMATE_FEATURE_ENGINEERING")
 
 class FeatureEngineer:
     """
-    DEMIR AI V14.0 - FRACTAL INTELLIGENCE (FULL)
-    
-    Yenilik: Multi-Timeframe Analysis (MTF).
-    Tek zaman dilimine (1H) sıkışıp kalmak yerine, 4H trendi de hesaplar.
+    DEMIR AI V14.1 - CORRELATION AWARE
     """
 
-    # --- 1. MOMENTUM VE OSİLATÖRLER ---
     @staticmethod
     def calculate_rsi(data: pd.DataFrame, period: int = 14) -> pd.Series:
         delta = data['close'].diff()
@@ -45,7 +41,6 @@ class FeatureEngineer:
         mfi = 100 - (100 / (1 + (positive_mf / negative_mf)))
         return mfi
 
-    # --- 2. TREND VE VOLATİLİTE ---
     @staticmethod
     def calculate_adx(data: pd.DataFrame, period: int = 14) -> pd.Series:
         df = data.copy()
@@ -54,14 +49,12 @@ class FeatureEngineer:
         df['tr3'] = abs(df['low'] - df['close'].shift(1))
         df['tr'] = df[['tr1', 'tr2', 'tr3']].max(axis=1)
         df['atr'] = df['tr'].rolling(window=period).mean()
-
         df['up'] = df['high'] - df['high'].shift(1)
         df['down'] = df['low'].shift(1) - df['low']
         df['plus_dm'] = np.where((df['up'] > df['down']) & (df['up'] > 0), df['up'], 0)
         df['minus_dm'] = np.where((df['down'] > df['up']) & (df['down'] > 0), df['down'], 0)
         plus_di = 100 * (df['plus_dm'].rolling(window=period).mean() / df['atr'])
         minus_di = 100 * (df['minus_dm'].rolling(window=period).mean() / df['atr'])
-        
         di_sum = plus_di + minus_di
         di_sum = di_sum.replace(0, 1) 
         dx = 100 * abs(plus_di - minus_di) / di_sum
@@ -104,12 +97,10 @@ class FeatureEngineer:
         tp = (data['high'] + data['low'] + data['close']) / 3
         return (tp * v).cumsum() / v.cumsum()
 
-    # --- 3. İLERİ MATEMATİK ---
     @staticmethod
     def calculate_hurst_exponent(series: pd.Series, max_lag: int = 20) -> float:
         try:
             if len(series) < max_lag + 2: return 0.5
-            if series.std() == 0: return 0.5
             lags = range(2, max_lag)
             tau = [np.sqrt(np.std(np.subtract(series[lag:], series[:-lag]))) for lag in lags]
             if len(tau) < 2: return 0.5
@@ -124,7 +115,6 @@ class FeatureEngineer:
         body = np.abs(df['close'] - df['open'])
         range_len = df['high'] - df['low']
         range_len = range_len.replace(0, 0.0001)
-        
         df['is_doji'] = np.where(body <= (range_len * 0.1), 1, 0)
         df['is_hammer'] = np.where((np.minimum(df['close'], df['open']) - df['low']) >= (body * 2), 1, 0)
         df['is_engulfing'] = np.where(
@@ -138,7 +128,6 @@ class FeatureEngineer:
         high = df['high'].shift(1)
         low = df['low'].shift(1)
         close = df['close'].shift(1)
-        
         pivot = (high + low + close) / 3
         r1 = (2 * pivot) - low
         s1 = (2 * pivot) - high
@@ -146,47 +135,49 @@ class FeatureEngineer:
         s2 = pivot - (high - low)
         return pd.DataFrame({'pivot': pivot, 'r1': r1, 's1': s1, 'r2': r2, 's2': s2})
 
-    # --- 4. YENİ: MULTI-TIMEFRAME (4H TREND) ---
     @staticmethod
     def calculate_4h_trend(df: pd.DataFrame) -> pd.Series:
-        """
-        1 Saatlik veriyi 4 Saatliğe çevirir (Resample),
-        4H üzerindeki EMA50 ve EMA200'e bakar ve trendi belirler.
-        Sonra bu veriyi tekrar 1H verisine yayar.
-        """
         try:
-            # Geçici kopyalama ve zaman indeksleme
             temp_df = df.copy()
             temp_df['timestamp'] = pd.to_datetime(temp_df['timestamp'], unit='ms')
             temp_df.set_index('timestamp', inplace=True)
-            
-            # 4H Resampling (OHLC mantığıyla)
-            df_4h = temp_df.resample('4h').agg({
-                'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
-            })
-            
-            # 4H Trend İndikatörleri (EMA 50 ve 200)
+            df_4h = temp_df.resample('4h').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'})
             df_4h['ema_50'] = df_4h['close'].ewm(span=50, adjust=False).mean()
             df_4h['ema_200'] = df_4h['close'].ewm(span=200, adjust=False).mean()
             
-            # Trend Kararı: Fiyat > EMA50 > EMA200 ise GÜÇLÜ BOĞA
             conditions = [
                 (df_4h['close'] > df_4h['ema_50']) & (df_4h['ema_50'] > df_4h['ema_200']),
                 (df_4h['close'] < df_4h['ema_50']) & (df_4h['ema_50'] < df_4h['ema_200'])
             ]
-            choices = [1, -1] # 1: Bullish, -1: Bearish, 0: Neutral
+            choices = [1, -1]
             df_4h['trend_4h_val'] = np.select(conditions, choices, default=0)
-            
-            # 1H verisine geri yayma (Upsample & Forward Fill)
-            # Orijinal indeks ile eşleştir
             merged = temp_df.join(df_4h['trend_4h_val'], how='left')
-            merged['trend_4h_val'] = merged['trend_4h_val'].ffill() # Son 4H değeri neyse, şimdiki 1H de odur.
-            
+            merged['trend_4h_val'] = merged['trend_4h_val'].ffill()
             return merged['trend_4h_val'].values
         except Exception:
-            return pd.Series(0, index=df.index) # Hata olursa Nötr dön
+            return pd.Series(0, index=df.index)
 
-    # --- 5. VERİ FÜZYONU ---
+    # --- YENİ: KORELASYON MATRİSİ ---
+    @staticmethod
+    def calculate_correlations(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Bitcoin'in diğer makro varlıklarla (SPX, DXY) olan 60 mumluk korelasyonunu hesaplar.
+        """
+        corrs = pd.DataFrame(index=df.index)
+        
+        if 'macro_SPX' in df.columns:
+            corrs['corr_spx'] = df['close'].rolling(60).corr(df['macro_SPX'])
+        else:
+            corrs['corr_spx'] = 0
+            
+        if 'macro_DXY' in df.columns:
+            corrs['corr_dxy'] = df['close'].rolling(60).corr(df['macro_DXY'])
+        else:
+            corrs['corr_dxy'] = 0
+            
+        return corrs
+
+    # --- ANA İŞLEMCİ (FÜZYON) ---
     @staticmethod
     def merge_crypto_and_macro(crypto_df: pd.DataFrame, macro_df: pd.DataFrame) -> pd.DataFrame:
         if macro_df is None or macro_df.empty: return crypto_df
@@ -194,9 +185,13 @@ class FeatureEngineer:
         macro_df = macro_df.sort_values('timestamp')
         merged_df = pd.merge_asof(crypto_df, macro_df, on='timestamp', direction='backward')
         merged_df = merged_df.ffill().bfill()
+        
+        # Korelasyonu Veri Birleştikten Sonra Hesapla
+        corrs = FeatureEngineer.calculate_correlations(merged_df)
+        merged_df = pd.concat([merged_df, corrs], axis=1)
+        
         return merged_df
 
-    # --- ANA İŞLEMCİ ---
     @classmethod
     def process_data(cls, raw_data: List[Dict]) -> Optional[pd.DataFrame]:
         if not raw_data: return None
@@ -205,7 +200,6 @@ class FeatureEngineer:
             cols = ['open', 'high', 'low', 'close', 'volume']
             df[cols] = df[cols].astype(float)
 
-            # İndikatörler
             df['rsi'] = cls.calculate_rsi(df)
             macd, macd_signal = cls.calculate_macd(df)
             df['macd'] = macd
@@ -214,23 +208,17 @@ class FeatureEngineer:
             df['adx'] = cls.calculate_adx(df)
             df['atr'] = cls.calculate_atr(df)
             df['mfi'] = cls.calculate_mfi(df)
-            
             ichi = cls.calculate_ichimoku(df)
             df = pd.concat([df, ichi], axis=1)
-            
             df['bb_width'] = cls.calculate_bollinger_width(df)
             df['vwap'] = cls.calculate_vwap(df)
             df['z_score'] = cls.calculate_z_score(df['close'])
             df['log_ret'] = np.log(df['close'] / df['close'].shift(1))
             df['hurst'] = df['close'].rolling(window=100).apply(lambda x: cls.calculate_hurst_exponent(x))
-            
             patterns = cls.detect_patterns(df)
             df = pd.concat([df, patterns], axis=1)
-
             pivots = cls.calculate_pivots(df)
             df = pd.concat([df, pivots], axis=1)
-
-            # YENİ: 4 Saatlik Trendi Ekle
             df['trend_4h'] = cls.calculate_4h_trend(df)
 
             for lag in [1, 2, 3, 5, 8]:
