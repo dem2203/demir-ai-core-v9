@@ -9,11 +9,16 @@ numpy
 ccxt
 scikit-learn
 joblib
-pandas_datareader  # <--- BU ÇOK ÖNEMLİ (STOOQ İÇİN)
-yfinance           # (Yedek olarak kalsın ama kullanmayacağız)
+yfinance>=0.2.50
+pandas_datareader
 
-# --- Deep Learning ---
+# --- Deep Learning (LSTM) ---
 tensorflow
+
+# --- Reinforcement Learning (YENİ) ---
+stable-baselines3
+gymnasium
+shimmy>=0.2.1
 
 # --- Dashboard ---
 streamlit
