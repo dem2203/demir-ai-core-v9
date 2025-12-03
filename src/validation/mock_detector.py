@@ -13,7 +13,8 @@ class MockDataDetector:
 
     FORBIDDEN_KEYWORDS = [
         "mock", "fake", "test", "demo", "sample", "prototype", 
-        "fallback", "placeholder", "dummy", "simulation"
+        "fallback", "placeholder", "dummy", "simulation", "random",
+        "synthetic", "generated", "default"
     ]
 
     @staticmethod
@@ -47,9 +48,15 @@ class MockDataDetector:
 
         # 2. Kontrol: Mükemmel lineer artış (Örn: 100, 101, 102...)
         diffs = np.diff(arr)
-        if np.all(diffs == diffs[0]):
+        if np.all(np.isclose(diffs, diffs[0])):
             logger.critical("DATA INTEGRITY FAIL: Perfect linear progression detected. Data is likely synthetic.")
             return True
+            
+        # 3. Kontrol: Aşırı Düzenli (Tam sayı katları)
+        # Gerçek piyasada fiyatlar nadiren sürekli tam sayı artar
+        if np.all(np.mod(arr, 1) == 0) and len(arr) > 5:
+             # Kriptoda tam sayı fiyatlar olabilir (SHIB gibi değilse), ama hepsi tam sayı ise şüpheli
+             logger.warning("DATA WARNING: All prices are integers. Suspicious for crypto assets.")
 
         return False
 
@@ -65,6 +72,11 @@ class MockDataDetector:
         # Eğer veri bir DataFrame veya Fiyat Listesi ise istatistiksel kontrol yap
         if isinstance(data, pd.DataFrame) and 'close' in data.columns:
             if cls.is_statistically_artificial(data['close'].tolist()):
+                return True
+        
+        # Liste kontrolü (örn: [100, 101, 102])
+        if isinstance(data, list) and len(data) > 0 and isinstance(data[0], (int, float)):
+             if cls.is_statistically_artificial(data):
                 return True
                 
         return False

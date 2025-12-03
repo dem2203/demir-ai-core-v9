@@ -1,77 +1,86 @@
-import time
-from datetime import datetime, timezone
-from typing import Dict, Optional
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
 import logging
+from typing import Dict, List, Union
 
 logger = logging.getLogger(__name__)
 
 class RealDataVerifier:
     """
-    Gerçek Borsa Verisi Doğrulayıcı.
-    OHLCV (Mum) verilerini ve zaman damgalarını doğrular.
+    Gerçek Veri Doğrulayıcı.
+    Verinin zamansal ve fiziksel olarak gerçek dünya ile uyumlu olup olmadığını denetler.
     """
     
-    MAX_ALLOWED_LATENCY_SEC = 600  # Gecikme toleransı (Mum verisi olduğu için biraz daha esnek)
+    MAX_DATA_DELAY_SECONDS = 60 # 1 dakikadan eski veri 'bayat' kabul edilir
+    MIN_VOLATILITY_THRESHOLD = 0.000001 # Fiyat hiç oynamıyorsa şüphelidir
 
     @staticmethod
-    def verify_timestamp(timestamp_ms: int) -> bool:
+    def verify_market_data(data: Union[Dict, List[Dict]]) -> bool:
         """
-        Verinin zaman damgasını kontrol eder.
+        Gelen piyasa verisinin tutarlılığını kontrol eder.
         """
-        current_time_ms = int(time.time() * 1000)
-        
-        # Gelecekten gelen veri kontrolü
-        if timestamp_ms > current_time_ms + 60000: # 1 dk tolerans
-            logger.error(f"DATA ERROR: Timestamp is in the future! Server time sync issue?")
+        # Liste gelirse son elemana bak (en güncel veri)
+        if isinstance(data, list):
+            if not data: return False
+            latest = data[-1]
+        else:
+            latest = data
+
+        # 1. Zaman Damgası Kontrolü (Freshness Check)
+        timestamp = latest.get('timestamp')
+        if not timestamp:
+            logger.error("VALIDATION FAIL: Missing timestamp.")
             return False
             
+        try:
+            # Timestamp formatını anla (ISO veya Unix)
+            if isinstance(timestamp, (int, float)):
+                ts_time = datetime.fromtimestamp(timestamp / 1000 if timestamp > 1e11 else timestamp)
+            else:
+                ts_time = pd.to_datetime(timestamp)
+                
+            now = datetime.now()
+            delay = (now - ts_time).total_seconds()
+            
+            # Gelecekten gelen veri? (Saat hatası veya manipülasyon)
+            if delay < -5: 
+                logger.warning(f"VALIDATION WARNING: Data is from the future? ({delay}s). Clock sync issue possible.")
+                
+            # Çok eski veri?
+            if delay > RealDataVerifier.MAX_DATA_DELAY_SECONDS:
+                logger.error(f"VALIDATION FAIL: Data is stale. Delay: {delay:.2f}s > Limit: {RealDataVerifier.MAX_DATA_DELAY_SECONDS}s")
+                return False
+                
+        except Exception as e:
+            logger.error(f"VALIDATION ERROR: Timestamp parsing failed: {e}")
+            return False
+
+        # 2. Fiyat Tutarlılık Kontrolü (Zero Price Check)
+        price = float(latest.get('close', 0))
+        if price <= 0:
+            logger.critical(f"VALIDATION FAIL: Invalid price detected: {price}")
+            return False
+
+        # 3. Hacim Kontrolü (Opsiyonel ama iyi)
+        volume = float(latest.get('volume', -1))
+        if volume == 0:
+            logger.warning("VALIDATION WARNING: Volume is zero. Market might be closed or illiquid.")
+
         return True
 
     @staticmethod
-    def verify_candle_physics(candle: Dict) -> bool:
+    def verify_volatility(prices: List[float]) -> bool:
         """
-        Mum verisinin fiziksel olarak mantıklı olup olmadığını denetler.
-        Örn: High < Low olamaz. Fiyat negatif olamaz.
+        Fiyatların doğal bir oynaklığa sahip olup olmadığını kontrol eder.
         """
-        try:
-            o = float(candle['open'])
-            h = float(candle['high'])
-            l = float(candle['low'])
-            c = float(candle['close'])
-            
-            if any(p <= 0 for p in [o, h, l, c]):
-                logger.critical("CRITICAL: Negative or Zero price detected.")
-                return False
-                
-            if h < l:
-                logger.critical(f"PHYSICS FAIL: High ({h}) is lower than Low ({l})")
-                return False
-                
-            if not (l <= o <= h) or not (l <= c <= h):
-                 # Bazen çok küçük kaymalarda bu olabilir ama genel kural budur
-                 pass 
-
-            return True
-        except ValueError:
-            return False
-
-    @classmethod
-    def verify_market_data(cls, ticker_data: Dict) -> bool:
-        """
-        Gelen veri paketini denetler.
-        """
-        # ARTIK 'price' YERİNE 'close' ARIYORUZ
-        required_fields = ['symbol', 'timestamp', 'close', 'high', 'low']
+        if len(prices) < 10: return True # Yeterli veri yoksa geç
         
-        if not all(field in ticker_data for field in required_fields):
-            missing = [f for f in required_fields if f not in ticker_data]
-            logger.error(f"Data structure missing required fields: {missing}")
-            return False
-
-        if not cls.verify_timestamp(ticker_data['timestamp']):
+        pct_changes = pd.Series(prices).pct_change().dropna()
+        volatility = pct_changes.std()
+        
+        if volatility < RealDataVerifier.MIN_VOLATILITY_THRESHOLD:
+            logger.error(f"VALIDATION FAIL: Volatility too low ({volatility}). Looks like hardcoded data.")
             return False
             
-        if not cls.verify_candle_physics(ticker_data):
-            return False
-        
         return True

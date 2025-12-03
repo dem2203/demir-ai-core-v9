@@ -32,10 +32,13 @@ class BinanceConnector:
             logger.info("CONNECTED: Binance Markets Loaded.")
         except Exception as e:
             logger.critical(f"CONNECTION FAILED: {e}")
-            raise e
+            # Zero-Mock: Bağlantı yoksa None kalır, sahte bağlantı objesi oluşturulmaz.
+            self.exchange = None
 
     async def fetch_candles(self, symbol: str, timeframe: str = '1h', limit: int = 100) -> Optional[List[Dict]]:
         if not self.exchange: await self.connect()
+        if not self.exchange: return None # Bağlantı yoksa veri yok
+        
         try:
             ohlcv = await self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
             formatted_data = []
@@ -44,9 +47,15 @@ class BinanceConnector:
                     'symbol': symbol, 'timestamp': candle[0],
                     'open': float(candle[1]), 'high': float(candle[2]),
                     'low': float(candle[3]), 'close': float(candle[4]),
-                    'volume': float(candle[5])
+                    'volume': float(candle[5]),
+                    'source': 'binance'
                 }
                 formatted_data.append(data_point)
+            
+            # Gelen veriyi doğrula
+            if not SignalValidator.validate_incoming_data(formatted_data):
+                return None
+                
             return formatted_data
         except Exception as e:
             logger.error(f"Candle Fetch Error ({symbol}): {e}")
@@ -55,23 +64,27 @@ class BinanceConnector:
     async def fetch_futures_data(self, symbol: str) -> Dict:
         """
         Funding Rate ve Open Interest verilerini çeker.
-        Piyasadaki 'Kaldıraç Şişkinliğini' ölçmek için kritiktir.
         """
         if not self.exchange: await self.connect()
+        if not self.exchange: return {} # Boş dön, uydurma veri dönme
+        
         try:
-            # Funding Rate (Fonlama Oranı)
+            # Funding Rate
             funding = await self.exchange.fetch_funding_rate(symbol)
             fr = float(funding['fundingRate'])
             
-            # Open Interest (Açık Pozisyon Büyüklüğü - USDT cinsinden)
-            # Not: Bazı borsalarda 'openInterestValue' olmayabilir, kontrol edelim
+            # Open Interest
             oi_data = await self.exchange.fetch_open_interest(symbol)
             oi = float(oi_data.get('openInterestValue', 0))
             
             return {'funding_rate': fr, 'open_interest': oi}
         except Exception as e:
             logger.warning(f"Futures Data Error ({symbol}): {e}")
-            return {'funding_rate': 0.0, 'open_interest': 0.0}
+            # Hata durumunda 0 dönmek 'nötr' veri kabul edilebilir mi? 
+            # Zero-Mock kuralına göre, eğer veri yoksa analiz eksik kalmalı.
+            # Ancak kodun patlamaması için boş dict veya None dönmek daha iyi.
+            # Şimdilik boş dict dönüyoruz, analiz katmanı bunu "veri yok" olarak algılamalı.
+            return {}
 
     async def close(self):
         if self.exchange: await self.exchange.close()

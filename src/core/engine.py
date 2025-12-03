@@ -13,21 +13,16 @@ from src.utils.logger import setup_logger
 from src.utils.notifications import NotificationManager
 from src.execution.paper_trader import PaperTrader 
 
-# İleride Gerçek İşlem açmak istersek diye bu modülü pasif olarak tutuyoruz
-# from src.execution.order_manager import OrderManager 
-
 logger = logging.getLogger("DEMIR_AI_CORE_ENGINE")
 
 class BotEngine:
     """
-    DEMIR AI v13.0 - ENTERPRISE CORE ENGINE
-    
-    Bu motor, sistemin kalbidir. Tüm organları (Veri, Beyin, Cüzdan, İletişim) yönetir.
+    DEMIR AI v18.2 - ENTERPRISE CORE ENGINE
     
     YETENEKLER:
     1. Çoklu Varlık Yönetimi (BTC, ETH, LTC...)
     2. Hibrit Zeka Entegrasyonu (LSTM + RL + Makro)
-    3. Paper Trading (Sanal Cüzdan) Yönetimi
+    3. Advisory Mode (Sadece Sinyal, Otomatik İşlem Yok)
     4. Kesintisiz Çalışma (Fault Tolerance)
     """
     
@@ -48,11 +43,8 @@ class BotEngine:
         # 3. Bildirim Sistemi (Ses)
         self.notifier = NotificationManager()
         
-        # 4. İcra Sistemi (Eller - Sanal)
+        # 4. İcra Sistemi (Eller - Sanal/Advisory)
         self.paper_trader = PaperTrader()
-        
-        # 5. Gerçek İcra Sistemi (Şu an Devre Dışı - Future Use)
-        # self.real_trader = OrderManager()
         
         logger.info("✅ All Sub-systems Initialized Successfully.")
 
@@ -62,7 +54,7 @@ class BotEngine:
         """
         logger.info(f"🌍 ENVIRONMENT: {Config.ENVIRONMENT}")
         logger.info(f"🦅 ACTIVE STRATEGY: Hybrid Intelligence (LSTM + RL + Macro)")
-        logger.info(f"💼 TRADING MODE: PAPER TRADING (Simulated Wallet)")
+        logger.info(f"💼 TRADING MODE: ADVISORY (Signals Only)")
         
         # Borsa Bağlantılarını Başlat
         try:
@@ -72,14 +64,14 @@ class BotEngine:
             return # Bağlantı yoksa başlama
 
         # Telegram'a "Ben Başladım" mesajı at
-        await self.notifier.send_message_raw("🦅 **DEMIR AI ONLINE**\nSistem başlatıldı. Piyasa taranıyor...")
+        await self.notifier.send_message_raw("🦅 **DEMIR AI ONLINE**\nSistem başlatıldı. Piyasa taranıyor (Zero-Mock Mode).")
         
         self.is_running = True
         await self.run_forever()
 
     async def run_forever(self):
         """
-        Sonsuz Yaşam Döngüsü. Hata olsa bile (internet kopması vb.) kendini toparlar.
+        Sonsuz Yaşam Döngüsü.
         """
         error_count = 0
         
@@ -90,7 +82,7 @@ class BotEngine:
             try:
                 # Ana İşlem Bloğu
                 await self.process_market_cycle()
-                error_count = 0 # Başarılı turda hata sayacını sıfırla
+                error_count = 0 
                 
             except Exception as e:
                 error_count += 1
@@ -101,7 +93,7 @@ class BotEngine:
                     await self.notifier.send_message_raw("⚠️ **SİSTEM UYARISI:** Üst üste hata alındı. 5dk soğuma moduna geçiliyor.")
                     await asyncio.sleep(300)
                 else:
-                    await asyncio.sleep(5) # Kısa bekleme
+                    await asyncio.sleep(5) 
             
             # Döngü Süresi Kontrolü
             elapsed = (datetime.now() - start_time).total_seconds()
@@ -118,15 +110,13 @@ class BotEngine:
         Tek bir analiz turunun adımları.
         """
         # ADIM 1: Verileri Topla (Kripto + Makro)
-        # MarketDataManager artık 500 mumluk veriyi çekiyor.
         market_data_list = await self.data_manager.get_live_market_snapshot()
         
         if not market_data_list:
-            logger.warning("No market data received this cycle.")
+            logger.warning("No market data received this cycle. Waiting for next cycle.")
             return
 
         # ADIM 2: Cüzdan Durumunu Güncelle (Live Portfolio Dashboard için)
-        # Anlık fiyatları çekip PaperTrader'a bildiriyoruz ki "Total Equity" hesaplasın.
         current_prices = {}
         for data in market_data_list:
             if data and len(data) > 0:
@@ -134,7 +124,6 @@ class BotEngine:
                 price = data[-1]['close']
                 current_prices[symbol] = price
         
-        # Dashboard'daki 'Live Portfolio' sekmesi bu veriyi kullanır
         self.paper_trader.get_portfolio_status(current_prices)
         
         # ADIM 3: Her Coin İçin Analiz Yap (Paralel İşlem)
@@ -143,7 +132,6 @@ class BotEngine:
             if data:
                 tasks.append(self.analyze_and_execute(data))
             
-        # Tüm analizleri aynı anda çalıştır (Hız artışı)
         await asyncio.gather(*tasks)
 
     async def analyze_and_execute(self, ticker_data: List[dict]):
@@ -156,28 +144,24 @@ class BotEngine:
         symbol = ticker_data[0]['symbol']
         
         # --- BEYİN KATMANI (Brain Layer) ---
-        # MarketAnalyzer burada LSTM, RL ve Makro verileri birleştirip karar verir.
-        # Ayrıca Dashboard verisini (dxy, vix, prediction) JSON dosyasına yazar.
         signal = await self.analyzer.analyze_market(symbol, ticker_data)
         
-        # Eğer Nötr ise veya Güven yetersizse işlem yapma
         if not signal:
             return
 
         # Sinyal bulundu! Logla.
         logger.info(f"🎯 SIGNAL FOUND: {symbol} | {signal['side']} | Conf: {signal['confidence']:.2f}% | Reason: {signal.get('reason')}")
 
-        # --- İCRA KATMANI (Execution Layer) ---
-        # Paper Trader'a gönder. Bakiye yetiyorsa sanal işlem açar.
+        # --- İCRA KATMANI (Execution Layer - Advisory) ---
+        # Advisory modunda olduğumuz için sadece 'Paper Trade' yapıyoruz ve bildiriyoruz.
+        # Gerçek borsaya emir GİTMİYOR.
         trade_executed = self.paper_trader.execute_trade(signal)
         
         if trade_executed:
-            # İşlem başarılıysa Telegram'dan müjdeyi ver
             await self.notifier.send_signal(signal)
-            logger.info(f"✅ ACTION TAKEN: {signal['side']} {symbol} added to Portfolio.")
+            logger.info(f"✅ SIGNAL BROADCASTED: {signal['side']} {symbol}")
         else:
-            # Bakiye yetersiz veya zaten pozisyon var
-            logger.info(f"⏸️ ACTION SKIPPED: {symbol} (Already in position or Insufficient Funds)")
+            logger.info(f"⏸️ SIGNAL SKIPPED: {symbol} (Already in position or Insufficient Funds)")
 
     async def stop(self):
         """Sistemi güvenli kapatır."""

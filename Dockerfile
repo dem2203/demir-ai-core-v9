@@ -1,17 +1,25 @@
-# Hafif Python sürümü
 FROM python:3.11-slim
 
-# Çalışma dizini
 WORKDIR /app
 
-# Dosyaları kopyala
-COPY . .
+# Sistem bağımlılıkları
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    && rm -rf /var/lib/apt/lists/*
 
-# Kütüphaneleri yükle
+# Python bağımlılıkları
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# start.sh dosyasına "Çalıştırılma İzni" ver (Çok Önemli!)
+# Kodları kopyala
+COPY . .
+
+# Çalıştırma izni
 RUN chmod +x start.sh
 
-# Çift motoru başlat
+# Port
+EXPOSE 8501
+
+# Başlat
 CMD ["./start.sh"]

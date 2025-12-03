@@ -1,15 +1,15 @@
 #!/bin/bash
 
-# Railway'den gelen PORT'u al, yoksa 8501 yap
-PORT="${PORT:-8501}"
+# Railway Deployment Script
 
-echo "-----------------------------------"
-echo "🚀 DEMIR AI SYSTEM STARTING..."
-echo "🔌 PORT DETECTED: $PORT"
-echo "-----------------------------------"
+echo ">> 🚀 STARTING DEMIR AI CORE v9.0"
+echo ">> Environment: $ENVIRONMENT"
 
-# 1. Botu Arka Planda Başlat (& işareti ile)
-python main.py &
+# 1. Streamlit Dashboard'ı Arka Planda Başlat
+echo ">> 📡 Launching Dashboard..."
+streamlit run dashboard.py --server.port $PORT --server.address 0.0.0.0 --server.headless true &
 
-# 2. Dashboard'u Ön Planda Başlat (Railway Portuna Bağla)
-streamlit run dashboard.py --server.port $PORT --server.address 0.0.0.0
+# 2. Ana Bot Motorunu Başlat
+# Bot, dashboard'un veri okuyabilmesi için JSON dosyaları üretir.
+echo ">> 🧠 Launching AI Engine..."
+python main.py

@@ -16,7 +16,7 @@ class SignalValidator:
     """
 
     @staticmethod
-    def validate_incoming_data(data: Dict) -> bool:
+    def validate_incoming_data(data: Any) -> bool:
         """
         Borsadan gelen ham veriyi denetler.
         """
@@ -37,8 +37,14 @@ class SignalValidator:
         """
         Botun ürettiği emri borsaya göndermeden önce denetler.
         """
+        # 1. Sinyal Mantık Kontrolü
         if not SignalIntegrityChecker.check_signal_logic(signal):
             logger.error("BLOCKED: Signal logic is flawed. Execution aborted.")
+            return False
+            
+        # 2. Sinyal İçeriğinde Mock Veri Var mı?
+        if MockDataDetector.validate(signal):
+            logger.critical("BLOCKED: Generated signal contains mock data patterns.")
             return False
             
         logger.info(f"VALIDATION SUCCESS: Signal {signal.get('symbol')} verified.")

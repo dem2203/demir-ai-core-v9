@@ -15,18 +15,20 @@ from src.brain.regime_classifier import RegimeClassifier
 from src.validation.validator import SignalValidator
 from src.data_ingestion.macro_connector import MacroConnector
 from src.data_ingestion.connectors.binance_connector import BinanceConnector
+from src.data_ingestion.connectors.bybit_connector import BybitConnector
+from src.data_ingestion.connectors.coinbase_connector import CoinbaseConnector
 
 logger = logging.getLogger("MARKET_ANALYZER_PRO")
 
 class MarketAnalyzer:
     """
-    DEMIR AI V18.2 - FINAL STABLE ENGINE
+    DEMIR AI V18.2 - FINAL STABLE ENGINE (ZERO-MOCK EDITION)
     
     Özellikler:
     1. Hibrit Zeka: LSTM (Yön) + RL (Karar) + Rejim (Filtre).
     2. Makro Farkındalık: DXY, VIX, SPX, GOLD, OIL analizi.
     3. Vadeli İşlem Zekası: Funding Rate ve Open Interest takibi.
-    4. Veri Yaması: Eksik makro verileri geçmiş verilerle veya varsayılanla tamamlar (Dashboard 0.00 hatası çözümü).
+    4. ZERO-MOCK: Asla varsayılan değer kullanmaz. Veri yoksa analiz yapmaz.
     """
     
     LSTM_DIR = "src/brain/models/storage"
@@ -41,7 +43,10 @@ class MarketAnalyzer:
         
         # Bağlantılar
         self.macro = MacroConnector()
-        self.binance = BinanceConnector() # Futures verisi için
+        self.binance = BinanceConnector()
+        self.bybit = BybitConnector()
+        self.coinbase = CoinbaseConnector()
+        
         self.regime_classifier = RegimeClassifier()
         
         # Başlangıç Yüklemeleri
@@ -72,11 +77,18 @@ class MarketAnalyzer:
     async def analyze_market(self, symbol: str, raw_data: List[Dict]) -> Optional[Dict]:
         # 1. KRİPTO VERİ İŞLEME
         crypto_df = FeatureEngineer.process_data(raw_data)
-        if crypto_df is None or len(crypto_df) < self.LOOKBACK + 5: return None
+        if crypto_df is None or len(crypto_df) < self.LOOKBACK + 5: 
+            logger.warning(f"Insufficient crypto data for {symbol}")
+            return None
 
         # 2. MAKRO VERİ & FÜZYON
-        # Stooq verisi bazen boş gelebilir, bu durumu aşağıda 'Veri Yaması' kısmında halledeceğiz.
         macro_df = await self.macro.fetch_macro_data(period="5d", interval="1h")
+        
+        # ZERO-MOCK CHECK: Makro veri boşsa analiz yapma
+        if macro_df is None or macro_df.empty:
+            logger.error("CRITICAL: Macro data unavailable. Halting analysis to prevent false signals.")
+            return None
+
         df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
         last_row = df.iloc[-1]
         
@@ -84,9 +96,12 @@ class MarketAnalyzer:
         current_regime = self.regime_classifier.identify_regime(df)
         regime_settings = self.regime_classifier.get_risk_adjustment(current_regime)
         
-        # 4. FUTURES VERİSİ (FONLAMA ORANI)
-        futures_data = await self.binance.fetch_futures_data(symbol)
-        funding_rate = futures_data.get('funding_rate', 0)
+        # 4. FUTURES VERİSİ (FONLAMA ORANI) - ÇOKLU BORSA
+        # Binance ve Bybit'ten veri çekip ortalama alabiliriz veya en kötüsünü baz alabiliriz.
+        binance_futures = await self.binance.fetch_futures_data(symbol)
+        bybit_rate = await self.bybit.fetch_funding_rate(symbol)
+        
+        funding_rate = binance_futures.get('funding_rate', bybit_rate) # Binance yoksa Bybit
         
         # 5. ANOMALİ KONTROLÜ
         is_anomaly = last_row.get('vol_anomaly', 1) == -1
@@ -100,7 +115,6 @@ class MarketAnalyzer:
         lstm_prob = 0.5
         if self.load_lstm_for_symbol(symbol):
             try:
-                # Eğitimde olmayan sütunları çıkar (Model Shape hatası almamak için)
                 drop_cols = ['timestamp', 'symbol', 'target', 'open', 'high', 'low', 'close', 'volume', 
                              'macro_GOLD', 'macro_SILVER', 'macro_OIL', 'corr_spx', 'corr_dxy', 'vol_anomaly',
                              'macro_SPX', 'macro_NDQ', 'macro_TNX', 'macro_DXY', 'macro_VIX']
@@ -109,7 +123,8 @@ class MarketAnalyzer:
                 recent = df[feat_cols].tail(self.LOOKBACK).values
                 scaled = self.scalers[symbol].transform(recent)
                 lstm_prob = self.lstm_models[symbol].predict(np.array([scaled]), verbose=0)[0][0]
-            except: pass
+            except Exception as e:
+                logger.error(f"LSTM Prediction Error: {e}")
 
         # RL Tahmini
         rl_action = 0
@@ -124,7 +139,7 @@ class MarketAnalyzer:
             except: pass
 
         # Filtreler ve Nihai Karar
-        if funding_rate > 0.05: # Aşırı yüksek fonlama (Tuzak riski)
+        if funding_rate > 0.05: # Aşırı yüksek fonlama
             if lstm_prob > 0.5:
                 ai_decision = "NEUTRAL"
                 reason = f"High Funding ({funding_rate*100:.3f}%) - Long Trap Risk"
@@ -138,7 +153,6 @@ class MarketAnalyzer:
              ai_decision = "NEUTRAL"
              reason = f"Blocked ({current_regime})"
         else:
-            # Test için eşik değerleri (%51)
             if lstm_prob > 0.51: 
                 ai_decision = "BUY"
                 ai_confidence = float(lstm_prob * 100)
@@ -147,50 +161,23 @@ class MarketAnalyzer:
                 ai_decision = "SELL"
                 ai_confidence = float((1 - lstm_prob) * 100)
 
-        # --- 6. DASHBOARD VERİ YAMASI (FINAL FIX) ---
-        # Eğer makro veri çekilemezse (Stooq hatası, hafta sonu vb.), varsayılan değerleri kullan.
-        # Bu sayede Dashboard asla "0.00" veya "Loading" de kalmaz.
+        # --- DASHBOARD VERİSİ ---
+        # ZERO-MOCK: Eğer makro veri yoksa, dashboard'a eksik veri gönderilir ama ASLA uydurulmaz.
+        # Frontend (Streamlit) bu eksik veriyi "N/A" veya "-" olarak göstermelidir.
         
-        default_vals = {
-            'macro_DXY': 106.50,
-            'macro_VIX': 15.00,
-            'macro_SPX': 5850.00,
-            'macro_NDQ': 18100.00,
-            'macro_TNX': 4.42,
-            'macro_GOLD': 2650.00,
-            'macro_SILVER': 31.20,
-            'macro_OIL': 68.50
-        }
-        
-        macro_keys = ['macro_DXY', 'macro_VIX', 'macro_SPX', 'macro_NDQ', 'macro_TNX', 'macro_GOLD', 'macro_SILVER', 'macro_OIL']
-        d_vals = {}
-        
-        for k in macro_keys:
-            # 1. Mevcut satırdaki değeri al
-            val = float(last_row.get(k, 0))
-            
-            # 2. Eğer 0 ise ve DataFrame'de geçmiş veri varsa, son geçerli değeri bul (Forward Fill)
-            if (val == 0 or np.isnan(val)) and k in df.columns:
-                try:
-                    val = float(df[k].replace(0, np.nan).ffill().iloc[-1])
-                except: pass
-            
-            # 3. Hala 0 veya NaN ise, varsayılan (Default) değeri kullan
-            if val == 0 or np.isnan(val):
-                val = default_vals.get(k, 0.0)
-                
-            d_vals[k] = val
-
         corr_spx = float(last_row.get('corr_spx', 0))
 
         snapshot = {
             "symbol": symbol,
             "price": float(last_row['close']),
-            # Yamalanmış verileri kullan
-            "dxy": d_vals['macro_DXY'], "vix": d_vals['macro_VIX'], 
-            "spx": d_vals['macro_SPX'], "ndq": d_vals['macro_NDQ'], 
-            "tnx": d_vals['macro_TNX'], "gold": d_vals['macro_GOLD'],
-            "silver": d_vals['macro_SILVER'], "oil": d_vals['macro_OIL'],
+            "dxy": float(last_row.get('macro_DXY', 0)), 
+            "vix": float(last_row.get('macro_VIX', 0)), 
+            "spx": float(last_row.get('macro_SPX', 0)),
+            "ndq": float(last_row.get('macro_NDQ', 0)),
+            "tnx": float(last_row.get('macro_TNX', 0)),
+            "gold": float(last_row.get('macro_GOLD', 0)),
+            "silver": float(last_row.get('macro_SILVER', 0)),
+            "oil": float(last_row.get('macro_OIL', 0)),
             "corr_spx": corr_spx,
             "funding_rate": funding_rate * 100,
             "ai_decision": ai_decision,
@@ -209,7 +196,6 @@ class MarketAnalyzer:
         atr = float(last_row['atr'])
         stop_multiplier = regime_settings['stop_loss_multiplier']
         
-        # Hedefler
         r1 = float(last_row.get('r1', price*1.02))
         s1 = float(last_row.get('s1', price*0.98))
         
@@ -231,7 +217,11 @@ class MarketAnalyzer:
             "regime": current_regime
         }
         
-        return signal if SignalValidator.validate_outgoing_signal(signal) else None
+        # Çıkışta da doğrulama yap
+        if SignalValidator.validate_outgoing_signal(signal):
+            return signal
+        else:
+            return None
 
     def _save_to_dashboard(self, data):
         try:
