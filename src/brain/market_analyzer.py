@@ -52,10 +52,34 @@ class MarketAnalyzer:
         self.orderbook_analyzer = OrderBookAnalyzer()
         self.correlation_engine = CorrelationEngine()
         
+        # PHASE 7: True AI Decision Engine
+        self.state_builder = StateVectorBuilder()
+        
         self.regime_classifier = RegimeClassifier()
         
         # Başlangıç Yüklemeleri
         self.load_rl_agent()
+    
+    def get_lstm_prediction(self, symbol: str, df: pd.DataFrame) -> float:
+        """
+        Helper method to get LSTM prediction probability.
+        Returns 0.5 if model not available.
+        """
+        lstm_prob = 0.5
+        if self.load_lstm_for_symbol(symbol):
+            try:
+                drop_cols = ['timestamp', 'symbol', 'target', 'open', 'high', 'low', 'close', 'volume', 
+                             'macro_GOLD', 'macro_SILVER', 'macro_OIL', 'corr_spx', 'corr_dxy', 'vol_anomaly',
+                             'macro_SPX', 'macro_NDQ', 'macro_TNX', 'macro_DXY', 'macro_VIX',
+                             'hurst', 'vah', 'val', 'poc', 'atr_upper', 'atr_lower']
+                
+                feat_cols = [c for c in df.columns if c not in drop_cols]
+                recent = df[feat_cols].tail(self.LOOKBACK).values
+                scaled = self.scalers[symbol].transform(recent)
+                lstm_prob = self.lstm_models[symbol].predict(np.array([scaled]), verbose=0)[0][0]
+            except Exception as e:
+                logger.debug(f"LSTM prediction failed: {e}")
+        return lstm_prob
 
     def _get_lstm_paths(self, symbol):
         clean_sym = symbol.replace("/", "")
@@ -200,83 +224,119 @@ class MarketAnalyzer:
             ['SPX', 'NDQ', 'DXY']
         )
 
-        # --- KARAR MEKANİZMASI ---
+        # --- PHASE 7: TRUE AI DECISION ENGINE ---
+        # NO MORE HUMAN RULES - AI DECIDES EVERYTHING!
+        
+        # Get LSTM prediction
+        lstm_prob = self.get_lstm_prediction(symbol, df)
+        
+        # Build unified 42-dimension state vector
+        state_vector = self.state_builder.build(
+            lstm_output={
+                'prediction': lstm_prob,
+                'confidence': abs(lstm_prob - 0.5) * 2,
+                'trend_strength': abs(lstm_prob - 0.5) * 10
+            },
+            fractal_data={
+                '15m': 'BULLISH' if mtf_data.get('15m') is not None else 'NEUTRAL',
+                '1H': 'BULLISH' if mtf_data.get('1h') is not None else 'NEUTRAL',
+                '4H': 'BULLISH' if mtf_data.get('4h') is not None else 'NEUTRAL'
+            },
+            orderbook_data={
+                'whale_support': whale_support,
+                'whale_resistance': whale_resistance,
+                'flow_imbalance': orderbook_imbalance,
+                'bid_ask_ratio': orderbook_data.get('imbalance_ratio', 1.0) if orderbook_data else 1.0,
+                'depth_score': 0.5,
+                'current_price': float(last_row['close'])
+            },
+            correlation_data={
+                'btc_spx_corr': 0.0,  # TODO: extract from corr_matrix
+                'btc_dxy_corr': 0.0,
+                'corr_stability': 0.5,
+                'regime_shift': not corr_risk.get('safe_to_trade', True) if corr_risk else False
+            },
+            funding_data={
+                'binance_rate': funding_rate,
+                'bybit_rate': 0.0,
+                'divergence': 0.0
+            },
+            volatility_data={
+                'garch_forecast': 0.02,
+                'hurst': hurst,
+                'regime': current_regime,
+                'atr_position': 0.5,
+                'volume_profile_position': 0.5
+            },
+            anomaly_data={
+                'is_anomaly': False,
+                'volume_surge': 1.0,
+                'price_change_pct': 0.0
+            },
+            macro_data={
+                'dxy': float(last_row.get('macro_DXY', 100)),
+                'vix': float(last_row.get('macro_VIX', 20))
+            },
+            position_data={
+                'position': 0,
+                'days_in_position': 0,
+                'unrealized_pnl_pct': 0.0
+            },
+            performance_data={
+                'win_rate': 0.5,
+                'sharpe_ratio': 0.0,
+                'max_drawdown': 0.0
+            }
+        )
+        
+        # AI MAKES THE FINAL DECISION (replaces 100+ lines of if-then rules!)
         ai_decision = "NEUTRAL"
-        ai_confidence = 0.0
+        ai_confidence = 50.0
         reason = f"Regime: {current_regime}"
         
-        # LSTM Tahmini (1H)
-        lstm_prob = 0.5
-        if self.load_lstm_for_symbol(symbol):
-            try:
-                drop_cols = ['timestamp', 'symbol', 'target', 'open', 'high', 'low', 'close', 'volume', 
-                             'macro_GOLD', 'macro_SILVER', 'macro_OIL', 'corr_spx', 'corr_dxy', 'vol_anomaly',
-                             'macro_SPX', 'macro_NDQ', 'macro_TNX', 'macro_DXY', 'macro_VIX',
-                             'hurst', 'vah', 'val', 'poc', 'atr_upper', 'atr_lower']
-                
-                feat_cols = [c for c in df.columns if c not in drop_cols]
-                recent = df[feat_cols].tail(self.LOOKBACK).values
-                scaled = self.scalers[symbol].transform(recent)
-                lstm_prob = self.lstm_models[symbol].predict(np.array([scaled]), verbose=0)[0][0]
-            except: pass
-
-        # RL Tahmini
-        rl_action = 0
         if self.rl_agent:
             try:
-                drop_cols = ['timestamp', 'symbol', 'target', 'open', 'high', 'low']
-                obs_df = df.drop(columns=[c for c in drop_cols if c in df.columns], errors='ignore')
-                obs = obs_df.iloc[-1].values.astype(np.float32)
-                action, _ = self.rl_agent.predict(obs, deterministic=True)
+                # RL agent predicts using the unified state vector
+                action, _ = self.rl_agent.predict(state_vector, deterministic=True)
                 rl_action = int(action)
-            except: pass
-
-        # --- STRATEJİK MANTIK (FRACTAL EDITION) ---
-        
-        # Kural 1: Fractal Uyumsuzluk Varsa İşlem Yok (Disiplin)
-        if fractal_decision == "NEUTRAL":
-             ai_decision = "NEUTRAL"
-             reason = "Fractal Conflict (Timeframes disagree)"
-        
-        # Kural 2: Fractal + LSTM Onayı
-        elif fractal_decision == "BUY":
-            if lstm_prob > 0.55:
-                ai_decision = "BUY"
-                ai_confidence = (fractal_score + (lstm_prob * 100)) / 2
-                reason = "Fractal Confluence + LSTM Bullish"
-            else:
-                ai_decision = "NEUTRAL"
-                reason = "Fractal Buy but LSTM Bearish"
                 
-        elif fractal_decision == "SELL":
-            if lstm_prob < 0.45:
+                # Decode action: 0=SELL, 1=HOLD, 2=BUY
+                if rl_action == 2:
+                    ai_decision = "BUY"
+                    ai_confidence = 70.0 + (lstm_prob - 0.5) * 60  # Boosted by LSTM
+                    reason = "AI Agent: BUY Signal"
+                elif rl_action == 0:
+                    ai_decision = "SELL"
+                    ai_confidence = 70.0 + (0.5 - lstm_prob) * 60
+                    reason = "AI Agent: SELL Signal"
+                else:
+                    ai_decision = "NEUTRAL"
+                    ai_confidence = 30.0
+                    reason = "AI Agent: HOLD/WAIT"
+                
+                logger.info(f"🧠 AI DECISION: {ai_decision} (Confidence: {ai_confidence:.1f}%) | State dim: {state_vector.shape}")
+                
+            except Exception as e:
+                logger.error(f"RL prediction failed: {e}, falling back to LSTM")
+                # Fallback to LSTM-only if RL fails
+                if lstm_prob > 0.6:
+                    ai_decision = "BUY"
+                    ai_confidence = (lstm_prob - 0.5) * 200
+                    reason = "Fallback: LSTM Bullish"
+                elif lstm_prob < 0.4:
+                    ai_decision = "SELL"
+                    ai_confidence = (0.5 - lstm_prob) * 200
+                    reason = "Fallback: LSTM Bearish"
+        else:
+            # No RL agent - use LSTM as fallback
+            if lstm_prob > 0.6:
+                ai_decision = "BUY"
+                ai_confidence = (lstm_prob - 0.5) * 200
+                reason = "LSTM Only: Bullish"
+            elif lstm_prob < 0.4:
                 ai_decision = "SELL"
-                ai_confidence = (fractal_score + ((1-lstm_prob) * 100)) / 2
-                reason = "Fractal Confluence + LSTM Bearish"
-            else:
-                ai_decision = "NEUTRAL"
-                reason = "Fractal Sell but LSTM Bullish"
-        
-        # --- PHASE 4A: INSTITUTIONAL FILTERS ---
-        
-        # Filter 1: Order Book Check
-        if ai_decision == "BUY" and whale_resistance:
-            if float(last_row['close']) > whale_resistance * 0.99:  # Price near resistance
-                ai_decision = "NEUTRAL"
-                reason = f"Whale Resistance Wall at ${whale_resistance:,.0f}"
-                logger.warning(f"🐋 BUY SIGNAL BLOCKED: Whale resistance at ${whale_resistance:,.0f}")
-        
-        if ai_decision == "SELL" and whale_support:
-            if float(last_row['close']) < whale_support * 1.01:  # Price near support
-                ai_decision = "NEUTRAL"
-                reason = f"Whale Support Wall at ${whale_support:,.0f}"
-                logger.warning(f"🐋 SELL SIGNAL BLOCKED: Whale support at ${whale_support:,.0f}")
-        
-        # Filter 2: Correlation Risk Check
-        if ai_decision != "NEUTRAL" and not corr_risk.get('safe_to_trade', True):
-            ai_decision = "NEUTRAL"
-            reason = f"Correlation Risk: {corr_risk.get('risk_reason')}"
-            logger.warning(f"⚠️ SIGNAL BLOCKED: {corr_risk.get('risk_reason')}")
+                ai_confidence = (0.5 - lstm_prob) * 200
+                reason = "LSTM Only: Bearish"
 
         # --- DASHBOARD VERİSİ ---
         snapshot = {
