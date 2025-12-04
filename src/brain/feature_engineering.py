@@ -162,6 +162,15 @@ class FeatureEngineer:
             df['macd_signal'] = signal
             df['atr'] = cls.calculate_atr(df)
             
+            # Bollinger Bands (bb_width için gerekli)
+            bb_period = 20
+            bb_std = 2
+            df['bb_middle'] = df['close'].rolling(window=bb_period).mean()
+            bb_std_dev = df['close'].rolling(window=bb_period).std()
+            df['bb_upper'] = df['bb_middle'] + (bb_std_dev * bb_std)
+            df['bb_lower'] = df['bb_middle'] - (bb_std_dev * bb_std)
+            df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / df['bb_middle']  # Normalized width
+            
             # --- SUPERHUMAN KATMANI ---
             
             # 1. Hurst Exponent (Rolling)
