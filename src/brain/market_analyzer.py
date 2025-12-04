@@ -20,6 +20,7 @@ from src.data_ingestion.connectors.bybit_connector import BybitConnector
 from src.data_ingestion.connectors.coinbase_connector import CoinbaseConnector
 from src.data_ingestion.orderbook_analyzer import OrderBookAnalyzer
 from src.brain.correlation_engine import CorrelationEngine
+from src.brain.state_builder import StateVectorBuilder  # PHASE 7: True AI
 
 logger = logging.getLogger("MARKET_ANALYZER_PRO")
 
@@ -181,10 +182,17 @@ class MarketAnalyzer:
 
         # 2. MAKRO VERİ & FÜZYON
         macro_df = await self.macro.fetch_macro_data(period="5d", interval="1h")
+        
         if macro_df is None or macro_df.empty:
-            return None
-
-        df = FeatureEngineer.merge_crypto_and_macro(df_1h, macro_df)
+            logger.warning("⚠️ Macro data unavailable. Using crypto-only data.")
+            df = df_1h.copy()
+            # Add dummy macro columns to prevent errors
+            for col in ['macro_DXY', 'macro_VIX', 'macro_SPX', 'macro_NDQ', 'macro_TNX', 'macro_GOLD', 'macro_SILVER', 'macro_OIL']:
+                df[col] = 0.0
+            df['macro_DXY'] = 100.0  # Default DXY
+            df['macro_VIX'] = 20.0   # Default VIX
+        else:
+            df = FeatureEngineer.merge_crypto_and_macro(df_1h, macro_df)
         
         # 3. PİYASA REJİMİ
         current_regime = self.regime_classifier.identify_regime(df)
@@ -317,16 +325,16 @@ class MarketAnalyzer:
                 logger.info(f"🧠 AI DECISION: {ai_decision} (Confidence: {ai_confidence:.1f}%) | State dim: {state_vector.shape}")
                 
             except Exception as e:
-                logger.error(f"RL prediction failed: {e}, falling back to LSTM")
+                logger.error(f"RL prediction failed: {e}, using Secondary Model")
                 # Fallback to LSTM-only if RL fails
                 if lstm_prob > 0.6:
                     ai_decision = "BUY"
                     ai_confidence = (lstm_prob - 0.5) * 200
-                    reason = "Fallback: LSTM Bullish"
+                    reason = "Secondary: LSTM Bullish"
                 elif lstm_prob < 0.4:
                     ai_decision = "SELL"
                     ai_confidence = (0.5 - lstm_prob) * 200
-                    reason = "Fallback: LSTM Bearish"
+                    reason = "Secondary: LSTM Bearish"
         else:
             # No RL agent - use LSTM as fallback
             if lstm_prob > 0.6:

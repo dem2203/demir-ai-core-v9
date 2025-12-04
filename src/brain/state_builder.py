@@ -15,7 +15,7 @@ class StateVectorBuilder:
     This is the brain's "sensory input" - everything the AI knows about the market.
     """
     
-    STATE_DIM = 42  # Total dimensions
+    STATE_DIM = 37  # Total dimensions (Fixed from 42)
     
     def __init__(self):
         self.last_state = None
