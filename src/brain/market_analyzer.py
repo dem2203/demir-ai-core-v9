@@ -452,18 +452,115 @@ class MarketAnalyzer:
 
         # --- DASHBOARD VERİSİ ---
         
-        # Dynamic Confidence Calculation (composite from all signals)
-        signal_scores = []
-        if onchain_score != 0: signal_scores.append(abs(onchain_score) / 50)  # Normalize to 0-1
-        if liq_score != 0: signal_scores.append(abs(liq_score) / 50)
-        if fractal_score > 0: signal_scores.append(fractal_score / 100)
-        if tech_bias in ['STRONG_BULLISH', 'STRONG_BEARISH']: signal_scores.append(0.8)
-        elif tech_bias in ['BULLISH', 'BEARISH']: signal_scores.append(0.6)
+        # ========================================
+        # CONFLUENCE-BASED TRADING (3-5 trades/day)
+        # Sadece Technical + Pattern AYNI YÖNÜ gösterdiğinde işlem aç
+        # ========================================
         
-        # Calculate weighted confidence
-        if signal_scores:
-            avg_signal_confidence = sum(signal_scores) / len(signal_scores)
-            ai_confidence = max(30, min(95, 50 + avg_signal_confidence * 45))
+        # Sinyal Yönlerini Hesapla
+        tech_direction = 0  # -1: bearish, 0: neutral, 1: bullish
+        pattern_direction = 0
+        onchain_direction = 0
+        
+        # Technical Bias → Direction
+        if tech_bias in ['STRONG_BEARISH']:
+            tech_direction = -1
+        elif tech_bias in ['BEARISH']:
+            tech_direction = -0.5
+        elif tech_bias in ['STRONG_BULLISH']:
+            tech_direction = 1
+        elif tech_bias in ['BULLISH']:
+            tech_direction = 0.5
+        
+        # Pattern Bias → Direction
+        if pattern_bias in ['STRONG_BEARISH']:
+            pattern_direction = -1
+        elif pattern_bias in ['BEARISH']:
+            pattern_direction = -0.5
+        elif pattern_bias in ['STRONG_BULLISH']:
+            pattern_direction = 1
+        elif pattern_bias in ['BULLISH']:
+            pattern_direction = 0.5
+        
+        # On-Chain → Direction
+        if onchain_signal == 'SELL':
+            onchain_direction = -0.5
+        elif onchain_signal == 'BUY':
+            onchain_direction = 0.5
+        
+        # LSTM → Direction
+        lstm_direction = (lstm_prob - 0.5) * 2  # -1 to 1 range
+        
+        # ========================================
+        # CONFLUENCE SCORE HESAPLA
+        # ========================================
+        
+        # Ağırlıklar (Swing Trading için)
+        weights = {
+            'tech': 0.40,      # Technical en önemli
+            'pattern': 0.30,   # Pattern ikinci
+            'lstm': 0.20,      # LSTM üçüncü
+            'onchain': 0.10    # On-chain uzun vadeli, düşük ağırlık
+        }
+        
+        confluence_score = (
+            tech_direction * weights['tech'] +
+            pattern_direction * weights['pattern'] +
+            lstm_direction * weights['lstm'] +
+            onchain_direction * weights['onchain']
+        )
+        
+        # Uyum Skoru: Sinyallerin aynı yönü gösterme oranı
+        signals = [tech_direction, pattern_direction, lstm_direction]
+        bullish_count = sum(1 for s in signals if s > 0)
+        bearish_count = sum(1 for s in signals if s < 0)
+        
+        total_signals = len([s for s in signals if s != 0])
+        agreement_ratio = max(bullish_count, bearish_count) / total_signals if total_signals > 0 else 0
+        
+        # ========================================
+        # AI KARAR MANTIĞI (SWING TRADING)
+        # ========================================
+        
+        ai_decision = "NEUTRAL"
+        signal_quality = "WEAK"
+        
+        # GÜÇLÜ SELL: Technical + Pattern ikisi de bearish
+        if tech_direction < 0 and pattern_direction < 0:
+            if confluence_score < -0.30:
+                ai_decision = "SELL"
+                signal_quality = "STRONG" if agreement_ratio >= 0.66 else "MODERATE"
+            elif confluence_score < -0.15:
+                ai_decision = "SELL"
+                signal_quality = "MODERATE"
+        
+        # GÜÇLÜ BUY: Technical + Pattern ikisi de bullish
+        elif tech_direction > 0 and pattern_direction > 0:
+            if confluence_score > 0.30:
+                ai_decision = "BUY"
+                signal_quality = "STRONG" if agreement_ratio >= 0.66 else "MODERATE"
+            elif confluence_score > 0.15:
+                ai_decision = "BUY"
+                signal_quality = "MODERATE"
+        
+        # ÇELİŞKİLİ: Technical ve Pattern farklı yön → NEUTRAL (İşlem Yapma!)
+        # Bu durumda bile sinyal gücü yüksekse uyarı ver
+        elif tech_direction * pattern_direction < 0:
+            ai_decision = "NEUTRAL"
+            signal_quality = "CONFLICTING"
+        
+        # Dynamic Confidence Calculation
+        base_confidence = 50.0
+        if signal_quality == "STRONG":
+            ai_confidence = 80 + abs(confluence_score) * 20  # 80-100%
+        elif signal_quality == "MODERATE":
+            ai_confidence = 65 + abs(confluence_score) * 20  # 65-85%
+        elif signal_quality == "CONFLICTING":
+            ai_confidence = 40  # Düşük güven - çelişkili
+        else:
+            ai_confidence = 50 + abs(confluence_score) * 30  # 50-80%
+        
+        ai_confidence = max(30, min(95, ai_confidence))
         
         # Generate detailed reason
         reason_parts = []
@@ -472,7 +569,16 @@ class MarketAnalyzer:
         if onchain_signal != 'NEUTRAL': reason_parts.append(f"On-Chain: {onchain_signal}")
         if pattern_bias != 'NEUTRAL': reason_parts.append(f"Pattern: {pattern_bias}")
         
+        # Add quality indicator
+        if signal_quality == "STRONG":
+            reason_parts.append("⭐ STRONG SIGNAL")
+        elif signal_quality == "CONFLICTING":
+            reason_parts.append("⚠️ CONFLICTING")
+        
         reason = " | ".join(reason_parts) if reason_parts else f"Mixed signals - Regime: {current_regime}"
+        
+        # Log the decision
+        logger.info(f"🎯 CONFLUENCE: {ai_decision} ({signal_quality}) | Score: {confluence_score:.2f} | Agreement: {agreement_ratio:.0%}")
         
         snapshot = {
             "symbol": symbol,
