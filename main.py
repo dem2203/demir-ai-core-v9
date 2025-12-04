@@ -35,15 +35,16 @@ async def main():
             except Exception as e:
                 print(f">> ❌ LSTM Training Failed: {e}")
 
-    # --- 2. RL AJAN KONTROLÜ (Eğitimi Atlıyoruz - Çok uzun sürüyor) ---
+    # --- 2. RL AJAN KONTROLÜ (Arka planda eğitilecek) ---
     rl_trainer = RLTrainer()
     rl_model_path = rl_trainer.MODEL_PATH + ".zip"
     
+    rl_training_task = None
     if not os.path.exists(rl_model_path):
-        print(">> 🤖 RL Agent not found. Will use LSTM fallback until trained.")
-        print(">> ℹ️  To train RL manually: python -m src.brain.rl_trainer")
-        # RL eğitimi 10+ saat sürüyor, bu yüzden atlıyoruz
-        # Engine LSTM fallback ile çalışacak
+        print(">> 🤖 RL Agent not found. Training in BACKGROUND...")
+        # Arka planda eğitim başlat, Engine'i beklemesin
+        rl_training_task = asyncio.create_task(rl_trainer.train_agent("BTC/USDT"))
+        print(">> ✅ RL training started in background. Engine will use LSTM until ready.")
 
     # --- 3. BOTU BAŞLAT ---
     print(">> 🚀 All systems ready. Launching Engine.")
