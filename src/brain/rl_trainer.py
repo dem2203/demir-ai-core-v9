@@ -70,8 +70,13 @@ class RLTrainer:
             model = PPO("MlpPolicy", env, verbose=1)
         
         # Eğit
-        # Superhuman seviyesi için çok uzun eğitim gerekir ama şimdilik demo
-        model.learn(total_timesteps=50000)
+        # Railway'de hızlı eğitim: 10k timesteps (~2-3 dakika)
+        # Daha iyi sonuç için: 50k+ timesteps
+        FAST_MODE = True  # Railway için
+        timesteps = 10000 if FAST_MODE else 50000
+        
+        logger.info(f"🏋️ Training for {timesteps} timesteps (FAST_MODE={FAST_MODE})")
+        model.learn(total_timesteps=timesteps)
         
         # Kaydet
         if not os.path.exists("src/brain/models/storage"):

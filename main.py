@@ -5,7 +5,7 @@ from src.core.engine import BotEngine
 from src.utils.logger import setup_logger
 from src.config.settings import Config
 from src.brain.trainer import AITrainer as LSTMTrainer
-# RL eğitimi atlandı - çok uzun sürüyor (10+ saat)
+from src.brain.rl_trainer import RLTrainer  # RL Eğitim YENİDEN AKTİF!
 
 async def main():
     setup_logger()
@@ -35,10 +35,18 @@ async def main():
             except Exception as e:
                 print(f">> ❌ LSTM Training Failed: {e}")
 
-    # --- 2. RL EĞİTİMİ ATLANDI ---
-    # RL 10+ saat sürüyor, LSTM fallback yeterli.
-    # RL istenirse manuel eğitilir: python -m src.brain.rl_trainer
-    print(">> ℹ️ RL Agent: Skipped (LSTM predictions active)")
+    # --- 2. RL EĞİTİMİ (GERÇEK AI!) ---
+    rl_model_path = "src/brain/models/storage/rl_agent_v2_recurrent.zip"
+    if not os.path.exists(rl_model_path):
+        print(">> 🤖 RL Agent missing. Training TRUE AI Brain...")
+        try:
+            rl_trainer = RLTrainer()
+            await rl_trainer.train_agent(Config.TARGET_COINS[0])  # BTC ile eğit
+            print(">> ✅ RL Agent trained successfully!")
+        except Exception as e:
+            print(f">> ⚠️ RL Training Failed: {e}. Using LSTM fallback.")
+    else:
+        print(">> ✅ RL Agent already trained. Loading...")
 
 
     # --- 3. BOTU BAŞLAT ---

@@ -495,6 +495,10 @@ class MarketAnalyzer:
         # CONFLUENCE SCORE HESAPLA
         # ========================================
         
+        # ========================================
+        # CONFLUENCE SCORE HESAPLA (Reasoning için her zaman hesapla)
+        # ========================================
+        
         # Ağırlıklar (Swing Trading için)
         weights = {
             'tech': 0.40,      # Technical en önemli
@@ -519,66 +523,100 @@ class MarketAnalyzer:
         agreement_ratio = max(bullish_count, bearish_count) / total_signals if total_signals > 0 else 0
         
         # ========================================
-        # AI KARAR MANTIĞI (SWING TRADING)
+        # AI KARAR MANTIĞI (TRUE AI vs RULE BASED)
         # ========================================
         
         ai_decision = "NEUTRAL"
         signal_quality = "WEAK"
+        ai_confidence = 50.0
+        reason_parts = []
         
-        # GÜÇLÜ SELL: Technical + Pattern ikisi de bearish
-        if tech_direction < 0 and pattern_direction < 0:
-            if confluence_score < -0.30:
-                ai_decision = "SELL"
-                signal_quality = "STRONG" if agreement_ratio >= 0.66 else "MODERATE"
-            elif confluence_score < -0.15:
-                ai_decision = "SELL"
-                signal_quality = "MODERATE"
+        # 1. RL AGENT (TRUE AI) - ÖNCELİKLİ
+        if self.rl_agent:
+            try:
+                # RL agent predicts using the unified state vector
+                action, _ = self.rl_agent.predict(state_vector, deterministic=True)
+                rl_action = int(action)
+                
+                if rl_action == 2:
+                    ai_decision = "BUY"
+                    ai_confidence = 70.0 + (lstm_prob - 0.5) * 60
+                    reason_parts.append("🤖 RL Agent: BUY")
+                elif rl_action == 0:
+                    ai_decision = "SELL"
+                    ai_confidence = 70.0 + (0.5 - lstm_prob) * 60
+                    reason_parts.append("🤖 RL Agent: SELL")
+                else:
+                    ai_decision = "NEUTRAL"
+                    ai_confidence = 40.0
+                    reason_parts.append("🤖 RL Agent: WAIT")
+                
+                # RL kararını Confluence ile destekle (Confidence Boost)
+                if (ai_decision == "BUY" and confluence_score > 0.2) or \
+                   (ai_decision == "SELL" and confluence_score < -0.2):
+                    ai_confidence += 15
+                    signal_quality = "STRONG"
+                    reason_parts.append("⭐ Confluence Confirmed")
+                elif (ai_decision == "BUY" and confluence_score < -0.1) or \
+                     (ai_decision == "SELL" and confluence_score > 0.1):
+                    ai_confidence -= 20
+                    signal_quality = "CONFLICTING"
+                    reason_parts.append("⚠️ Confluence Disagrees")
+                
+                logger.info(f"🧠 TRUE AI DECISION: {ai_decision} | RL Action: {rl_action}")
+                
+            except Exception as e:
+                logger.error(f"RL Agent failed: {e}. Falling back to Confluence Logic.")
+                self.rl_agent = None # Fallback tetikle
         
-        # GÜÇLÜ BUY: Technical + Pattern ikisi de bullish
-        elif tech_direction > 0 and pattern_direction > 0:
-            if confluence_score > 0.30:
-                ai_decision = "BUY"
-                signal_quality = "STRONG" if agreement_ratio >= 0.66 else "MODERATE"
-            elif confluence_score > 0.15:
-                ai_decision = "BUY"
-                signal_quality = "MODERATE"
-        
-        # ÇELİŞKİLİ: Technical ve Pattern farklı yön → NEUTRAL (İşlem Yapma!)
-        # Bu durumda bile sinyal gücü yüksekse uyarı ver
-        elif tech_direction * pattern_direction < 0:
-            ai_decision = "NEUTRAL"
-            signal_quality = "CONFLICTING"
-        
-        # Dynamic Confidence Calculation
-        base_confidence = 50.0
-        if signal_quality == "STRONG":
-            ai_confidence = 80 + abs(confluence_score) * 20  # 80-100%
-        elif signal_quality == "MODERATE":
-            ai_confidence = 65 + abs(confluence_score) * 20  # 65-85%
-        elif signal_quality == "CONFLICTING":
-            ai_confidence = 40  # Düşük güven - çelişkili
-        else:
-            ai_confidence = 50 + abs(confluence_score) * 30  # 50-80%
-        
+        # 2. CONFLUENCE LOGIC (FALLBACK / INDICATOR MODE)
+        if not self.rl_agent:
+            # GÜÇLÜ SELL: Technical + Pattern ikisi de bearish
+            if tech_direction < 0 and pattern_direction < 0:
+                if confluence_score < -0.30:
+                    ai_decision = "SELL"
+                    signal_quality = "STRONG" if agreement_ratio >= 0.66 else "MODERATE"
+                elif confluence_score < -0.15:
+                    ai_decision = "SELL"
+                    signal_quality = "MODERATE"
+            
+            # GÜÇLÜ BUY: Technical + Pattern ikisi de bullish
+            elif tech_direction > 0 and pattern_direction > 0:
+                if confluence_score > 0.30:
+                    ai_decision = "BUY"
+                    signal_quality = "STRONG" if agreement_ratio >= 0.66 else "MODERATE"
+                elif confluence_score > 0.15:
+                    ai_decision = "BUY"
+                    signal_quality = "MODERATE"
+            
+            # ÇELİŞKİLİ
+            elif tech_direction * pattern_direction < 0:
+                ai_decision = "NEUTRAL"
+                signal_quality = "CONFLICTING"
+            
+            # Confidence Calculation for Fallback
+            if signal_quality == "STRONG":
+                ai_confidence = 80 + abs(confluence_score) * 20
+            elif signal_quality == "MODERATE":
+                ai_confidence = 65 + abs(confluence_score) * 20
+            elif signal_quality == "CONFLICTING":
+                ai_confidence = 40
+            else:
+                ai_confidence = 50 + abs(confluence_score) * 30
+            
+            reason_parts.append("Rule-Based Fallback")
+
         ai_confidence = max(30, min(95, ai_confidence))
         
         # Generate detailed reason
-        reason_parts = []
         if current_regime != 'UNKNOWN': reason_parts.append(f"Regime: {current_regime}")
         if tech_bias and tech_bias != 'NEUTRAL': reason_parts.append(f"Tech: {tech_bias}")
-        if onchain_signal != 'NEUTRAL': reason_parts.append(f"On-Chain: {onchain_signal}")
         if pattern_bias != 'NEUTRAL': reason_parts.append(f"Pattern: {pattern_bias}")
         
-        # Add quality indicator
-        if signal_quality == "STRONG":
-            reason_parts.append("⭐ STRONG SIGNAL")
-        elif signal_quality == "CONFLICTING":
-            reason_parts.append("⚠️ CONFLICTING")
-        
-        reason = " | ".join(reason_parts) if reason_parts else f"Mixed signals - Regime: {current_regime}"
+        reason = " | ".join(reason_parts)
         
         # Log the decision
-        logger.info(f"🎯 CONFLUENCE: {ai_decision} ({signal_quality}) | Score: {confluence_score:.2f} | Agreement: {agreement_ratio:.0%}")
+        logger.info(f"🎯 FINAL DECISION: {ai_decision} ({signal_quality}) | Conf: {ai_confidence:.1f}%")
         
         snapshot = {
             "symbol": symbol,
