@@ -56,6 +56,7 @@ st.caption("v23.0 | Zero-Mock | On-Chain Intel | Liquidation Hunter | Wyckoff | 
 # --- Yan Menü ---
 page = st.sidebar.radio("System Modules", [
     "📡 Live Market Intelligence", 
+    "🧠 Neural Brain Monitor",
     "💼 Advisory Portfolio", 
     "🧪 Backtest Lab",
     "⚙️ Strategy Optimizer"
@@ -278,6 +279,94 @@ if page == "📡 Live Market Intelligence":
                     if vol_sig != 'N/A':
                         vol_color = "🟢" if "BULLISH" in vol_sig else "🔴" if "DISTRIBUTION" in vol_sig else "🟡"
                         st.write(f"📊 Volume: {vol_color} **{vol_sig}**")
+
+# ==========================================
+# 2. NEURAL BRAIN MONITOR (Visual Intelligence)
+# ==========================================
+elif page == "🧠 Neural Brain Monitor":
+    st.header("🧠 Neural Brain Monitor")
+    st.caption("Visualizing the internal state of the Reinforcement Learning Agent.")
+    
+    if st.button('🔄 Refresh Brain State'): st.rerun()
+    
+    data = load_json("dashboard_data.json")
+    if not data:
+        st.warning("Waiting for Brain Data...")
+        st.stop()
+        
+    import plotly.graph_objects as go
+    
+    # Ana sembolü al
+    main_symbol = Config.TARGET_COINS[0]
+    info = data.get(main_symbol, {})
+    brain_state = info.get('brain_state', {})
+    
+    if not brain_state:
+        st.info("Brain State not initialized yet. Waiting for first RL decision...")
+    else:
+        c1, c2 = st.columns([1, 2])
+        
+        with c1:
+            st.markdown("### 🤖 Agent Status")
+            rl_action = brain_state.get('rl_action', -1)
+            
+            action_map = {0: "SELL", 1: "HOLD", 2: "BUY", -1: "SLEEPING"}
+            action_color = {0: "red", 1: "gray", 2: "green", -1: "gray"}
+            
+            st.markdown(f"""
+            <div style="text-align: center; padding: 20px; background-color: #161b22; border-radius: 10px; border: 2px solid {action_color.get(rl_action, 'gray')};">
+                <h1 style="color: {action_color.get(rl_action, 'gray')}; font-size: 48px; margin: 0;">{action_map.get(rl_action, 'UNKNOWN')}</h1>
+                <p style="color: #8b949e; margin-top: 10px;">Current RL Action</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("---")
+            st.metric("Confidence", f"{info.get('ai_confidence', 0):.1f}%")
+            st.metric("Confluence Score", f"{info.get('confluence_score', 0):.2f}") # Eğer varsa
+            
+        with c2:
+            st.markdown("### 🧠 Attention Map")
+            
+            # Radar Chart Verisi
+            categories = ['Technical', 'Pattern', 'LSTM Model', 'On-Chain']
+            values = [
+                brain_state.get('tech_attention', 0),
+                brain_state.get('pattern_attention', 0),
+                brain_state.get('lstm_attention', 0),
+                brain_state.get('onchain_attention', 0)
+            ]
+            
+            # Normalize (0-1 arası) - Görsel güzellik için mutlak değerlerin toplamına bölünebilir veya max'a
+            # Burada basitçe mutlak değerleri gösteriyoruz, zaten 0-0.5 arası genelde.
+            
+            fig = go.Figure()
+            
+            fig.add_trace(go.Scatterpolar(
+                r=values,
+                theta=categories,
+                fill='toself',
+                name='AI Focus',
+                line_color='#00ff00' if info.get('ai_decision') == 'BUY' else '#ff0000'
+            ))
+            
+            fig.update_layout(
+                polar=dict(
+                    radialaxis=dict(
+                        visible=True,
+                        range=[0, 0.5] # Tahmini max ağırlık
+                    ),
+                    bgcolor='#0e1117'
+                ),
+                paper_bgcolor='#0e1117',
+                font_color='#e0e0e0',
+                showlegend=False,
+                margin=dict(l=40, r=40, t=20, b=20)
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+        st.markdown("### 📝 Decision Logic Breakdown")
+        st.json(brain_state)
 
 # ==========================================
 # 2. SANAL CÜZDAN (Advisory Portfolio)

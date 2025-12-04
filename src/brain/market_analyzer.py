@@ -634,7 +634,14 @@ class MarketAnalyzer:
             "pivot": pivot_data.get('pivot', 0),
             "pivot_support": pivot_data.get('nearest_support', 0),
             "pivot_resistance": pivot_data.get('nearest_resistance', 0),
-            "timestamp": pd.Timestamp.now().isoformat()
+            "timestamp": pd.Timestamp.now().isoformat(),
+            "brain_state": {
+                "tech_attention": abs(tech_direction) * weights['tech'],
+                "pattern_attention": abs(pattern_direction) * weights['pattern'],
+                "lstm_attention": abs(lstm_direction) * weights['lstm'],
+                "onchain_attention": abs(onchain_direction) * weights['onchain'],
+                "rl_action": int(rl_action) if self.rl_agent and 'rl_action' in locals() else -1
+            }
         }
         self._save_to_dashboard(snapshot)
 
