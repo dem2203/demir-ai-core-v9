@@ -171,6 +171,20 @@ class FeatureEngineer:
             df['bb_lower'] = df['bb_middle'] - (bb_std_dev * bb_std)
             df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / df['bb_middle']  # Normalized width
             
+            # ADX (Average Directional Index) - Trend gücü ölçer
+            adx_period = 14
+            plus_dm = df['high'].diff()
+            minus_dm = df['low'].diff().abs() * -1
+            plus_dm[plus_dm < 0] = 0
+            minus_dm[minus_dm > 0] = 0
+            minus_dm = minus_dm.abs()
+            
+            tr = cls.calculate_atr(df) * adx_period  # True Range
+            plus_di = 100 * (plus_dm.rolling(window=adx_period).mean() / tr.replace(0, 1))
+            minus_di = 100 * (minus_dm.rolling(window=adx_period).mean() / tr.replace(0, 1))
+            dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di + 0.0001)
+            df['adx'] = dx.rolling(window=adx_period).mean().fillna(25)  # Default 25 (neutral)
+            
             # --- SUPERHUMAN KATMANI ---
             
             # 1. Hurst Exponent (Rolling)

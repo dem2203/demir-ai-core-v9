@@ -12,7 +12,7 @@ class RealDataVerifier:
     Verinin zamansal ve fiziksel olarak gerçek dünya ile uyumlu olup olmadığını denetler.
     """
     
-    MAX_DATA_AGE = 3600  # 1 saat (Railway için çok esnek)
+    MAX_DATA_AGE = 18000  # 5 saat (4h mumlar için yeterli)
     MIN_VOLATILITY_THRESHOLD = 0.000001  # Fiyat hiç oynamıyorsa şüphelidir
 
     @staticmethod
