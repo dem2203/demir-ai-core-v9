@@ -29,18 +29,31 @@ class NotificationManager:
             side_icon = "🟢 LONG 🚀" if signal['side'] == "BUY" else "🔴 SHORT 🔻"
             conf = signal['confidence']
             conf_icon = "⭐⭐⭐" if conf > 85 else ("⭐⭐" if conf > 70 else "⭐")
+            
+            # AI Detayları
+            source = signal.get('source', 'AI Model')
+            pattern = signal.get('pattern', 'None')
+            quality = signal.get('quality', 'Standard')
+            
+            # Kalite İkonu
+            q_icon = "💎" if quality == "STRONG" else ("⚠️" if quality == "CONFLICTING" else "⚡")
 
             message = (
                 f"{side_icon} **{signal['symbol']}**\n"
                 f"━━━━━━━━━━━━━━\n"
-                f"🤖 **AI Confidence:** {conf:.1f}% {conf_icon}\n"
-                f"📊 **Setup:** {signal.get('reason', 'AI Prediction Model')}\n"
+                f"🧠 **Decision:** {source}\n"
+                f"📊 **Confidence:** {conf:.1f}% {conf_icon}\n"
+                f"💎 **Quality:** {quality} {q_icon}\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"📐 **Pattern:** {pattern}\n"
+                f"📈 **Reason:** {signal.get('reason', 'N/A')}\n"
                 f"━━━━━━━━━━━━━━\n"
                 f"📍 **ENTRY:** ${signal['entry_price']:.4f}\n"
-                f"🎯 **TP (Target):** ${signal['tp_price']:.4f}\n"
-                f"🛡️ **SL (Stop):** ${signal['sl_price']:.4f}\n"
+                f"🎯 **TP:** ${signal['tp_price']:.4f}\n"
+                f"🛡️ **SL:** ${signal['sl_price']:.4f}\n"
+                f"💰 **Size:** {signal.get('kelly_size', 'N/A')}%\n"
                 f"━━━━━━━━━━━━━━\n"
-                f"⚠️ _Bu bir yatırım tavsiyesi değildir. Son karar sizindir._"
+                f"⚠️ _AI Decision based on RL & Confluence._"
             )
             
             await self.send_message_raw(message)
