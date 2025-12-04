@@ -22,6 +22,12 @@ from src.data_ingestion.orderbook_analyzer import OrderBookAnalyzer
 from src.brain.correlation_engine import CorrelationEngine
 from src.brain.state_builder import StateVectorBuilder  # PHASE 7: True AI
 
+# PHASE 8: AI Superpowers
+from src.brain.onchain_intel import OnChainIntelligence
+from src.brain.liquidation_hunter import LiquidationHunter
+from src.brain.pattern_engine import PatternRecognition
+from src.brain.adaptive_intel import AdaptiveIntelligence
+
 logger = logging.getLogger("MARKET_ANALYZER_PRO")
 
 class MarketAnalyzer:
@@ -55,6 +61,12 @@ class MarketAnalyzer:
         
         # PHASE 7: True AI Decision Engine
         self.state_builder = StateVectorBuilder()
+        
+        # PHASE 8: AI Superpowers
+        self.onchain_intel = OnChainIntelligence()
+        self.liquidation_hunter = LiquidationHunter()
+        self.pattern_engine = PatternRecognition()
+        self.adaptive_intel = AdaptiveIntelligence()
         
         self.regime_classifier = RegimeClassifier()
         
@@ -232,6 +244,61 @@ class MarketAnalyzer:
             ['SPX', 'NDQ', 'DXY']
         )
 
+        # --- PHASE 8: AI SUPERPOWERS ---
+        clean_symbol = symbol.replace('/', '')
+        
+        # 8.1 ON-CHAIN INTELLIGENCE (Whale tracking, exchange flow)
+        try:
+            onchain_data = await self.onchain_intel.get_full_onchain_analysis(clean_symbol)
+            onchain_signal = onchain_data.get('signal', 'NEUTRAL')
+            onchain_score = onchain_data.get('composite_score', 0)
+            logger.info(f"🐋 On-Chain: {onchain_signal} (Score: {onchain_score})")
+        except Exception as e:
+            logger.warning(f"On-chain analysis failed: {e}")
+            onchain_data = {}
+            onchain_signal = 'NEUTRAL'
+            onchain_score = 0
+        
+        # 8.2 LIQUIDATION HUNTER (Liq levels, funding, L/S ratio)
+        try:
+            liq_data = await self.liquidation_hunter.get_full_liquidation_analysis(clean_symbol)
+            liq_signal = liq_data.get('signal', 'NEUTRAL')
+            liq_score = liq_data.get('composite_score', 0)
+            magnet_price = liq_data.get('liquidation_levels', {}).get('magnet_price', 0)
+            logger.info(f"🎯 Liquidation: {liq_signal} (Score: {liq_score}) | Magnet: ${magnet_price:,.0f}")
+        except Exception as e:
+            logger.warning(f"Liquidation analysis failed: {e}")
+            liq_data = {}
+            liq_signal = 'NEUTRAL'
+            liq_score = 0
+            magnet_price = 0
+        
+        # 8.3 PATTERN RECOGNITION (Wyckoff, SMC, Structure)
+        try:
+            pattern_data = self.pattern_engine.get_full_pattern_analysis(df)
+            wyckoff_phase = pattern_data.get('wyckoff', {}).get('phase', 'UNKNOWN')
+            pattern_bias = pattern_data.get('final_bias', 'NEUTRAL')
+            structure = pattern_data.get('market_structure', {}).get('structure', 'UNKNOWN')
+            logger.info(f"📊 Pattern: Wyckoff={wyckoff_phase} | Bias={pattern_bias} | Structure={structure}")
+        except Exception as e:
+            logger.warning(f"Pattern analysis failed: {e}")
+            pattern_data = {}
+            wyckoff_phase = 'UNKNOWN'
+            pattern_bias = 'NEUTRAL'
+            structure = 'UNKNOWN'
+        
+        # 8.4 ADAPTIVE INTELLIGENCE (Regime, calibration)
+        try:
+            adaptive_regime = self.adaptive_intel.detect_regime(df)
+            adaptive_strategy = adaptive_regime.get('strategy', 'WAIT')
+            risk_multiplier = adaptive_regime.get('risk_multiplier', 1.0)
+            logger.info(f"🧠 Adaptive: Regime={adaptive_regime.get('regime')} | Strategy={adaptive_strategy}")
+        except Exception as e:
+            logger.warning(f"Adaptive analysis failed: {e}")
+            adaptive_regime = {}
+            adaptive_strategy = 'WAIT'
+            risk_multiplier = 1.0
+
         # --- PHASE 7: TRUE AI DECISION ENGINE ---
         # NO MORE HUMAN RULES - AI DECIDES EVERYTHING!
         
@@ -362,6 +429,17 @@ class MarketAnalyzer:
             "whale_resistance": whale_resistance if whale_resistance else 0,
             "orderbook_imbalance": orderbook_imbalance,
             "correlations": corr_risk.get('correlations', {}) if corr_risk else {},
+            # PHASE 8: New Superpowers
+            "onchain_signal": onchain_signal,
+            "onchain_score": onchain_score,
+            "liq_signal": liq_signal,
+            "liq_score": liq_score,
+            "magnet_price": magnet_price,
+            "wyckoff_phase": wyckoff_phase,
+            "pattern_bias": pattern_bias,
+            "market_structure": structure,
+            "adaptive_strategy": adaptive_strategy,
+            "risk_multiplier": risk_multiplier,
             "timestamp": pd.Timestamp.now().isoformat()
         }
         self._save_to_dashboard(snapshot)
