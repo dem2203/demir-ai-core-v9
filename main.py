@@ -35,16 +35,15 @@ async def main():
             except Exception as e:
                 print(f">> ❌ LSTM Training Failed: {e}")
 
-    # --- 2. RL AJAN EĞİTİM KONTROLÜ ---
+    # --- 2. RL AJAN KONTROLÜ (Eğitimi Atlıyoruz - Çok uzun sürüyor) ---
     rl_trainer = RLTrainer()
     rl_model_path = rl_trainer.MODEL_PATH + ".zip"
     
     if not os.path.exists(rl_model_path):
-        print(">> 🤖 RL Agent not found. Starting Simulation...")
-        try:
-            await rl_trainer.train_agent("BTC/USDT") # Genel piyasa eğitimi
-        except Exception as e:
-            print(f">> ❌ RL Training Failed: {e}")
+        print(">> 🤖 RL Agent not found. Will use LSTM fallback until trained.")
+        print(">> ℹ️  To train RL manually: python -m src.brain.rl_trainer")
+        # RL eğitimi 10+ saat sürüyor, bu yüzden atlıyoruz
+        # Engine LSTM fallback ile çalışacak
 
     # --- 3. BOTU BAŞLAT ---
     print(">> 🚀 All systems ready. Launching Engine.")
