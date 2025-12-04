@@ -74,10 +74,10 @@ class AITrainer:
         """Belirtilen coin için özel model eğitir."""
         model_path, scaler_path = self._get_paths(symbol)
         
-        logger.info(f"🚀 Starting Training Session for {symbol}...")
+        logger.info(f"🚀 Starting FAST Training for {symbol}...")
         
-        # 1. Veri
-        df = await self.fetch_integrated_data(symbol, limit=2000)
+        # 1. Veri (500 = ~21 gün, hızlı eğitim için yeterli)
+        df = await self.fetch_integrated_data(symbol, limit=500)
         if df is None: 
             logger.error(f"Data failed for {symbol}")
             return False
