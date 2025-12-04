@@ -69,6 +69,17 @@ class MacroConnector:
             master_df['timestamp'] = master_df.index.astype('int64') // 10**6
             
             logger.info(f"Expanded Macro Data Fetched. Shape: {master_df.shape}")
+            
+            # Kritik kolonlar için varsayılan değerler
+            if 'macro_VIX' not in master_df.columns:
+                master_df['macro_VIX'] = 20.0  # Normal VIX
+            if 'macro_DXY' not in master_df.columns:
+                master_df['macro_DXY'] = 104.0  # Normal DXY
+            if 'macro_TNX' not in master_df.columns:
+                master_df['macro_TNX'] = 4.5  # Normal 10Y yield
+            if 'macro_SPX' not in master_df.columns:
+                master_df['macro_SPX'] = 5000.0  # Approximate S&P
+            
             return master_df
             
         except Exception as e:

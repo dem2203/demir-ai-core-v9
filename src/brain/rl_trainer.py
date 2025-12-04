@@ -41,7 +41,7 @@ class RLTrainer:
         df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
         
         # 3. TEMİZLİK
-        drop_cols = ['timestamp', 'symbol', 'target', 'open', 'high', 'low'] 
+        drop_cols = ['timestamp', 'symbol', 'source', 'target', 'open', 'high', 'low'] 
         numeric_df = df.drop(columns=[c for c in drop_cols if c in df.columns], errors='ignore')
         numeric_df.fillna(0, inplace=True)
         

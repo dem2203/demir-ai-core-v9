@@ -86,7 +86,7 @@ class AITrainer:
         df['target'] = (df['close'].shift(-1) > df['close']).astype(int)
         df.dropna(inplace=True)
 
-        feature_cols = [c for c in df.columns if c not in ['timestamp', 'symbol', 'target', 'open', 'high', 'low', 'close', 'volume']]
+        feature_cols = [c for c in df.columns if c not in ['timestamp', 'symbol', 'source', 'target', 'open', 'high', 'low', 'close', 'volume']]
         data_values = df[feature_cols].values
         target_values = df['target'].values
 
