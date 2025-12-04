@@ -58,3 +58,87 @@ class RiskManager:
             stop_level = lowest_low + (atr * multiplier)
             
         return stop_level
+
+    @staticmethod
+    def calculate_smart_levels(entry_price: float, side: str, 
+                             swing_low: float, swing_high: float, 
+                             whale_support: float, whale_resistance: float,
+                             magnet_price: float, atr: float) -> dict:
+        """
+        AKILLI SL/TP HESAPLAMA (Smart Money Concepts)
+        
+        SL Stratejisi:
+        - LONG: Swing Low veya Whale Support'un hemen altı (Hangisi daha yakınsa ama çok yakın değilse)
+        - SHORT: Swing High veya Whale Resistance'ın hemen üstü
+        
+        TP Stratejisi:
+        - LONG: Liquidation Magnet veya Swing High (Direnç)
+        - SHORT: Liquidation Magnet veya Swing Low (Destek)
+        """
+        sl_price = 0.0
+        tp_price = 0.0
+        setup_type = "Standard"
+        
+        # Güvenlik marjı (%0.2)
+        margin = entry_price * 0.002
+        
+        if side == "BUY":
+            # --- STOP LOSS (LONG) ---
+            # 1. Tercih: Whale Support (Balina Duvarı)
+            if whale_support > 0 and whale_support < entry_price:
+                sl_price = whale_support - margin
+                setup_type = "Whale Wall Defense"
+            # 2. Tercih: Swing Low (Teknik Dip)
+            elif swing_low > 0 and swing_low < entry_price:
+                sl_price = swing_low - margin
+                setup_type = "Swing Structure"
+            # 3. Fallback: ATR (Eğer yapı yoksa)
+            else:
+                sl_price = entry_price - (atr * 2)
+                setup_type = "Volatility Based"
+            
+            # --- TAKE PROFIT (LONG) ---
+            # 1. Tercih: Liquidation Magnet (Fiyatın çekileceği yer)
+            if magnet_price > entry_price:
+                tp_price = magnet_price
+            # 2. Tercih: Swing High (Direnç)
+            elif swing_high > entry_price:
+                tp_price = swing_high
+            # 3. Fallback: Risk Reward 2:1
+            else:
+                risk = entry_price - sl_price
+                tp_price = entry_price + (risk * 2.5)
+
+        else: # SELL
+            # --- STOP LOSS (SHORT) ---
+            # 1. Tercih: Whale Resistance
+            if whale_resistance > entry_price:
+                sl_price = whale_resistance + margin
+                setup_type = "Whale Wall Defense"
+            # 2. Tercih: Swing High
+            elif swing_high > entry_price:
+                sl_price = swing_high + margin
+                setup_type = "Swing Structure"
+            # 3. Fallback: ATR
+            else:
+                sl_price = entry_price + (atr * 2)
+                setup_type = "Volatility Based"
+            
+            # --- TAKE PROFIT (SHORT) ---
+            # 1. Tercih: Liquidation Magnet
+            if magnet_price > 0 and magnet_price < entry_price:
+                tp_price = magnet_price
+            # 2. Tercih: Swing Low
+            elif swing_low > 0 and swing_low < entry_price:
+                tp_price = swing_low
+            # 3. Fallback: Risk Reward 2:1
+            else:
+                risk = sl_price - entry_price
+                tp_price = entry_price - (risk * 2.5)
+        
+        return {
+            "sl": sl_price,
+            "tp": tp_price,
+            "setup_type": setup_type,
+            "risk_reward": abs(tp_price - entry_price) / abs(entry_price - sl_price) if sl_price != entry_price else 0
+        }

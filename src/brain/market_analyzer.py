@@ -614,31 +614,6 @@ class MarketAnalyzer:
         if pattern_bias != 'NEUTRAL': reason_parts.append(f"Pattern: {pattern_bias}")
         
         reason = " | ".join(reason_parts)
-        
-        # Log the decision
-        logger.info(f"🎯 FINAL DECISION: {ai_decision} ({signal_quality}) | Conf: {ai_confidence:.1f}%")
-        
-        snapshot = {
-            "symbol": symbol,
-            "price": float(last_row['close']),
-            "dxy": float(last_row.get('macro_DXY', 0)), 
-            "vix": float(last_row.get('macro_VIX', 0)), 
-            "funding_rate": funding_rate * 100,
-            "ai_decision": ai_decision,
-            "ai_confidence": ai_confidence,
-            "reason": reason,  # Added reason field
-            "regime": current_regime,
-            "hurst": hurst,
-            "fractal_score": fractal_score,
-            "whale_support": whale_support if whale_support else 0,
-            "whale_resistance": whale_resistance if whale_resistance else 0,
-            "orderbook_imbalance": orderbook_imbalance,
-            "correlations": corr_risk.get('correlations', {}) if corr_risk else {},
-            # PHASE 8: New Superpowers
-            "onchain_signal": onchain_signal,
-            "onchain_score": onchain_score,
-            "liq_signal": liq_signal,
-            "liq_score": liq_score,
             "magnet_price": magnet_price,
             "wyckoff_phase": wyckoff_phase,
             "pattern_bias": pattern_bias,
@@ -665,27 +640,37 @@ class MarketAnalyzer:
 
         if ai_decision == "NEUTRAL": return None
 
-        # Sinyal Paketi (ATR Bands ile Dinamik Stop)
+        # Sinyal Paketi (SMART SL/TP)
         price = float(last_row['close'])
-        atr_upper = float(last_row.get('atr_upper', price*1.05))
-        atr_lower = float(last_row.get('atr_lower', price*0.95))
+        atr = float(last_row['atr'])
         
-        if ai_decision == "BUY":
-            tp = atr_upper
-            sl = atr_lower
-        else:
-            tp = atr_lower
-            sl = atr_upper
-
+        # Akıllı Seviyeleri Hesapla
+        smart_levels = self.risk_manager.calculate_smart_levels(
+            entry_price=price,
+            side=ai_decision,
+            swing_low=fib_data.get('swing_low', 0),
+            swing_high=fib_data.get('swing_high', 0),
+            whale_support=whale_support if whale_support else 0,
+            whale_resistance=whale_resistance if whale_resistance else 0,
+            magnet_price=magnet_price,
+            atr=atr
+        )
+        
+        kelly_size = self.risk_manager.calculate_kelly_size(ai_confidence)
+        
         signal = {
             "symbol": symbol,
             "side": ai_decision,
             "entry_price": price,
-            "tp_price": tp,
-            "sl_price": sl,
+            "sl_price": smart_levels['sl'],
+            "tp_price": smart_levels['tp'],
             "confidence": ai_confidence,
+            "kelly_size": kelly_size,
             "reason": reason,
-            "regime": current_regime
+            "source": "RL Agent" if self.rl_agent else "Rule-Based",
+            "pattern": chart_patterns[-1].get('pattern') if chart_patterns else (candlestick_patterns[-1].get('pattern') if candlestick_patterns else "None"),
+            "quality": signal_quality,
+            "setup_type": smart_levels['setup_type']
         }
         
         if SignalValidator.validate_outgoing_signal(signal):
