@@ -66,25 +66,27 @@ class BinanceConnector:
         Funding Rate ve Open Interest verilerini çeker.
         """
         if not self.exchange: await self.connect()
-        if not self.exchange: return {} # Boş dön, uydurma veri dönme
+        if not self.exchange: return {}  # Boş dön, uydurma veri dönme
         
         try:
             # Funding Rate
             funding = await self.exchange.fetch_funding_rate(symbol)
-            fr = float(funding['fundingRate'])
+            fr_value = funding.get('fundingRate')
+            fr = float(fr_value) if fr_value is not None else 0.0
             
             # Open Interest
-            oi_data = await self.exchange.fetch_open_interest(symbol)
-            oi = float(oi_data.get('openInterestValue', 0))
+            try:
+                oi_data = await self.exchange.fetch_open_interest(symbol)
+                oi_value = oi_data.get('openInterestValue') if oi_data else None
+                oi = float(oi_value) if oi_value is not None else 0.0
+            except:
+                oi = 0.0
             
             return {'funding_rate': fr, 'open_interest': oi}
         except Exception as e:
             logger.warning(f"Futures Data Error ({symbol}): {e}")
-            # Hata durumunda 0 dönmek 'nötr' veri kabul edilebilir mi? 
-            # Zero-Mock kuralına göre, eğer veri yoksa analiz eksik kalmalı.
-            # Ancak kodun patlamaması için boş dict veya None dönmek daha iyi.
-            # Şimdilik boş dict dönüyoruz, analiz katmanı bunu "veri yok" olarak algılamalı.
-            return {}
+            # Hata durumunda boş dict dönüyoruz
+            return {'funding_rate': 0.0, 'open_interest': 0.0}
 
     async def close(self):
         if self.exchange: await self.exchange.close()

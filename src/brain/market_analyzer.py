@@ -236,7 +236,7 @@ class MarketAnalyzer:
         corr_data = {
             symbol.replace('/', ''): df[['close']],
         }
-        if not macro_df.empty:
+        if macro_df is not None and not macro_df.empty:
             for col in ['macro_SPX', 'macro_NDQ', 'macro_DXY']:
                 if col in df.columns:
                     corr_data[col.replace('macro_', '')] = df[[col]].rename(columns={col: 'close'})
@@ -451,6 +451,29 @@ class MarketAnalyzer:
                 reason = "LSTM Only: Bearish"
 
         # --- DASHBOARD VERİSİ ---
+        
+        # Dynamic Confidence Calculation (composite from all signals)
+        signal_scores = []
+        if onchain_score != 0: signal_scores.append(abs(onchain_score) / 50)  # Normalize to 0-1
+        if liq_score != 0: signal_scores.append(abs(liq_score) / 50)
+        if fractal_score > 0: signal_scores.append(fractal_score / 100)
+        if tech_bias in ['STRONG_BULLISH', 'STRONG_BEARISH']: signal_scores.append(0.8)
+        elif tech_bias in ['BULLISH', 'BEARISH']: signal_scores.append(0.6)
+        
+        # Calculate weighted confidence
+        if signal_scores:
+            avg_signal_confidence = sum(signal_scores) / len(signal_scores)
+            ai_confidence = max(30, min(95, 50 + avg_signal_confidence * 45))
+        
+        # Generate detailed reason
+        reason_parts = []
+        if current_regime != 'UNKNOWN': reason_parts.append(f"Regime: {current_regime}")
+        if tech_bias and tech_bias != 'NEUTRAL': reason_parts.append(f"Tech: {tech_bias}")
+        if onchain_signal != 'NEUTRAL': reason_parts.append(f"On-Chain: {onchain_signal}")
+        if pattern_bias != 'NEUTRAL': reason_parts.append(f"Pattern: {pattern_bias}")
+        
+        reason = " | ".join(reason_parts) if reason_parts else f"Mixed signals - Regime: {current_regime}"
+        
         snapshot = {
             "symbol": symbol,
             "price": float(last_row['close']),
@@ -459,6 +482,7 @@ class MarketAnalyzer:
             "funding_rate": funding_rate * 100,
             "ai_decision": ai_decision,
             "ai_confidence": ai_confidence,
+            "reason": reason,  # Added reason field
             "regime": current_regime,
             "hurst": hurst,
             "fractal_score": fractal_score,

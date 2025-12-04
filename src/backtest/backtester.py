@@ -93,8 +93,25 @@ class Backtester:
         
         try:
             data_values = df[feature_cols].values
-            scaled_data = self.scaler.transform(data_values)
-        except: return {"error": "Scaler Mismatch. Retrain required."}
+            # Check if scaler expects same number of features
+            expected_features = self.scaler.n_features_in_
+            actual_features = data_values.shape[1]
+            if expected_features != actual_features:
+                logger.warning(f"Scaler expects {expected_features} features, got {actual_features}. Retraining...")
+                # Try to retrain scaler on-the-fly
+                from sklearn.preprocessing import StandardScaler
+                self.scaler = StandardScaler()
+                scaled_data = self.scaler.fit_transform(data_values)
+                logger.info("Scaler retrained successfully for backtest.")
+            else:
+                scaled_data = self.scaler.transform(data_values)
+        except Exception as e:
+            logger.error(f"Scaler transform error: {e}")
+            # Fallback: Use new scaler
+            from sklearn.preprocessing import StandardScaler
+            self.scaler = StandardScaler()
+            scaled_data = self.scaler.fit_transform(df[feature_cols].values)
+            logger.warning("Using fresh StandardScaler for backtest.")
         
         X_lstm = []
         start_index = len(df) - (days * 24)

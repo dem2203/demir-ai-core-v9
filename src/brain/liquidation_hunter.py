@@ -6,6 +6,7 @@ Fiyatın "çekileceği" seviyeleri tahmin eder.
 """
 
 import logging
+import asyncio
 import aiohttp
 from typing import Dict, List, Optional
 from datetime import datetime
