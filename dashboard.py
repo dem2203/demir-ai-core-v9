@@ -233,6 +233,51 @@ if page == "📡 Live Market Intelligence":
                     adaptive = info.get('adaptive_strategy', 'N/A')
                     risk_mult = info.get('risk_multiplier', 1.0)
                     st.write(f"🧠 Strategy: **{adaptive}** | Risk Mult: **{risk_mult:.1f}x**")
+                    
+                    # --- PHASE 9: Technical Analysis Display ---
+                    st.markdown("---")
+                    st.markdown("**📐 Technical Analysis**")
+                    
+                    tech_bias = info.get('tech_bias', 'N/A')
+                    bias_color = "🟢" if "BULLISH" in tech_bias else "🔴" if "BEARISH" in tech_bias else "🟡"
+                    st.write(f"**Technical Bias:** {bias_color} **{tech_bias}**")
+                    
+                    # Candlestick Patterns
+                    candle_count = info.get('candlestick_count', 0)
+                    candle_latest = info.get('candlestick_latest', None)
+                    if candle_count > 0:
+                        st.write(f"🕯️ Candlestick: **{candle_latest}** ({candle_count} pattern)")
+                    
+                    # Chart Patterns
+                    chart_count = info.get('chart_pattern_count', 0)
+                    chart_latest = info.get('chart_pattern_latest', None)
+                    if chart_count > 0:
+                        st.write(f"📐 Chart Pattern: **{chart_latest}**")
+                    
+                    # Divergence
+                    div_count = info.get('divergence_count', 0)
+                    div_latest = info.get('divergence_latest', None)
+                    if div_count > 0:
+                        st.warning(f"⚠️ **Divergence:** {div_latest}")
+                    
+                    # Fibonacci
+                    fib_sup = info.get('fib_support', 0)
+                    fib_res = info.get('fib_resistance', 0)
+                    if fib_sup > 0:
+                        st.write(f"📏 Fib Support: **${fib_sup:,.0f}** | Resistance: **${fib_res:,.0f}**")
+                    
+                    # Pivot Points
+                    pivot = info.get('pivot', 0)
+                    pivot_sup = info.get('pivot_support', 0)
+                    pivot_res = info.get('pivot_resistance', 0)
+                    if pivot > 0:
+                        st.write(f"📍 Pivot: **${pivot:,.0f}** | S: ${pivot_sup:,.0f} | R: ${pivot_res:,.0f}")
+                    
+                    # Volume Signal
+                    vol_sig = info.get('volume_signal', 'N/A')
+                    if vol_sig != 'N/A':
+                        vol_color = "🟢" if "BULLISH" in vol_sig else "🔴" if "DISTRIBUTION" in vol_sig else "🟡"
+                        st.write(f"📊 Volume: {vol_color} **{vol_sig}**")
 
 # ==========================================
 # 2. SANAL CÜZDAN (Advisory Portfolio)

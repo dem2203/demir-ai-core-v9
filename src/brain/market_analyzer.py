@@ -27,6 +27,7 @@ from src.brain.onchain_intel import OnChainIntelligence
 from src.brain.liquidation_hunter import LiquidationHunter
 from src.brain.pattern_engine import PatternRecognition
 from src.brain.adaptive_intel import AdaptiveIntelligence
+from src.brain.technical_analyzer import TechnicalAnalyzer  # PHASE 9: Advanced TA
 
 logger = logging.getLogger("MARKET_ANALYZER_PRO")
 
@@ -67,6 +68,9 @@ class MarketAnalyzer:
         self.liquidation_hunter = LiquidationHunter()
         self.pattern_engine = PatternRecognition()
         self.adaptive_intel = AdaptiveIntelligence()
+        
+        # PHASE 9: Advanced Technical Analysis
+        self.technical_analyzer = TechnicalAnalyzer()
         
         self.regime_classifier = RegimeClassifier()
         
@@ -299,6 +303,39 @@ class MarketAnalyzer:
             adaptive_strategy = 'WAIT'
             risk_multiplier = 1.0
 
+        # --- PHASE 9: ADVANCED TECHNICAL ANALYSIS ---
+        try:
+            tech_analysis = self.technical_analyzer.get_full_analysis(df)
+            tech_bias = tech_analysis.get('technical_bias', 'NEUTRAL')
+            candlestick_patterns = tech_analysis.get('candlestick_patterns', [])
+            chart_patterns = tech_analysis.get('chart_patterns', [])
+            divergences = tech_analysis.get('divergences', [])
+            fib_data = tech_analysis.get('fibonacci', {})
+            volume_analysis = tech_analysis.get('volume', {})
+            pivot_data = tech_analysis.get('pivot_points', {})
+            
+            # En güçlü patternleri logla
+            if candlestick_patterns:
+                strongest = max(candlestick_patterns, key=lambda x: x.get('strength', 0))
+                logger.info(f"🕯️ Candlestick: {strongest.get('pattern')} ({strongest.get('signal')})")
+            if chart_patterns:
+                strongest = max(chart_patterns, key=lambda x: x.get('strength', 0))
+                logger.info(f"📐 Chart: {strongest.get('pattern')} ({strongest.get('signal')})")
+            if divergences:
+                logger.info(f"📊 Divergence detected: {divergences[0].get('type')}")
+            
+            logger.info(f"🎯 Technical Bias: {tech_bias} | Patterns: {tech_analysis.get('active_patterns_count', 0)}")
+        except Exception as e:
+            logger.warning(f"Technical analysis failed: {e}")
+            tech_analysis = {}
+            tech_bias = 'NEUTRAL'
+            candlestick_patterns = []
+            chart_patterns = []
+            divergences = []
+            fib_data = {}
+            volume_analysis = {}
+            pivot_data = {}
+
         # --- PHASE 7: TRUE AI DECISION ENGINE ---
         # NO MORE HUMAN RULES - AI DECIDES EVERYTHING!
         
@@ -440,6 +477,20 @@ class MarketAnalyzer:
             "market_structure": structure,
             "adaptive_strategy": adaptive_strategy,
             "risk_multiplier": risk_multiplier,
+            # PHASE 9: Advanced Technical Analysis
+            "tech_bias": tech_bias,
+            "candlestick_count": len(candlestick_patterns),
+            "candlestick_latest": candlestick_patterns[-1].get('pattern') if candlestick_patterns else None,
+            "chart_pattern_count": len(chart_patterns),
+            "chart_pattern_latest": chart_patterns[-1].get('pattern') if chart_patterns else None,
+            "divergence_count": len(divergences),
+            "divergence_latest": divergences[-1].get('type') if divergences else None,
+            "fib_support": fib_data.get('nearest_support', 0),
+            "fib_resistance": fib_data.get('nearest_resistance', 0),
+            "volume_signal": volume_analysis.get('price_volume_signal', 'N/A'),
+            "pivot": pivot_data.get('pivot', 0),
+            "pivot_support": pivot_data.get('nearest_support', 0),
+            "pivot_resistance": pivot_data.get('nearest_resistance', 0),
             "timestamp": pd.Timestamp.now().isoformat()
         }
         self._save_to_dashboard(snapshot)
