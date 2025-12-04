@@ -51,7 +51,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🦅 DEMIR AI - Institutional Trading Terminal")
-st.caption("v20.0 | Zero-Mock | Fractal Confluence | Whale Detection | Correlation Matrix")
+st.caption("v23.0 | Zero-Mock | On-Chain Intel | Liquidation Hunter | Wyckoff | Adaptive AI")
 
 # --- Yan Menü ---
 page = st.sidebar.radio("System Modules", [
@@ -148,7 +148,8 @@ if page == "📡 Live Market Intelligence":
         df_display = pd.DataFrame(display_data)
         
         cols = ['symbol', 'price', 'ai_decision', 'ai_confidence', 'kelly_size', 'fractal_score', 
-                'whale_support', 'whale_resistance', 'orderbook_imbalance', 'hurst']
+                'whale_support', 'whale_resistance', 'orderbook_imbalance', 'hurst',
+                'wyckoff_phase', 'pattern_bias', 'onchain_signal', 'adaptive_strategy']
         valid_cols = [c for c in cols if c in df_display.columns]
         
         if not df_display.empty:
@@ -164,6 +165,10 @@ if page == "📡 Live Market Intelligence":
                     "whale_support": st.column_config.NumberColumn("Whale Support", format="$%.0f"),
                     "whale_resistance": st.column_config.NumberColumn("Whale Resistance", format="$%.0f"),
                     "orderbook_imbalance": st.column_config.NumberColumn("OB Imbalance", format="%.2f"),
+                    "wyckoff_phase": st.column_config.TextColumn("Wyckoff"),
+                    "pattern_bias": st.column_config.TextColumn("Bias"),
+                    "onchain_signal": st.column_config.TextColumn("On-Chain"),
+                    "adaptive_strategy": st.column_config.TextColumn("Strategy"),
                 }
             )
 
@@ -199,6 +204,35 @@ if page == "📡 Live Market Intelligence":
                     imbalance = info.get('orderbook_imbalance', 0)
                     if abs(imbalance) > 0.1:
                         st.caption(f"Order Book Imbalance: {imbalance*100:.1f}% ({'BULLISH' if imbalance > 0 else 'BEARISH'})")
+                    
+                    # --- PHASE 8: AI Superpowers Display ---
+                    st.markdown("---")
+                    st.markdown("**🧠 AI Superpowers**")
+                    
+                    # On-Chain Intelligence
+                    onchain_sig = info.get('onchain_signal', 'N/A')
+                    onchain_score = info.get('onchain_score', 0)
+                    if onchain_sig != 'N/A':
+                        color = "🟢" if "BUY" in onchain_sig or "STRONG" in onchain_sig else "🔴" if "SELL" in onchain_sig else "🟡"
+                        st.write(f"🐋 On-Chain: {color} **{onchain_sig}** (Score: {onchain_score})")
+                    
+                    # Liquidation Data
+                    liq_sig = info.get('liq_signal', 'N/A')
+                    magnet = info.get('magnet_price', 0)
+                    if magnet > 0:
+                        st.write(f"🎯 Liquidation: **{liq_sig}** | Magnet: ${magnet:,.0f}")
+                    
+                    # Pattern Analysis
+                    wyckoff = info.get('wyckoff_phase', 'N/A')
+                    pattern = info.get('pattern_bias', 'NEUTRAL')
+                    structure = info.get('market_structure', 'N/A')
+                    st.write(f"📊 Wyckoff: **{wyckoff}** | Bias: **{pattern}**")
+                    st.write(f"📈 Structure: **{structure}**")
+                    
+                    # Adaptive Strategy
+                    adaptive = info.get('adaptive_strategy', 'N/A')
+                    risk_mult = info.get('risk_multiplier', 1.0)
+                    st.write(f"🧠 Strategy: **{adaptive}** | Risk Mult: **{risk_mult:.1f}x**")
 
 # ==========================================
 # 2. SANAL CÜZDAN (Advisory Portfolio)
