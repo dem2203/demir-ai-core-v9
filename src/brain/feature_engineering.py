@@ -185,6 +185,11 @@ class FeatureEngineer:
             dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di + 0.0001)
             df['adx'] = dx.rolling(window=adx_period).mean().fillna(25)  # Default 25 (neutral)
             
+            # VWAP (Volume Weighted Average Price) - Kurumsal referans fiyat
+            typical_price = (df['high'] + df['low'] + df['close']) / 3
+            df['vwap'] = (typical_price * df['volume']).cumsum() / df['volume'].cumsum()
+            df['vwap'] = df['vwap'].fillna(df['close'])  # NaN varsa close kullan
+            
             # --- SUPERHUMAN KATMANI ---
             
             # 1. Hurst Exponent (Rolling)
