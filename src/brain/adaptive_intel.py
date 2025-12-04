@@ -8,7 +8,7 @@ Regime detection, self-optimization, performance tracking
 import logging
 import json
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 from collections import deque
 import numpy as np
@@ -383,7 +383,3 @@ class AdaptiveIntelligence:
             return False, f"Signal {signal} not preferred in {regime} regime"
         
         return True, f"Signal approved with calibrated confidence {calibrated_confidence:.2f}"
-
-
-# Type hint için
-from typing import Tuple
