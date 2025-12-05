@@ -46,6 +46,7 @@ class SentimentAnalyzer:
         except Exception as e:
             logger.warning(f"⚠️ Reddit initialization failed: {e}")
             
+    def get_sentiment(self, symbol: str = "BTC") -> Dict:
         """
         Get combined sentiment analysis.
         Returns composite score and breakdown.

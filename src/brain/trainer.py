@@ -52,7 +52,8 @@ class AITrainer:
         crypto_df = FeatureEngineer.process_data(raw_crypto)
         
         # 2. Makro
-        macro_df = await self.macro.fetch_macro_data(period="1y", interval="1h")
+        # Macro data - simplified (not used in training yet)
+        macro_data = {"macro_score": 0}
         
         # 3. Füzyon
         full_df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)

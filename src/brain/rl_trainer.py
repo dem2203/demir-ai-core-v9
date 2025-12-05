@@ -35,7 +35,8 @@ class RLTrainer:
         if not raw_crypto: return None
         
         crypto_df = FeatureEngineer.process_data(raw_crypto)
-        macro_df = await self.macro.fetch_macro_data(period="1y", interval="1h")
+        # Macro data - simplified
+        macro_data = {"macro_score": 0}
         
         # 2. Birleştir
         df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
