@@ -30,6 +30,7 @@ from src.brain.adaptive_intel import AdaptiveIntelligence
 from src.brain.technical_analyzer import TechnicalAnalyzer  # PHASE 9: Advanced TA
 from src.brain.vision_analyst import VisionAnalyst  # PHASE 12: Visual Cortex
 from src.brain.sentiment_analyzer import SentimentAnalyzer  # PHASE 13: Sentiment
+from src.data_ingestion.macro_connector import MacroConnector  # PHASE 17: Macro IQ
 
 logger = logging.getLogger("MARKET_ANALYZER_PRO")
 
@@ -649,11 +650,19 @@ class MarketAnalyzer:
         sentiment_data = self.sentiment.get_sentiment(symbol.split('/')[0])  # Extract base symbol (BTC from BTC/USDT)
         logger.info(f"📊 SENTIMENT: {sentiment_data['sentiment']} | Score: {sentiment_data['composite_score']} | F&G: {sentiment_data['fear_greed_index']}")
 
+        # PHASE 17: Macro IQ
+        try:
+            macro_data = self.macro.fetch_data() if hasattr(self, 'macro') else {}
+        except Exception:
+            macro_data = {}
+
         snapshot = {
             "symbol": symbol,
             "price": float(last_row['close']),
             "dxy": float(last_row.get('macro_DXY', 0)), 
             "vix": float(last_row.get('macro_VIX', 0)), 
+            "macro_score": macro_data.get('macro_score', 0),
+            "interest_rate": macro_data.get('interest_rate', 0),
             "funding_rate": funding_rate * 100,
             "ai_decision": ai_decision,
             "ai_confidence": ai_confidence,

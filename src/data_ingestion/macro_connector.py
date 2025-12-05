@@ -1,87 +1,104 @@
-import pandas_datareader.data as web
-import pandas as pd
 import logging
+import pandas as pd
+import requests
 from datetime import datetime, timedelta
+from typing import Dict, Optional
+import os
+from src.config.settings import Config
 
-logger = logging.getLogger("MACRO_DATA_CONNECTOR")
+logger = logging.getLogger("MACRO_CONNECTOR")
 
 class MacroConnector:
     """
-    KÜRESEL PİYASA GÖZLEMCİSİ (FULL SPECTRUM v2)
+    MACRO ECONOMIC INTELLIGENCE
+    Fetches key economic indicators from FRED (Federal Reserve Economic Data).
     
-    Kripto piyasasını etkileyen TÜM majör varlıkları izler.
-    Veri Kaynağı: Stooq (Engelsiz)
+    Indicators:
+    1. US Interest Rate (FEDFUNDS)
+    2. Inflation (CPIAUCSL)
+    3. Unemployment Rate (UNRATE)
+    4. US Dollar Index (DXY - proxied or fetched)
+    5. S&P 500 (SP500)
     """
     
     def __init__(self):
-        # Stooq Sembolleri
-        self.tickers = {
-            "SPX": "^SPX",      # S&P 500
-            "NDQ": "^NDQ",      # Nasdaq
-            "VIX": "^VIX",      # Korku Endeksi
-            "DXY": "DXY",       # Dolar Endeksi
-            "TNX": "^TNX",      # 10 Yıllık Tahvil
-            "GOLD": "GC.F",     # Altın Futures (YENİ)
-            "SILVER": "SI.F",   # Gümüş Futures (YENİ)
-            "OIL": "CL.F"       # Ham Petrol (YENİ)
+        self.api_key = os.getenv("FRED_API_KEY")
+        self.base_url = "https://api.stlouisfed.org/fred/series/observations"
+        self.cache = {}
+        self.cache_duration = 3600 * 24  # 24 hours (Macro data changes slowly)
+        
+        if not self.api_key:
+            logger.warning("⚠️ FRED_API_KEY not found. Macro analysis will use fallback values.")
+            
+    def fetch_data(self) -> Dict[str, float]:
+        """Get latest macro indicators"""
+        
+        indicators = {
+            "interest_rate": "FEDFUNDS",
+            "cpi": "CPIAUCSL",
+            "unemployment": "UNRATE",
+            "ma": "M2SL" # Money Supply
         }
-
-    async def fetch_macro_data(self, period="2y", interval="1h"):
-        logger.info("Fetching Global Macro Data via Stooq...")
         
-        start_date = datetime.now() - timedelta(days=730)
-        master_df = pd.DataFrame()
+        result = {}
         
-        try:
-            for name, ticker in self.tickers.items():
-                try:
-                    # Stooq'tan günlük veri çek
-                    df = web.DataReader(ticker, 'stooq', start=start_date)
-                    
-                    if df.empty: 
-                        logger.warning(f"Missing data for {name}")
-                        continue
-
-                    # Sadece Kapanış Fiyatını Al
-                    df = df[['Close']].rename(columns={'Close': f'macro_{name}'})
-                    
-                    # Birleştir
-                    if master_df.empty:
-                        master_df = df
-                    else:
-                        master_df = master_df.join(df, how='outer')
-                        
-                except Exception:
-                    pass 
-            
-            if master_df.empty:
-                return None
-
-            # Temizlik ve Saatliğe Çevirme
-            master_df.index = pd.to_datetime(master_df.index)
-            master_df = master_df.sort_index()
-            master_df = master_df.ffill().bfill()
-            
-            # Günlük -> Saatlik
-            master_df = master_df.resample('1h').ffill()
-            
-            # Timestamp Ekle
-            master_df['timestamp'] = master_df.index.astype('int64') // 10**6
-            
-            logger.info(f"Expanded Macro Data Fetched. Shape: {master_df.shape}")
-            
-            # Kritik kolonlar için varsayılan değerler
-            if 'macro_VIX' not in master_df.columns:
-                master_df['macro_VIX'] = 20.0  # Normal VIX
-            if 'macro_DXY' not in master_df.columns:
-                master_df['macro_DXY'] = 104.0  # Normal DXY
-            if 'macro_TNX' not in master_df.columns:
-                master_df['macro_TNX'] = 4.5  # Normal 10Y yield
-            if 'macro_SPX' not in master_df.columns:
-                master_df['macro_SPX'] = 5000.0  # Approximate S&P
-            
-            return master_df
-            
-        except Exception as e:
-            logger.error(f"Macro Connector Fail: {e}")
+        for name, series_id in indicators.items():
+            value = self._get_series_latest(series_id)
+            if value is not None:
+                result[name] = value
+                
+        # Calculate Macro Trend Score (-100 to 100)
+        # Low Rate, High M2 = Bullish
+        # High Rate, High CPI = Bearish
+        
+        score = 0
+        rate = result.get("interest_rate", 5.0)
+        
+        if rate < 3.0: score += 30
+        elif rate > 5.0: score -= 30
+        
+        # M2 (Money Supply) Growth proxy check - simplified for now
+        
+        result["macro_score"] = score
+        result["timestamp"] = datetime.now().isoformat()
+        
+        # Log summary
+        rate_str = f"{rate}%" if result.get("interest_rate") else "N/A"
+        logger.info(f"🌍 Macro Data: Rate={rate_str} | Score={score}")
+        
+        return result
+        
+    def _get_series_latest(self, series_id: str) -> Optional[float]:
+        """Fetch single series from FRED"""
+        if not self.api_key:
             return None
+            
+        # Check cache
+        if series_id in self.cache:
+            ts, val = self.cache[series_id]
+            if (datetime.now() - ts).total_seconds() < self.cache_duration:
+                return val
+                
+        try:
+            params = {
+                "series_id": series_id,
+                "api_key": self.api_key,
+                "file_type": "json",
+                "limit": 1,
+                "sort_order": "desc"
+            }
+            
+            response = requests.get(self.base_url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            if "observations" in data and len(data["observations"]) > 0:
+                value = float(data["observations"][0]["value"])
+                self.cache[series_id] = (datetime.now(), value)
+                return value
+                
+        except Exception as e:
+            logger.error(f"Failed to fetch {series_id}: {e}")
+            return None
+            
+        return None

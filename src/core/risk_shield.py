@@ -150,3 +150,14 @@ class RiskShield:
         self.cooling_until = None
         self._save_state()
         logger.warning("⚡ SHIELD MANUALLY RESET")
+        
+    def check_news_risk(self) -> bool:
+        """
+        [Phase 17] Volatile News Shield
+        Returns True if high-impact news is imminent (within 30 mins).
+        Currently a placeholder structure for future API integration.
+        """
+        # Logic to check economic calendar would go here
+        # Return True to block trades
+        return False
+
