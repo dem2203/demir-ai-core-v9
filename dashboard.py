@@ -57,6 +57,7 @@ st.caption("v23.0 | Zero-Mock | On-Chain Intel | Liquidation Hunter | Wyckoff | 
 page = st.sidebar.radio("System Modules", [
     "📡 Live Market Intelligence", 
     "🧠 Neural Brain Monitor",
+    "📈 Live Trading Chart",  # Phase 14: NEW TAB
     "💼 Advisory Portfolio", 
     "🧪 Backtest Lab",
     "⚙️ Strategy Optimizer"
@@ -454,6 +455,99 @@ elif page == "🧠 Neural Brain Monitor":
 
 # ==========================================
 # 2. SANAL CÜZDAN (Advisory Portfolio)
+# ==========================================
+
+# ==========================================
+# 3. LIVE TRADING CHART (Phase 14)
+# ==========================================
+elif page == "📈 Live Trading Chart":
+    st.title("📈 Live Paper Trading Chart")
+    
+    # Import chart visualizer
+    from src.core.chart_visualizer import ChartVisualizer
+    from src.data_ingestion.connectors.binance_connector import BinanceConnector
+    import json
+    import os
+    
+    visualizer = ChartVisualizer()
+    connector = BinanceConnector()
+    
+    # Symbol and Timeframe Selectors
+    col1, col2 = st.columns(2)
+    with col1:
+        symbol_select = st.selectbox("Symbol", ["BTC/USDT", "ETH/USDT", "LTC/USDT"])
+    with col2:
+        timeframe = st.selectbox("Timeframe", ["15m", "1h", "4h", "1d"])
+    
+    try:
+        # Fetch OHLCV data
+        df = connector.fetch_ohlcv(symbol_select, timeframe=timeframe, limit=200)
+        
+        if df.empty:
+            st.error("No data available")
+        else:
+            # Load paper trades
+            portfolio_path = "src/execution/portfolio.json"
+            trades = []
+            current_position = None
+            
+            if os.path.exists(portfolio_path):
+                with open(portfolio_path, 'r') as f:
+                    portfolio_data = json.load(f)
+                    
+                # Get trades for this symbol
+                symbol_upper = symbol_select.replace("/", "")  # BTC/USDT -> BTCUSDT
+                if symbol_upper in portfolio_data.get('trades', {}):
+                    trades = portfolio_data['trades'][symbol_upper]
+                
+                # Get current position
+                positions = portfolio_data.get('positions', {})
+                if symbol_upper in positions:
+                    pos = positions[symbol_upper]
+                    if pos.get('size', 0) != 0:  # Position is open
+                        current_position = pos
+            
+            # Create chart
+            fig = visualizer.create_trading_chart(
+                df=df,
+                symbol=symbol_select,
+                trades=trades,
+                current_position=current_position
+            )
+            
+            # Display chart
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Show position summary
+            if current_position:
+                st.success("📊 **ACTIVE POSITION**")
+                col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+                
+                side = current_position.get('side', 'LONG')
+                entry = current_position.get('entry_price', 0)
+                size = current_position.get('size', 0)
+                current_price = df['close'].iloc[-1]
+                
+                # Calculate unrealized P&L
+                if side == 'LONG':
+                    pnl = (current_price - entry) * size
+                else:
+                    pnl = (entry - current_price) * size
+                
+                col_p1.metric("Side", side, delta_color="normal" if side == "LONG" else "inverse")
+                col_p2.metric("Entry", f"${entry:,.2f}")
+                col_p3.metric("Size", f"{size:.4f}")
+                col_p4.metric("Unrealized P&L", f"${pnl:,.2f}", delta=pnl, delta_color="normal" if pnl > 0 else "inverse")
+            else:
+                st.info("No active position")
+                
+    except Exception as e:
+        st.error(f"Error loading chart: {e}")
+        import traceback
+        st.code(traceback.format_exc())
+
+# ==========================================
+# 4. ADVISORY PORTFOLIO
 # ==========================================
 elif page == "💼 Advisory Portfolio":
     st.header("💼 Advisory Portfolio Tracker")
