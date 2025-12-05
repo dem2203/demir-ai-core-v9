@@ -38,4 +38,8 @@ google-generativeai
 openai
 plotly
 kaleido
-pillow>=3.10.0
+pillow
+
+# --- Phase 13: Sentiment Analysis ---
+praw
+beautifulsoup4>=3.10.0

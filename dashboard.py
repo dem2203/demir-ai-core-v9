@@ -279,6 +279,40 @@ if page == "📡 Live Market Intelligence":
                     if vol_sig != 'N/A':
                         vol_color = "🟢" if "BULLISH" in vol_sig else "🔴" if "DISTRIBUTION" in vol_sig else "🟡"
                         st.write(f"📊 Volume: {vol_color} **{vol_sig}**")
+                    
+                    # --- PHASE 13: Sentiment Analysis Display ---
+                    st.markdown("---")
+                    st.markdown("**📰 Market Sentiment**")
+                    
+                    sentiment_data = info.get('sentiment_data', {})
+                    if sentiment_data:
+                        sentiment = sentiment_data.get('sentiment', 'NEUTRAL')
+                        fg_index = sentiment_data.get('fear_greed_index', 50)
+                        comp_score = sentiment_data.get('composite_score', 0)
+                        
+                        # Color coding
+                        sent_color = "🟢" if sentiment == "BULLISH" else "🔴" if sentiment == "BEARISH" else "🟡"
+                        
+                        # Fear & Greed visualization
+                        if fg_index >= 75:
+                            fg_label = "Extreme Greed"
+                            fg_emoji = "🔥"
+                        elif fg_index >= 55:
+                            fg_label = "Greed"
+                            fg_emoji = "😁"
+                        elif fg_index >= 45:
+                            fg_label = "Neutral"
+                            fg_emoji = "😐"
+                        elif fg_index >= 25:
+                            fg_label = "Fear"
+                            fg_emoji = "😰"
+                        else:
+                            fg_label = "Extreme Fear"
+                            fg_emoji = "😱"
+                        
+                        st.write(f"**Sentiment:** {sent_color} **{sentiment}** (Score: {comp_score:.2f})")
+                        st.write(f"**Fear & Greed:** {fg_emoji} **{fg_label}** ({fg_index}/100)")
+
 
 # ==========================================
 # 2. NEURAL BRAIN MONITOR (Visual Intelligence)

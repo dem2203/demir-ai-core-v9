@@ -27,11 +27,9 @@ from src.brain.onchain_intel import OnChainIntelligence
 from src.brain.liquidation_hunter import LiquidationHunter
 from src.brain.pattern_engine import PatternRecognition
 from src.brain.adaptive_intel import AdaptiveIntelligence
-from src.brain.adaptive_intel import AdaptiveIntelligence
 from src.brain.technical_analyzer import TechnicalAnalyzer  # PHASE 9: Advanced TA
 from src.brain.vision_analyst import VisionAnalyst  # PHASE 12: Visual Cortex
-from src.brain.vision_analyst import VisionAnalyst  # PHASE 12: Visual Cortex
-from src.brain.vision_analyst import VisionAnalyst  # PHASE 12: Visual Cortex
+from src.brain.sentiment_analyzer import SentimentAnalyzer  # PHASE 13: Sentiment
 
 logger = logging.getLogger("MARKET_ANALYZER_PRO")
 
@@ -78,6 +76,9 @@ class MarketAnalyzer:
         
         # PHASE 12: Visual Cortex (AI Vision)
         self.vision = VisionAnalyst()
+        
+        # PHASE 13: Sentiment Analysis
+        self.sentiment = SentimentAnalyzer()
         
         self.regime_classifier = RegimeClassifier()
         
@@ -643,6 +644,10 @@ class MarketAnalyzer:
         logger.info(f"👁️ Requesting Visual Analysis for {symbol}...")
         visual_analysis = self.vision.analyze_chart(symbol, df)
         logger.info(f"👁️ VISUAL OPINION: {visual_analysis['trend']} | Score: {visual_analysis['visual_score']} | Pattern: {visual_analysis['pattern']}")
+        
+        # PHASE 13: Sentiment Analysis
+        sentiment_data = self. sentiment.get_sentiment(symbol.split('/')[0])  # Extract base symbol (BTC from BTC/USDT)
+        logger.info(f"📊 SENTIMENT: {sentiment_data['sentiment']} | Score: {sentiment_data['composite_score']} | F&G: {sentiment_data['fear_greed_index']}")
 
         snapshot = {
             "symbol": symbol,
@@ -654,6 +659,7 @@ class MarketAnalyzer:
             "ai_confidence": ai_confidence,
             "reason": reason,
             "visual_analysis": visual_analysis,  # Export Visual Data
+            "sentiment_data": sentiment_data,  # Export Sentiment Data
             "brain_state": {
                 "tech_attention": abs(tech_direction) * weights['tech'],
                 "pattern_attention": abs(pattern_direction) * weights['pattern'],
@@ -664,7 +670,11 @@ class MarketAnalyzer:
                 "rl_action": int(rl_action) if self.rl_agent and 'rl_action' in locals() else -1,
                 # New Visual Metrics
                 "visual_score": visual_analysis['visual_score'],
-                "visual_trend": visual_analysis['trend']
+                "visual_trend": visual_analysis['trend'],
+                # New Sentiment Metrics
+                "sentiment_score": sentiment_data['composite_score'],
+                "sentiment": sentiment_data['sentiment'],
+                "fear_greed": sentiment_data['fear_greed_index']
             },
             "regime": current_regime,
             "hurst": hurst,
