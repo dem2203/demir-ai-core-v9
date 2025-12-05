@@ -17,8 +17,7 @@ class MacroConnector:
     1. US Interest Rate (FEDFUNDS)
     2. Inflation (CPIAUCSL)
     3. Unemployment Rate (UNRATE)
-    4. US Dollar Index (DXY - proxied or fetched)
-    5. S&P 500 (SP500)
+    4. M2 Money Supply (M2SL)
     """
     
     def __init__(self):
@@ -37,7 +36,7 @@ class MacroConnector:
             "interest_rate": "FEDFUNDS",
             "cpi": "CPIAUCSL",
             "unemployment": "UNRATE",
-            "ma": "M2SL" # Money Supply
+            "m2_money_supply": "M2SL"
         }
         
         result = {}
@@ -56,8 +55,6 @@ class MacroConnector:
         
         if rate < 3.0: score += 30
         elif rate > 5.0: score -= 30
-        
-        # M2 (Money Supply) Growth proxy check - simplified for now
         
         result["macro_score"] = score
         result["timestamp"] = datetime.now().isoformat()
@@ -102,3 +99,34 @@ class MacroConnector:
             return None
             
         return None
+    
+    async def fetch_macro_data(self, period: str = "5d", interval: str = "1h") -> pd.DataFrame:
+        """
+        Async wrapper for fetch_data() returning DataFrame format.
+        
+        Args:
+            period: Time period (ignored, FRED data is current snapshot)
+            interval: Interval (ignored)
+        
+        Returns:
+            DataFrame with macro indicators as columns
+        """
+        # Get current macro snapshot
+        data = self.fetch_data()
+        
+        if not data:
+            logger.warning("Failed to fetch macro data")
+            return pd.DataFrame()
+        
+        # Convert to DataFrame format expected by FeatureEngineer
+        df = pd.DataFrame({
+            'timestamp': [datetime.now()],
+            'macro_score': [data.get('macro_score', 0)],
+            'interest_rate': [data.get('interest_rate', 0)],
+            'cpi': [data.get('cpi', 0)],
+            'unemployment': [data.get('unemployment', 0)],
+            'm2_money_supply': [data.get('m2_money_supply', 0)]
+        })
+        
+        logger.info(f"📊 Macro data fetched: Score={data.get('macro_score', 0):.1f}")
+        return df

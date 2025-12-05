@@ -51,12 +51,15 @@ class AITrainer:
         
         crypto_df = FeatureEngineer.process_data(raw_crypto)
         
-        # 2. Makro
-        # Macro data - simplified (not used in training yet)
-        macro_df = pd.DataFrame()
+        # 2. Makro (using helper)
+        from src.brain.macro_helpers import fetch_macro_for_training
+        full_df, macro_df = await fetch_macro_for_training(self.macro, crypto_df, period="1y", interval="1h")
         
-        # 3. Füzyon
-        full_df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
+        # If helper returned separate dfs, merge them
+        if not macro_df.empty:
+            from src.brain.feature_engineering import FeatureEngineer
+            full_df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
+        
         return full_df
 
     def build_lstm_model(self, input_shape):

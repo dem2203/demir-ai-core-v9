@@ -35,11 +35,16 @@ class RLTrainer:
         if not raw_crypto: return None
         
         crypto_df = FeatureEngineer.process_data(raw_crypto)
-        # Macro data - simplified
-        macro_df = pd.DataFrame()
         
-        # 2. Birleştir
-        df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
+        # Macro data (using helper)
+        from src.brain.macro_helpers import fetch_macro_for_training
+        df, macro_df = await fetch_macro_for_training(self.macro, crypto_df, period="1y", interval="1h")
+        
+        # If helper returned separate, merge
+        if not macro_df.empty:
+            df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
+        
+        # 2. Rest of processing continues...
         
         # 3. TEMİZLİK
         drop_cols = ['timestamp', 'symbol', 'source', 'target', 'open', 'high', 'low'] 
