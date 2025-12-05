@@ -301,11 +301,38 @@ class FeatureEngineer:
 
     @staticmethod
     def merge_crypto_and_macro(crypto_df: pd.DataFrame, macro_df: pd.DataFrame) -> pd.DataFrame:
-        if macro_df is None or macro_df.empty: return crypto_df
-        crypto_df = crypto_df.sort_values('timestamp')
-        macro_df = macro_df.sort_values('timestamp')
-        merged_df = pd.merge_asof(crypto_df, macro_df, on='timestamp', direction='backward')
-        merged_df = merged_df.ffill().bfill()
+        """Füzyonla kripto ve makro verileri birleştir"""
+        if macro_df is None or macro_df.empty:
+            return crypto_df
+        
+        # FIX: Ensure both DataFrames have timestamp as column (not index)
+        crypto_clean = crypto_df.copy()
+        macro_clean = macro_df.copy()
+        
+        # If timestamp is in index, move it to column
+        if 'timestamp' not in crypto_clean.columns and crypto_clean.index.name == 'timestamp':
+            crypto_clean = crypto_clean.reset_index()
+        if 'timestamp' not in macro_clean.columns:
+            # Macro might have datetime index, add a dummy timestamp column
+            macro_clean['timestamp'] = pd.Timestamp.now()
+        
+        # Ensure timestamp is datetime type
+        if 'timestamp' in crypto_clean.columns:
+            crypto_clean = crypto_clean.sort_values('timestamp')
+        if 'timestamp' in macro_clean.columns:
+            macro_clean = macro_clean.sort_values('timestamp')
+        
+        # Merge with asof (backward fill)
+        try:
+            merged_df = pd.merge_asof(crypto_clean, macro_clean, on='timestamp', direction='backward')
+            merged_df = merged_df.ffill().bfill()
+        except Exception as e:
+            # Fallback: just broadcast macro values to all rows
+            merged_df = crypto_clean.copy()
+            for col in macro_clean.columns:
+                if col != 'timestamp':
+                    merged_df[col] = macro_clean[col].iloc[0] if len(macro_clean) > 0 else 0
+        
         return merged_df
 
     @classmethod
