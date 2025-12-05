@@ -33,4 +33,9 @@ arch>=5.3.0
 scipy>=1.10.0
 
 # --- Phase 10: Superhuman Intelligence Enhancement ---
-apscheduler>=3.10.0
+apscheduler
+google-generativeai
+openai
+plotly
+kaleido
+pillow>=3.10.0

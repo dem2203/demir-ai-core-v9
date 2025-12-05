@@ -27,7 +27,11 @@ from src.brain.onchain_intel import OnChainIntelligence
 from src.brain.liquidation_hunter import LiquidationHunter
 from src.brain.pattern_engine import PatternRecognition
 from src.brain.adaptive_intel import AdaptiveIntelligence
+from src.brain.adaptive_intel import AdaptiveIntelligence
 from src.brain.technical_analyzer import TechnicalAnalyzer  # PHASE 9: Advanced TA
+from src.brain.vision_analyst import VisionAnalyst  # PHASE 12: Visual Cortex
+from src.brain.vision_analyst import VisionAnalyst  # PHASE 12: Visual Cortex
+from src.brain.vision_analyst import VisionAnalyst  # PHASE 12: Visual Cortex
 
 logger = logging.getLogger("MARKET_ANALYZER_PRO")
 
@@ -71,6 +75,9 @@ class MarketAnalyzer:
         
         # PHASE 9: Advanced Technical Analysis
         self.technical_analyzer = TechnicalAnalyzer()
+        
+        # PHASE 12: Visual Cortex (AI Vision)
+        self.vision = VisionAnalyst()
         
         self.regime_classifier = RegimeClassifier()
         
@@ -629,7 +636,14 @@ class MarketAnalyzer:
         reason = " | ".join(reason_parts)
         # Log the decision
         logger.info(f"🎯 FINAL DECISION: {ai_decision} ({signal_quality}) | Conf: {ai_confidence:.1f}%")
+        # 6. KARAR MEKANİZMASI (DECISION ENGINE)
+        # RL Agent veya Kural Tabanlı Karar
         
+        # PHASE 12: Visual Analysis
+        logger.info(f"👁️ Requesting Visual Analysis for {symbol}...")
+        visual_analysis = self.vision.analyze_chart(symbol, df)
+        logger.info(f"👁️ VISUAL OPINION: {visual_analysis['trend']} | Score: {visual_analysis['visual_score']} | Pattern: {visual_analysis['pattern']}")
+
         snapshot = {
             "symbol": symbol,
             "price": float(last_row['close']),
@@ -639,6 +653,19 @@ class MarketAnalyzer:
             "ai_decision": ai_decision,
             "ai_confidence": ai_confidence,
             "reason": reason,
+            "visual_analysis": visual_analysis,  # Export Visual Data
+            "brain_state": {
+                "tech_attention": abs(tech_direction) * weights['tech'],
+                "pattern_attention": abs(pattern_direction) * weights['pattern'],
+                "lstm_attention": abs(lstm_direction) * weights['lstm'],
+                "htf_attention": abs(htf_direction) * weights['htf'],
+                "htf_direction": htf_direction,
+                "onchain_attention": abs(onchain_direction) * weights['onchain'],
+                "rl_action": int(rl_action) if self.rl_agent and 'rl_action' in locals() else -1,
+                # New Visual Metrics
+                "visual_score": visual_analysis['visual_score'],
+                "visual_trend": visual_analysis['trend']
+            },
             "regime": current_regime,
             "hurst": hurst,
             "fractal_score": fractal_score,

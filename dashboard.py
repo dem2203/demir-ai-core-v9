@@ -323,6 +323,48 @@ elif page == "🧠 Neural Brain Monitor":
             st.markdown("---")
             st.metric("Confidence", f"{info.get('ai_confidence', 0):.1f}%")
             
+            # PHASE 12: Visual Cortex Display
+            visual_data = info.get('visual_analysis', {})
+            v_score = visual_data.get('visual_score', 50)
+            v_trend = visual_data.get('trend', 'NEUTRAL')
+            dual_vision = visual_data.get('dual_vision', False)
+            agreement = visual_data.get('agreement', 'N/A')
+            
+            st.markdown("### 👁️ Visual Cortex (Gemini + GPT-4o)")
+            
+            if dual_vision:
+                st.success("🔥 DUAL VISION ACTIVE - Cross-validation enabled!")
+                c_v1, c_v2, c_v3 = st.columns(3)
+                c_v1.metric("Consensus Score", f"{v_score}/100", delta=v_score-50)
+                c_v2.metric("Consensus Trend", v_trend, delta="normal" if v_trend=="BULLISH" else "inverse" if v_trend=="BEARISH" else "off")
+                
+                # Agreement Level
+                if agreement == "STRONG":
+                    c_v3.metric("Agreement", "✅ STRONG", delta_color="normal")
+                elif agreement == "MODERATE":
+                    c_v3.metric("Agreement", "⚠️ MODERATE", delta_color="off")
+                else:
+                    c_v3.metric("Agreement", "❌ CONFLICT", delta_color="inverse")
+                
+                # Individual AI Scores
+                with st.expander("👁️ Individual AI Opinions"):
+                    gem_score = visual_data.get('gemini_score', 50)
+                    gpt_score = visual_data.get('gpt_score', 50)
+                    st.write(f"🟢 **Gemini:** {gem_score}/100")
+                    st.write(f"🔵 **GPT-4o:** {gpt_score}/100")
+            else:
+                c_v1, c_v2 = st.columns(2)
+                c_v1.metric("Visual Score", f"{v_score}/100", delta=v_score-50)
+                c_v2.metric("Visual Trend", v_trend, delta="normal" if v_trend=="BULLISH" else "inverse" if v_trend=="BEARISH" else "off")
+            
+            if visual_data.get('pattern') and visual_data['pattern'] != 'None':
+                st.info(f"📐 Pattern Detected: **{visual_data['pattern']}**")
+            
+            with st.expander("👁️ Visual Analysis Reasoning"):
+                st.caption(visual_data.get('reasoning', 'No visual analysis available.'))
+            
+            st.markdown("---")
+            
             # HTF Trend Göstergesi
             htf_trend = "NEUTRAL"
             if "4H Trend: BULL" in info.get('reason', ''): htf_trend = "BULLISH"
