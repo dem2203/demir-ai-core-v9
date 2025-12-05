@@ -200,18 +200,6 @@ class MarketAnalyzer:
         # 1. MULTI-TIMEFRAME VERİ ÇEK
         mtf_data = await self.fetch_multi_timeframe_data(symbol)
         if not mtf_data or '1h' not in mtf_data:
-            return None
-            
-        df_1h = mtf_data['1h'] # Ana analiz 1H üzerinden döner
-        last_row = df_1h.iloc[-1]
-
-        # 2. MAKRO VERİ & FÜZYON
-        macro_df = await self.macro.fetch_macro_data(period="5d", interval="1h")
-        
-        if macro_df is None or macro_df.empty:
-            logger.warning("⚠️ Macro data unavailable. Using crypto-only data.")
-            df = df_1h.copy()
-            # Add dummy macro columns to prevent errors
             for col in ['macro_DXY', 'macro_VIX', 'macro_SPX', 'macro_NDQ', 'macro_TNX', 'macro_GOLD', 'macro_SILVER', 'macro_OIL']:
                 df[col] = 0.0
             df['macro_DXY'] = 100.0  # Default DXY

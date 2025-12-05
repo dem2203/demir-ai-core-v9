@@ -53,7 +53,7 @@ class AITrainer:
         
         # 2. Makro
         # Macro data - simplified (not used in training yet)
-        macro_data = {"macro_score": 0}
+        macro_df = pd.DataFrame()
         
         # 3. Füzyon
         full_df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)

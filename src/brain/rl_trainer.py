@@ -36,7 +36,7 @@ class RLTrainer:
         
         crypto_df = FeatureEngineer.process_data(raw_crypto)
         # Macro data - simplified
-        macro_data = {"macro_score": 0}
+        macro_df = pd.DataFrame()
         
         # 2. Birleştir
         df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
