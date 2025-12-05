@@ -57,7 +57,6 @@ class AITrainer:
         
         # If helper returned separate dfs, merge them
         if not macro_df.empty:
-            from src.brain.feature_engineering import FeatureEngineer
             full_df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
         
         return full_df
