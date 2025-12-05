@@ -21,19 +21,13 @@ async def main():
     #     for f in files: os.remove(f)
     #     print(">> 🧹 Old Brains wiped for upgrade.")
     
-    # --- 1. LSTM EĞİTİM KONTROLÜ ---
-    lstm_trainer = LSTMTrainer()
-    print(">> 🧠 Checking LSTM Brains...")
-    for symbol in Config.TARGET_COINS:
-        model_path, _ = lstm_trainer._get_paths(symbol)
-        
-        # Model yoksa EĞİT
-        if not os.path.exists(model_path):
-            print(f">> ⏳ LSTM Brain missing for {symbol}. Training with new features...")
-            try:
-                await lstm_trainer.train_model_for_symbol(symbol)
-            except Exception as e:
-                print(f">> ❌ LSTM Training Failed: {e}")
+    # --- 1. LSTM EĞİTİM KONTROLÜ (DİSABLED - Auto-Trainer handles it) ---
+    # LSTM artık sadece AutoTrainingScheduler üzerinden haftalık eğitiliyor.
+    # Startup'ta eğitimi DİSABLE ettik çünkü Railway'de 10 saat bloke ediyor.
+    # RL Agent yeterli, LSTM yoksa fallback logic kullanılır.
+    
+    print(">> 🧠 LSTM Training: DISABLED (handled by weekly scheduler)")
+    print(">> ℹ️ RL Agent will use fallback logic if LSTM models are missing.")
 
     # --- 2. RL EĞİTİMİ (GERÇEK AI!) ---
     rl_model_path = "src/brain/models/storage/rl_agent_v2_recurrent.zip"
