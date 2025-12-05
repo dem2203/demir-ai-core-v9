@@ -1,5 +1,5 @@
 import logging
-from typing import Dict
+from typing import Dict, Tuple
 
 logger = logging.getLogger("SIGNAL_FILTER")
 
@@ -31,16 +31,17 @@ class SignalFilter:
         
         # 1. HTF Trend Alignment (+20)
         brain_state = snapshot.get('brain_state', {})
-        htf_attention = brain_state.get('htf_attention', 0)
+        htf_direction = brain_state.get('htf_direction', 0)  # -1, 0, or 1
         
-        if signal_data['side'] == 'BUY' and htf_attention > 0.1:
+        # Check if signal aligns with HTF trend
+        if signal_data['side'] == 'BUY' and htf_direction > 0:
             score += 20
             details.append("✅ HTF Bullish (+20)")
-        elif signal_data['side'] == 'SELL' and htf_attention > 0.1:
+        elif signal_data['side'] == 'SELL' and htf_direction < 0:
             score += 20
             details.append("✅ HTF Bearish (+20)")
         else:
-            details.append("⚠️ HTF Neutral (0)")
+            details.append("⚠️ HTF Not Aligned (0)")
         
         # 2. Pattern Confirmation (+15)
         pattern = signal_data.get('pattern', 'None')
@@ -81,7 +82,7 @@ class SignalFilter:
         logger.info(f"📊 Signal Quality Score: {score}/100 | {' | '.join(details)}")
         return score
     
-    def should_send_signal(self, signal_data: Dict, snapshot: Dict) -> tuple[bool, int, str]:
+    def should_send_signal(self, signal_data: Dict, snapshot: Dict) -> Tuple[bool, int, str]:
         """
         Determine if signal meets quality threshold.
         

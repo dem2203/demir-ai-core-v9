@@ -84,10 +84,12 @@ class AutoTrainingScheduler:
             
             logger.info(f"✅ Processed {len(df)} rows of training data")
             
-            # Train RL Agent
+            # Train RL Agent (wrap sync method in executor to avoid blocking)
             logger.info("🧠 Starting RL Agent training (5k timesteps)...")
             trainer = RLTrainer()
-            trainer.train(symbol, df, total_timesteps=5000)  # Reduced for Railway
+            
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, trainer.train, symbol, df, 5000)
             
             training_duration = (datetime.now() - training_start).total_seconds()
             logger.info(f"✅ TRAINING COMPLETE in {training_duration:.1f}s")

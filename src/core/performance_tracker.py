@@ -20,7 +20,10 @@ class PerformanceTracker:
     - Equity Curve
     """
     
-    def __init__(self, portfolio_file: str = "portfolio.json"):
+    def __init__(self, portfolio_file: str = None):
+        if portfolio_file is None:
+            # Default to proper portfolio location
+            portfolio_file = os.path.join("src", "execution", "portfolio.json")
         self.portfolio_file = portfolio_file
         self.metrics_file = "performance_metrics.json"
         logger.info("📊 Performance Tracker initialized")

@@ -677,6 +677,7 @@ class MarketAnalyzer:
                 "pattern_attention": abs(pattern_direction) * weights['pattern'],
                 "lstm_attention": abs(lstm_direction) * weights['lstm'],
                 "htf_attention": abs(htf_direction) * weights['htf'],
+                "htf_direction": htf_direction,  # -1, 0, or 1 for filter logic
                 "onchain_attention": abs(onchain_direction) * weights['onchain'],
                 "rl_action": int(rl_action) if self.rl_agent and 'rl_action' in locals() else -1
             }

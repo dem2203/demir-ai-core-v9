@@ -16,7 +16,12 @@ from src.core.risk_manager import RiskManager
 from src.brain.strategy_selector import StrategySelector
 from src.execution.hedge_manager import HedgeManager
 from src.brain.anomaly_detector import AnomalyDetector
-from src.utils.alert_manager import AlertManager 
+from src.utils.alert_manager import AlertManager
+
+# PHASE 11: Advanced Risk & Performance
+from src.core.risk_shield import RiskShield
+from src.core.performance_tracker import PerformanceTracker
+from src.brain.exit_strategy import ExitStrategy 
 
 logger = logging.getLogger("DEMIR_AI_CORE_ENGINE")
 
@@ -61,6 +66,12 @@ class BotEngine:
         # 7. PHASE 6: Opportunity Hunter
         self.anomaly_detectors = {}  # One per symbol
         self.alert_manager = AlertManager()
+        
+        # 8. PHASE 11: Advanced Risk & Performance
+        self.risk_shield = RiskShield()
+        self.performance_tracker = PerformanceTracker()
+        self.exit_strategy = ExitStrategy()
+        self.cycle_count = 0  # For periodic performance tracking
         
         logger.info("✅ All Sub-systems Initialized Successfully.")
 
@@ -149,6 +160,12 @@ class BotEngine:
                 tasks.append(self.analyze_and_execute(data))
             
         await asyncio.gather(*tasks)
+        
+        # ADIM 4: Performance Tracking (every 10 cycles)
+        self.cycle_count += 1
+        if self.cycle_count % 10 == 0:
+            logger.info("📊 Calculating performance metrics...")
+            self.performance_tracker.calculate_metrics()
 
     async def analyze_and_execute(self, ticker_data: List[dict]):
         """
@@ -169,11 +186,18 @@ class BotEngine:
         logger.info(f"🎯 SIGNAL FOUND: {symbol} | {signal['side']} | Conf: {signal['confidence']:.2f}% | Reason: {signal.get('reason')}")
 
         # --- İCRA KATMANI (Execution Layer - Advisory) ---
-        # Kelly Kriteri ile Pozisyon Büyüklüğü Hesapla
-        kelly_size = self.risk_manager.calculate_kelly_size(signal['confidence'])
+        # PHASE 11: Risk Shield - Check cooling mode & adjust Kelly
+        adjusted_kelly = self.risk_shield.adjust_kelly(signal['confidence'])
+        
+        if adjusted_kelly == 0:
+            logger.warning(f"❌ TRADE BLOCKED: Risk Shield in Cooling Mode")
+            return
+        
+        # Apply adjusted Kelly
+        kelly_size = self.risk_manager.calculate_kelly_size(adjusted_kelly)
         signal['kelly_size'] = kelly_size
         
-        logger.info(f"💰 KELLY SUGGESTION: Risk {kelly_size}% of Equity")
+        logger.info(f"💰 KELLY SUGGESTION: Risk {kelly_size}% of Equity (Shield: {self.risk_shield.get_status()['risk_level']})")
 
         # Advisory modunda olduğumuz için sadece 'Paper Trade' yapıyoruz ve bildiriyoruz.
         # Gerçek borsaya emir GİTMİYOR.
