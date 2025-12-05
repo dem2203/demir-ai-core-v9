@@ -490,6 +490,16 @@ class MarketAnalyzer:
         
         # LSTM → Direction
         lstm_direction = (lstm_prob - 0.5) * 2  # -1 to 1 range
+
+        # HTF Trend (4H) → Direction
+        htf_direction = 0
+        if '4h' in mtf_data:
+            df_4h = mtf_data['4h'].iloc[-1]
+            # 4H Trend: Fiyat VWAP'ın üstündeyse BULLISH
+            if df_4h['close'] > df_4h.get('vwap', df_4h['close']):
+                htf_direction = 1
+            else:
+                htf_direction = -1
         
         # ========================================
         # CONFLUENCE SCORE HESAPLA
@@ -499,23 +509,25 @@ class MarketAnalyzer:
         # CONFLUENCE SCORE HESAPLA (Reasoning için her zaman hesapla)
         # ========================================
         
-        # Ağırlıklar (Swing Trading için)
+        # Ağırlıklar (Swing Trading için - Multi-Timeframe)
         weights = {
-            'tech': 0.40,      # Technical en önemli
-            'pattern': 0.30,   # Pattern ikinci
-            'lstm': 0.20,      # LSTM üçüncü
-            'onchain': 0.10    # On-chain uzun vadeli, düşük ağırlık
+            'tech': 0.30,      # Technical (LTF)
+            'pattern': 0.25,   # Pattern
+            'lstm': 0.20,      # AI Model
+            'htf': 0.15,       # HTF Trend (Kartal Gözü)
+            'onchain': 0.10    # On-Chain
         }
         
         confluence_score = (
             tech_direction * weights['tech'] +
             pattern_direction * weights['pattern'] +
             lstm_direction * weights['lstm'] +
+            htf_direction * weights['htf'] +
             onchain_direction * weights['onchain']
         )
         
         # Uyum Skoru: Sinyallerin aynı yönü gösterme oranı
-        signals = [tech_direction, pattern_direction, lstm_direction]
+        signals = [tech_direction, pattern_direction, lstm_direction, htf_direction]
         bullish_count = sum(1 for s in signals if s > 0)
         bearish_count = sum(1 for s in signals if s < 0)
         
@@ -610,6 +622,7 @@ class MarketAnalyzer:
         
         # Generate detailed reason
         if current_regime != 'UNKNOWN': reason_parts.append(f"Regime: {current_regime}")
+        if htf_direction != 0: reason_parts.append(f"4H Trend: {'BULL' if htf_direction > 0 else 'BEAR'}")
         if tech_bias and tech_bias != 'NEUTRAL': reason_parts.append(f"Tech: {tech_bias}")
         if pattern_bias != 'NEUTRAL': reason_parts.append(f"Pattern: {pattern_bias}")
         
@@ -639,6 +652,7 @@ class MarketAnalyzer:
                 "tech_attention": abs(tech_direction) * weights['tech'],
                 "pattern_attention": abs(pattern_direction) * weights['pattern'],
                 "lstm_attention": abs(lstm_direction) * weights['lstm'],
+                "htf_attention": abs(htf_direction) * weights['htf'],
                 "onchain_attention": abs(onchain_direction) * weights['onchain'],
                 "rl_action": int(rl_action) if self.rl_agent and 'rl_action' in locals() else -1
             }

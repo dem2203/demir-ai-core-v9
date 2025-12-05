@@ -322,17 +322,25 @@ elif page == "🧠 Neural Brain Monitor":
             
             st.markdown("---")
             st.metric("Confidence", f"{info.get('ai_confidence', 0):.1f}%")
-            st.metric("Confluence Score", f"{info.get('confluence_score', 0):.2f}") # Eğer varsa
+            
+            # HTF Trend Göstergesi
+            htf_trend = "NEUTRAL"
+            if "4H Trend: BULL" in info.get('reason', ''): htf_trend = "BULLISH"
+            elif "4H Trend: BEAR" in info.get('reason', ''): htf_trend = "BEARISH"
+            
+            delta_color = "normal" if htf_trend == "BULLISH" else "inverse" if htf_trend == "BEARISH" else "off"
+            st.metric("4H Trend (Eagle Eye)", htf_trend, delta_color=delta_color)
             
         with c2:
             st.markdown("### 🧠 Attention Map")
             
             # Radar Chart Verisi
-            categories = ['Technical', 'Pattern', 'LSTM Model', 'On-Chain']
+            categories = ['Technical', 'Pattern', 'LSTM Model', 'HTF Trend', 'On-Chain']
             values = [
                 brain_state.get('tech_attention', 0),
                 brain_state.get('pattern_attention', 0),
                 brain_state.get('lstm_attention', 0),
+                brain_state.get('htf_attention', 0),
                 brain_state.get('onchain_attention', 0)
             ]
             
