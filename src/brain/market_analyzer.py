@@ -200,12 +200,14 @@ class MarketAnalyzer:
         # 1. MULTI-TIMEFRAME VERİ ÇEK
         mtf_data = await self.fetch_multi_timeframe_data(symbol)
         if not mtf_data or '1h' not in mtf_data:
-            for col in ['macro_DXY', 'macro_VIX', 'macro_SPX', 'macro_NDQ', 'macro_TNX', 'macro_GOLD', 'macro_SILVER', 'macro_OIL']:
-                df[col] = 0.0
-            df['macro_DXY'] = 100.0  # Default DXY
-            df['macro_VIX'] = 20.0   # Default VIX
-        else:
-            df = FeatureEngineer.merge_crypto_and_macro(df_1h, macro_df)
+            return None  # Cannot analyze without 1h data
+            
+        df_1h = mtf_data['1h']  # Ana analiz 1H üzerinden döner
+        last_row = df_1h.iloc[-1]
+
+        # 2. MAKRO VERİ & FÜZYON (using safe helper function)
+        from src.brain.macro_helpers import fetch_and_merge_macro
+        df = await fetch_and_merge_macro(self.macro, df_1h)
         
         # 3. PİYASA REJİMİ
         current_regime = self.regime_classifier.identify_regime(df)
