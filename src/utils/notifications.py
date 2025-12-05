@@ -1,7 +1,11 @@
 import logging
 import requests
 import asyncio
+import json
+import os
+from datetime import datetime
 from src.config.settings import Config
+from src.core.signal_filter import SignalFilter
 
 logger = logging.getLogger("NOTIFICATION_MANAGER")
 
@@ -16,14 +20,27 @@ class NotificationManager:
         self.telegram_token = Config.TELEGRAM_TOKEN
         self.telegram_chat_id = Config.TELEGRAM_CHAT_ID
         self.telegram_url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage" if self.telegram_token else None
+        self.signal_filter = SignalFilter(quality_threshold=70)
+        self.rejected_log_path = "rejected_signals.json"
 
-    async def send_signal(self, signal: dict):
+    async def send_signal(self, signal: dict, snapshot: dict = None):
         """
-        Sends signal to Telegram.
+        Sends signal to Telegram (with Precision Filter).
         """
         if not self.telegram_token or not self.telegram_chat_id:
             logger.warning("Telegram credentials not configured!")
             return
+        
+        # PRECISION FILTER: Check signal quality
+        if snapshot:
+            should_send, quality_score, filter_reason = self.signal_filter.should_send_signal(signal, snapshot)
+            
+            if not should_send:
+                logger.warning(f"⛔ SIGNAL REJECTED: {filter_reason}")
+                self._log_rejected_signal(signal, quality_score, filter_reason)
+                return
+        else:
+            quality_score = 0
         
         try:
             side_icon = "🟢 LONG 🚀" if signal['side'] == "BUY" else "🔴 SHORT 🔻"
@@ -39,6 +56,7 @@ class NotificationManager:
             q_icon = "💎" if quality == "STRONG" else ("⚠️" if quality == "CONFLICTING" else "⚡")
 
             message = (
+                f"🎯 **PRECISION SIGNAL** (Score: {quality_score}/100)\n"
                 f"{side_icon} **{signal['symbol']}**\n"
                 f"━━━━━━━━━━━━━━\n"
                 f"🧠 **Decision:** {source}\n"
@@ -76,3 +94,36 @@ class NotificationManager:
             await loop.run_in_executor(None, lambda: requests.post(self.telegram_url, data=payload))
         except Exception as e:
             logger.error(f"Telegram Error: {e}")
+    
+    def _log_rejected_signal(self, signal: dict, quality_score: int, reason: str):
+        """Log rejected signals to JSON file for dashboard review"""
+        try:
+            rejected_data = {
+                "timestamp": datetime.now().isoformat(),
+                "symbol": signal['symbol'],
+                "side": signal['side'],
+                "quality_score": quality_score,
+                "reason": reason,
+                "pattern": signal.get('pattern', 'None'),
+                "confidence": signal.get('confidence', 0)
+            }
+            
+            # Append to log file
+            if os.path.exists(self.rejected_log_path):
+                with open(self.rejected_log_path, 'r') as f:
+                    logs = json.load(f)
+            else:
+                logs = []
+            
+            logs.append(rejected_data)
+            
+            # Keep only last 50 rejected signals
+            if len(logs) > 50:
+                logs = logs[-50:]
+            
+            with open(self.rejected_log_path, 'w') as f:
+                json.dump(logs, f, indent=2)
+            
+            logger.info(f"📝 Rejected signal logged: {signal['symbol']} (Score: {quality_score})")
+        except Exception as e:
+            logger.error(f"Error logging rejected signal: {e}")

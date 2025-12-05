@@ -49,12 +49,20 @@ async def main():
         print(">> ✅ RL Agent already trained. Loading...")
 
 
-    # --- 3. BOTU BAŞLAT ---
+    # --- 3. AUTO-TRAINING SCHEDULER (HAFTALIK OTOMATİK EĞİTİM) ---
+    from src.brain.training_scheduler import AutoTrainingScheduler
+    
+    auto_trainer = AutoTrainingScheduler()
+    auto_trainer.start()
+    print(f">> 🔄 Auto-Training Scheduled: {auto_trainer.get_next_training_time()}")
+
+    # --- 4. BOTU BAŞLAT ---
     print(">> 🚀 All systems ready. Launching Engine.")
     bot = BotEngine()
     try:
         await bot.start()
     except KeyboardInterrupt:
+        auto_trainer.stop()
         await bot.stop()
     except Exception as e:
         print(f">> FATAL ERROR: {e}")

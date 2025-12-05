@@ -160,7 +160,7 @@ class BotEngine:
         symbol = ticker_data[0]['symbol']
         
         # --- BEYİN KATMANI (Brain Layer) ---
-        signal = await self.analyzer.analyze_market(symbol, ticker_data)
+        signal, snapshot = await self.analyzer.analyze_market(symbol, ticker_data)
         
         if not signal:
             return
@@ -180,7 +180,7 @@ class BotEngine:
         trade_executed = self.paper_trader.execute_trade(signal)
         
         if trade_executed:
-            await self.notifier.send_signal(signal)
+            await self.notifier.send_signal(signal, snapshot)  # Pass snapshot for Precision Filter
             logger.info(f"✅ SIGNAL BROADCASTED: {signal['side']} {symbol}")
         else:
             logger.info(f"⏸️ SIGNAL SKIPPED: {symbol} (Already in position or Insufficient Funds)")

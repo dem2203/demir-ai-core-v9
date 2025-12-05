@@ -719,9 +719,9 @@ class MarketAnalyzer:
         }
         
         if SignalValidator.validate_outgoing_signal(signal):
-            return signal
+            return signal, snapshot  # Return both signal and snapshot for Precision Filter
         else:
-            return None
+            return None, snapshot  # Still return snapshot for dashboard even if no signal
 
     def _save_to_dashboard(self, data):
         try:
