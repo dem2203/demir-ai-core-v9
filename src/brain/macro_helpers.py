@@ -33,8 +33,23 @@ async def fetch_and_merge_macro(macro_connector, crypto_df: pd.DataFrame) -> pd.
         # Import here to avoid circular dependency
         from src.brain.feature_engineering import FeatureEngineer
         
+        # FIX: Reset indices to avoid dtype mismatch (crypto uses int, macro uses datetime)
+        crypto_df_copy = crypto_df.copy()
+        macro_df_copy = macro_df.copy()
+        
+        # Ensure both have compatible indices for merge
+        if not crypto_df_copy.index.equals(macro_df_copy.index):
+            # Reset both to integer indices
+            crypto_df_copy = crypto_df_copy.reset_index(drop=False)
+            macro_df_copy = macro_df_copy.reset_index(drop=True)
+        
         # Merge successfully
-        merged_df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
+        try:
+            merged_df = FeatureEngineer.merge_crypto_and_macro(crypto_df_copy, macro_df_copy)
+        except Exception as merge_error:
+            logger.warning(f"Merge failed even after index reset: {merge_error}")
+            # Return crypto with dummy macro columns
+            return _add_dummy_macro_columns(crypto_df)
         
         # Log success
         macro_score = macro_df['macro_score'].iloc[0] if 'macro_score' in macro_df.columns else 0
