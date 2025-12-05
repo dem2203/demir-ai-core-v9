@@ -627,6 +627,30 @@ class MarketAnalyzer:
         if pattern_bias != 'NEUTRAL': reason_parts.append(f"Pattern: {pattern_bias}")
         
         reason = " | ".join(reason_parts)
+        # Log the decision
+        logger.info(f"🎯 FINAL DECISION: {ai_decision} ({signal_quality}) | Conf: {ai_confidence:.1f}%")
+        
+        snapshot = {
+            "symbol": symbol,
+            "price": float(last_row['close']),
+            "dxy": float(last_row.get('macro_DXY', 0)), 
+            "vix": float(last_row.get('macro_VIX', 0)), 
+            "funding_rate": funding_rate * 100,
+            "ai_decision": ai_decision,
+            "ai_confidence": ai_confidence,
+            "reason": reason,
+            "regime": current_regime,
+            "hurst": hurst,
+            "fractal_score": fractal_score,
+            "whale_support": whale_support if whale_support else 0,
+            "whale_resistance": whale_resistance if whale_resistance else 0,
+            "orderbook_imbalance": orderbook_imbalance,
+            "correlations": corr_risk.get('correlations', {}) if corr_risk else {},
+            # PHASE 8: New Superpowers
+            "onchain_signal": onchain_signal,
+            "onchain_score": onchain_score,
+            "liq_signal": liq_signal,
+            "liq_score": liq_score,
             "magnet_price": magnet_price,
             "wyckoff_phase": wyckoff_phase,
             "pattern_bias": pattern_bias,
