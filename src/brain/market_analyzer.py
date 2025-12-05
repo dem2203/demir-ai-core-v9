@@ -646,7 +646,7 @@ class MarketAnalyzer:
         logger.info(f"👁️ VISUAL OPINION: {visual_analysis['trend']} | Score: {visual_analysis['visual_score']} | Pattern: {visual_analysis['pattern']}")
         
         # PHASE 13: Sentiment Analysis
-        sentiment_data = self. sentiment.get_sentiment(symbol.split('/')[0])  # Extract base symbol (BTC from BTC/USDT)
+        sentiment_data = self.sentiment.get_sentiment(symbol.split('/')[0])  # Extract base symbol (BTC from BTC/USDT)
         logger.info(f"📊 SENTIMENT: {sentiment_data['sentiment']} | Score: {sentiment_data['composite_score']} | F&G: {sentiment_data['fear_greed_index']}")
 
         snapshot = {
