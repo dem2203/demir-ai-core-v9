@@ -50,16 +50,14 @@ async def main():
     print(">> 🧠 LSTM Training: BACKGROUND MODE (non-blocking)")
     asyncio.create_task(background_train_lstm())
 
-    # --- 2. RL EĞİTİMİ (GERÇEK AI!) ---
+    # --- 2. RL EĞİTİMİ (ARKA PLANDA!) ---
     rl_model_path = "src/brain/models/storage/rl_agent_v2_recurrent.zip"
     if not os.path.exists(rl_model_path):
-        print(">> 🤖 RL Agent missing. Training TRUE AI Brain...")
-        try:
-            rl_trainer = RLTrainer()
-            await rl_trainer.train_agent(Config.TARGET_COINS[0])  # BTC ile eğit
-            print(">> ✅ RL Agent trained successfully!")
-        except Exception as e:
-            print(f">> ⚠️ RL Training Failed: {e}. Using LSTM fallback.")
+        print(">> 🤖 RL Agent missing. Starting training in BACKGROUND...")
+        rl_trainer = RLTrainer()
+        # BACKGROUND: Don't await - let engine start immediately
+        asyncio.create_task(rl_trainer.train_agent(Config.TARGET_COINS[0]))
+        print(">> 🧠 RL Training running in background (non-blocking)")
     else:
         print(">> ✅ RL Agent already trained. Loading...")
 
