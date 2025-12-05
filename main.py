@@ -7,6 +7,30 @@ from src.config.settings import Config
 from src.brain.trainer import AITrainer as LSTMTrainer
 from src.brain.rl_trainer import RLTrainer  # RL Eğitim YENİDEN AKTİF!
 
+async def background_train_lstm():
+    """
+    ARKA PLAN LSTM EĞİTİMİ (Non-Blocking)
+    Bot çalışırken arka planda modelleri eğitir.
+    5-10 saat sonra otomatik aktif olur.
+    """
+    print(">> 🧠 Starting BACKGROUND LSTM Training...")
+    lstm_trainer = LSTMTrainer()
+    
+    for symbol in Config.TARGET_COINS:
+        model_path, _ = lstm_trainer._get_paths(symbol)
+        
+        if not os.path.exists(model_path):
+            print(f">> ⏳ Training LSTM for {symbol} in background...")
+            try:
+                await lstm_trainer.train_model_for_symbol(symbol)
+                print(f">> ✅ {symbol} LSTM trained successfully!")
+            except Exception as e:
+                print(f">> ❌ {symbol} LSTM training failed: {e}")
+        else:
+            print(f">> ✅ {symbol} LSTM already trained. Skipping.")
+    
+    print(">> 🎉 All LSTM models ready!")
+
 async def main():
     setup_logger()
     print(f">> Starting DEMIR AI v{Config.VERSION}")
@@ -21,13 +45,10 @@ async def main():
     #     for f in files: os.remove(f)
     #     print(">> 🧹 Old Brains wiped for upgrade.")
     
-    # --- 1. LSTM EĞİTİM KONTROLÜ (DİSABLED - Auto-Trainer handles it) ---
-    # LSTM artık sadece AutoTrainingScheduler üzerinden haftalık eğitiliyor.
-    # Startup'ta eğitimi DİSABLE ettik çünkü Railway'de 10 saat bloke ediyor.
-    # RL Agent yeterli, LSTM yoksa fallback logic kullanılır.
-    
-    print(">> 🧠 LSTM Training: DISABLED (handled by weekly scheduler)")
-    print(">> ℹ️ RL Agent will use fallback logic if LSTM models are missing.")
+    # --- 1. LSTM EĞİTİM (BACKGROUND) ---
+    # LSTM eğitimi arka planda başlatılıyor (bot'u bloke etmez)
+    print(">> 🧠 LSTM Training: BACKGROUND MODE (non-blocking)")
+    asyncio.create_task(background_train_lstm())
 
     # --- 2. RL EĞİTİMİ (GERÇEK AI!) ---
     rl_model_path = "src/brain/models/storage/rl_agent_v2_recurrent.zip"
