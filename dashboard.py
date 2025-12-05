@@ -452,6 +452,70 @@ elif page == "🧠 Neural Brain Monitor":
             
         st.markdown("### 📝 Decision Logic Breakdown")
         st.json(brain_state)
+        
+        # PHASE 15: Portfolio Analytics
+        st.markdown("---")
+        st.subheader("🎯 Portfolio Analytics")
+        
+        try:
+            from src.core.portfolio_optimizer import PortfolioOptimizer
+            from src.data_ingestion.connectors.binance_connector import BinanceConnector
+            import plotly.express as px
+            
+            optimizer = PortfolioOptimizer()
+            connector = BinanceConnector()
+            
+            # Fetch price data
+            symbols_list = ["BTC/USDT", "ETH/USDT", "LTC/USDT"]
+            price_data = {}
+            
+            for sym in symbols_list:
+                df_price = connector.fetch_ohlcv(sym, timeframe='1d', limit=30)
+                if not df_price.empty:
+                    price_data[sym.replace("/USDT", "")] = df_price
+            
+            if len(price_data) >= 2:
+                corr_matrix = optimizer.calculate_correlation_matrix(price_data, period=30)
+                
+                if not corr_matrix.empty:
+                    # Correlation Heatmap
+                    fig_corr = px.imshow(
+                        corr_matrix,
+                        labels=dict(x="Symbol", y="Symbol", color="Correlation"),
+                        x=corr_matrix.columns,
+                        y=corr_matrix.index,
+                        color_continuous_scale='RdYlGn',
+                        zmin=-1, zmax=1,
+                        text_auto='.2f'
+                    )
+                    fig_corr.update_layout(
+                        title="30-Day Correlation Matrix",
+                        height=350,
+                        template="plotly_dark"
+                    )
+                    st.plotly_chart(fig_corr, use_container_width=True)
+                    
+                    # Portfolio Metrics
+                    portfolio_data = load_json("portfolio.json")
+                    if portfolio_data and portfolio_data.get('positions'):
+                        analytics = optimizer.get_portfolio_analytics(
+                            portfolio_data['positions'], 
+                            corr_matrix
+                        )
+                        
+                        col1, col2, col3 = st.columns(3)
+                        col1.metric("Concentration", f"{analytics['concentration']:.2f}")
+                        col2.metric("Diversification", f"{analytics['diversification_score']:.2f}")
+                        
+                        risk = analytics['correlation_risk']
+                        risk_emoji = "🔴" if risk in ["HIGH", "CRITICAL"] else "🟡" if risk == "MEDIUM" else "🟢"
+                        col3.metric("Correlation Risk", f"{risk_emoji} {risk}")
+                else:
+                    st.info("Insufficient data for correlation analysis")
+            else:
+                st.info("Need at least 2 symbols for correlation")
+        except Exception as e:
+            st.error(f"Portfolio Analytics Error: {str(e)}")
 
 # ==========================================
 # 2. SANAL CÜZDAN (Advisory Portfolio)
