@@ -86,18 +86,27 @@ class SignalFilter:
         """
         Determine if signal meets quality threshold.
         
-        STRICT FILTERING (Phase 21):
-        - Confidence MUST be > 85%
-        - Quality Score MUST be >= threshold
+        STRICT FILTERING (Phase 21 - REVISED):
+        - PASS if Confidence > 85%
+        - PASS if Quality Score > 80 (Strong Confluence)
         """
         score = self.calculate_signal_quality(signal_data, snapshot)
         confidence = signal_data.get('confidence', 0)
         
-        # 1. Strict Confidence Check
-        if confidence <= 85:
-            reason = f"⛔ LOW CONFIDENCE ({confidence:.1f}% <= 85%)"
-            logger.info(f"🔇 SIGNAL MUTED: {signal_data['symbol']} | Conf: {confidence:.1f}%")
-            return False, score, reason
+        # 1. Hybrid Check
+        is_high_confidence = confidence > 85
+        is_strong_confluence = score > 80
+        
+        if is_high_confidence:
+            return True, score, "High Confidence AI"
+            
+        if is_strong_confluence:
+            return True, score, f"Strong Confluence (Score: {score})"
+            
+        # Reject if neither
+        reason = f"⛔ WEAK SIGNAL (Conf: {confidence:.1f}%, Score: {score})"
+        logger.info(f"🔇 SIGNAL MUTED: {signal_data['symbol']} | {reason}")
+        return False, score, reason
 
         # 2. Quality Score Check
         if score >= self.quality_threshold:

@@ -13,21 +13,29 @@ logger = logging.getLogger("NOTIFICATION_MANAGER")
 class DedupCache:
     """
     Prevents spamming the same signal repeatedly.
+    Now Price-Aware (Phase 21 Fix).
     """
-    def __init__(self, cooldown_minutes: int = 60):
+    def __init__(self, cooldown_minutes: int = 60, price_threshold: float = 0.01):
         self.cache = {}
         self.cooldown = timedelta(minutes=cooldown_minutes)
+        self.price_threshold = price_threshold # 1% default
 
-    def is_duplicate(self, symbol: str, side: str) -> bool:
+    def is_duplicate(self, symbol: str, side: str, current_price: float) -> bool:
         key = f"{symbol}_{side}"
         now = datetime.now()
         
         if key in self.cache:
-            last_time = self.cache[key]
+            last_time, last_price = self.cache[key]
+            
+            # 1. Time Check
             if now - last_time < self.cooldown:
-                return True
+                # 2. Price Check (If moved > 1%, it's NEW)
+                price_diff = abs(current_price - last_price) / last_price
+                if price_diff < self.price_threshold:
+                    return True # Duplicate (Close in time AND price)
         
-        self.cache[key] = now
+        # Update cache
+        self.cache[key] = (now, current_price)
         return False
 
 class NotificationManager:
@@ -53,9 +61,11 @@ class NotificationManager:
             logger.warning("Telegram credentials not configured!")
             return
         
-        # DEDUP CHECK (Phase 21)
-        if self.dedup_cache.is_duplicate(signal['symbol'], signal['side']):
-            logger.info(f"🔇 SKIPPING DUPLICATE SIGNAL: {signal['symbol']} {signal['side']}")
+        # DEDUP CHECK (Phase 21 Verified)
+        # Assuming signal has 'entry_price' or 'price'
+        price = signal.get('entry_price', signal.get('price', 0))
+        if self.dedup_cache.is_duplicate(signal['symbol'], signal['side'], price):
+            logger.info(f"🔇 SKIPPING DUPLICATE SIGNAL: {signal['symbol']} {signal['side']} @ {price}")
             return
         
         # PRECISION FILTER: Check signal quality
