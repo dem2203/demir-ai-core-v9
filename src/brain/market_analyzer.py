@@ -235,10 +235,11 @@ class MarketAnalyzer:
         corr_data = {
             symbol.replace('/', ''): df[['close']],
         }
-        if macro_df is not None and not macro_df.empty:
-            for col in ['macro_SPX', 'macro_NDQ', 'macro_DXY']:
-                if col in df.columns:
-                    corr_data[col.replace('macro_', '')] = df[[col]].rename(columns={col: 'close'})
+        
+        # Check for macro columns in the merged df
+        for col in ['macro_SPX', 'macro_NDQ', 'macro_DXY']:
+            if col in df.columns:
+                corr_data[col.replace('macro_', '')] = df[[col]].rename(columns={col: 'close'})
         
         corr_matrix = self.correlation_engine.calculate_correlation_matrix(corr_data)
         corr_risk = self.correlation_engine.check_signal_correlation_risk(
