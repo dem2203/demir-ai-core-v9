@@ -288,6 +288,7 @@ class MarketAnalyzer:
                 'composite_score': final_onchain_score
             }
             
+            onchain_score = final_onchain_score # FIX: Define variable for downstream use
             logger.info(f"🐋 On-Chain Fusion: {onchain_signal} (Final: {final_onchain_score:.1f} | Proxy: {proxy_score} | True: {true_score})")
             
         except Exception as e:
