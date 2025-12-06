@@ -47,6 +47,7 @@ class Config:
     
     # --- On-Chain & NFT ---
     ETHERSCAN_KEY = os.getenv("ETHERSCAN_API_KEY")
+    BLOCKCHAIN_COM_API_KEY = os.getenv("BLOCKCHAIN_COM_API_KEY") # Added for Phase 22
     OPENSEA_KEY = os.getenv("OPENSEA_API_KEY")
     DEXCHECK_KEY = os.getenv("DEXCHECK_API_KEY")
     

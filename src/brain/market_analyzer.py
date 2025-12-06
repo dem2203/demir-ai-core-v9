@@ -23,7 +23,9 @@ from src.brain.correlation_engine import CorrelationEngine
 from src.brain.state_builder import StateVectorBuilder  # PHASE 7: True AI
 
 # PHASE 8: AI Superpowers
+# PHASE 8: AI Superpowers
 from src.brain.onchain_intel import OnChainIntelligence
+from src.brain.onchain_analyzer import OnChainAnalyzer # PHASE 22: True On-Chain
 from src.brain.liquidation_hunter import LiquidationHunter
 from src.brain.pattern_engine import PatternRecognition
 from src.brain.adaptive_intel import AdaptiveIntelligence
@@ -37,10 +39,6 @@ logger = logging.getLogger("MARKET_ANALYZER_PRO")
 class MarketAnalyzer:
     """
     DEMIR AI V20.0 - INSTITUTIONAL STRATEGIST
-    
-    Yenilikler (Faz 4A):
-    1. Order Book Depth Analysis: Balina duvarlarını tespit eder.
-    2. Correlation Matrix: Varlıklar arası korelasyon riski kontrolü.
     """
     
     LSTM_DIR = "src/brain/models/storage"
@@ -67,7 +65,8 @@ class MarketAnalyzer:
         self.state_builder = StateVectorBuilder()
         
         # PHASE 8: AI Superpowers
-        self.onchain_intel = OnChainIntelligence()
+        self.onchain_intel = OnChainIntelligence() # Binance Proxy
+        self.onchain_analyzer = OnChainAnalyzer()  # PHASE 22: True On-Chain
         self.liquidation_hunter = LiquidationHunter()
         self.pattern_engine = PatternRecognition()
         self.adaptive_intel = AdaptiveIntelligence()
@@ -85,6 +84,10 @@ class MarketAnalyzer:
         
         # Başlangıç Yüklemeleri
         self.load_rl_agent()
+
+    # ... [Rest of class methods unchanged until analyze_market] ... 
+    # NOTE: I will only replace the analyze_market part in a separate call if needed or include the import + init here.
+    # Since analyze_market is further down, I will apply this change to imports and init first.
     
     def get_lstm_prediction(self, symbol: str, df: pd.DataFrame) -> float:
         """
@@ -253,13 +256,43 @@ class MarketAnalyzer:
         
         # 8.1 ON-CHAIN INTELLIGENCE (Whale tracking, exchange flow)
         try:
-            onchain_data = await self.onchain_intel.get_full_onchain_analysis(clean_symbol)
-            onchain_signal = onchain_data.get('signal', 'NEUTRAL')
-            onchain_score = onchain_data.get('composite_score', 0)
-            logger.info(f"🐋 On-Chain: {onchain_signal} (Score: {onchain_score})")
+            # A. Binance Proxy (Volume/Orderbook based)
+            onchain_proxy = await self.onchain_intel.get_full_onchain_analysis(clean_symbol)
+            proxy_score = onchain_proxy.get('composite_score', 0)
+            
+            # B. True On-Chain (Phase 22 - Etherscan/Blockchain.com)
+            # Returns bias -1.0 to 1.0 -> Normalize to -100 to 100
+            onchain_true = await self.onchain_analyzer.get_whale_sentiment(clean_symbol)
+            true_score = onchain_true.get('score', 0) * 100 
+            
+            # C. Fusion (60% Proxy, 40% True Chain)
+            # Proxy is faster/real-time, True Chain is slower but more fundamental
+            final_onchain_score = (proxy_score * 0.6) + (true_score * 0.4)
+            
+            if final_onchain_score >= 25:
+                onchain_signal = "STRONG_BUY"
+            elif final_onchain_score >= 10:
+                onchain_signal = "BUY"
+            elif final_onchain_score <= -25:
+                onchain_signal = "STRONG_SELL"
+            elif final_onchain_score <= -10:
+                onchain_signal = "SELL"
+            else:
+                onchain_signal = "NEUTRAL"
+            
+            # Combine for downstream usage
+            onchain_data = {
+                'proxy': onchain_proxy,
+                'true_chain': onchain_true,
+                'signal': onchain_signal,
+                'composite_score': final_onchain_score
+            }
+            
+            logger.info(f"🐋 On-Chain Fusion: {onchain_signal} (Final: {final_onchain_score:.1f} | Proxy: {proxy_score} | True: {true_score})")
+            
         except Exception as e:
             logger.warning(f"On-chain analysis failed: {e}")
-            onchain_data = {}
+            onchain_data = {'signal': 'NEUTRAL', 'composite_score': 0}
             onchain_signal = 'NEUTRAL'
             onchain_score = 0
         
