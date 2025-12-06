@@ -98,10 +98,14 @@ class RLTrainer:
         if df is None:
             logger.error("No data for RL training.")
             return
-        
-        # 2. Sync Training (CPU Bound - Move to Thread)
-        logger.info("⏳ Offloading RL training to background thread...")
-        await asyncio.to_thread(self._train_sync, df)
+
+        # 2. Sync Training (CPU Bound - Offload to Thread)
+        # Allows Main Engine to continue running loop while training happens
+        logger.info("⚡ Offloading training to background thread...")
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._train_sync, df)
+        logger.info("✅ Background Thread Training Completed")
+
 
 if __name__ == "__main__":
     trainer = RLTrainer()
