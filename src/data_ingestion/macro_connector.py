@@ -66,20 +66,9 @@ class MacroConnector:
         return result
         
     def _get_series_latest(self, series_id: str) -> Optional[float]:
-        """Fetch single series from FRED with Fallback"""
-        
-        # Fallback values (December 2024 Estimates)
-        FALLBACKS = {
-            "FEDFUNDS": 4.50,
-            "CPIAUCSL": 315.5,
-            "UNRATE": 4.1,
-            "M2SL": 20800.0,
-            "DTWEXBGS": 103.5, # DXY Proxy
-            "VIXCLS": 14.5     # VIX Proxy
-        }
-
+        """Fetch single series from FRED"""
         if not self.api_key:
-            return FALLBACKS.get(series_id, 0.0)
+            return None
             
         # Check cache
         if series_id in self.cache:
@@ -107,9 +96,9 @@ class MacroConnector:
                 
         except Exception as e:
             logger.error(f"Failed to fetch {series_id}: {e}")
-            return FALLBACKS.get(series_id, 0.0)
+            return None
             
-        return FALLBACKS.get(series_id, 0.0)
+        return None
     
     async def fetch_macro_data(self, period: str = "5d", interval: str = "1h") -> pd.DataFrame:
         """
