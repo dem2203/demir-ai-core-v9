@@ -43,3 +43,4 @@ pillow
 # --- Phase 13: Sentiment Analysis ---
 praw
 beautifulsoup4>=3.10.0
+matplotlib>=3.7.0

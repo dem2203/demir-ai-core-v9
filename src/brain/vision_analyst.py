@@ -198,38 +198,51 @@ class VisionAnalyst:
         }
             
     def _generate_chart_image(self, symbol: str, df: pd.DataFrame) -> Optional[bytes]:
-        """Convert DataFrame to candlestick chart image bytes"""
+        """Convert DataFrame to candlestick chart image bytes using Matplotlib (Server-side safe)"""
         try:
-            # Create simple candlestick chart
-            fig = go.Figure(data=[go.Candlestick(
-                x=df.index,
-                open=df['open'],
-                high=df['high'],
-                low=df['low'],
-                close=df['close'],
-                name=symbol
-            )])
+            import matplotlib.pyplot as plt
+            import matplotlib.finance as mpf  # Note: Standard mpl doesn't have candles easily, using manual drawing or simple lines for now if mpf not installed
+            # However, for simplicity and dependency safety, we will draw a detailed line chart with volume
+            # OR we can manually draw candles with matplotlib.patches which is robust.
             
-            # Clean layout for AI (remove noise)
-            fig.update_layout(
-                title=f"{symbol} Price Action",
-                xaxis_rangeslider_visible=False,
-                template="plotly_dark",
-                margin=dict(l=20, r=20, t=40, b=20),
-                width=800,
-                height=500
-            )
+            # Let's use a robust standard Matplotlib approach for OHLC to avoid extra dependencies like mplfinance if possible,
+            # BUT mplfinance is standard for this. Let's try standard plt plotting Close price + SMA for simplicity and robustness.
+            # AI can understand price action from Line Charts too, but Candles are better.
+            # Let's verify if we can stick to simple Line Chart + Volume for reliability.
             
-            # Convert to image bytes
-            img_bytes = fig.to_image(format="png", engine="kaleido")
-            return img_bytes
+            # Setup Figure
+            plt.style.use('dark_background')
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), gridspec_kw={'height_ratios': [3, 1]})
+            
+            # Plot Price (Line is safer than complex candle drawing without library)
+            ax1.plot(df.index, df['close'], color='#00ff00', linewidth=1.5, label='Close')
+            ax1.plot(df.index, df['high'], color='#333333', linewidth=0.5, alpha=0.5) # Shadow high
+            ax1.plot(df.index, df['low'], color='#333333', linewidth=0.5, alpha=0.5)  # Shadow low
+            
+            # Add simple MA if enough data
+            if len(df) > 20:
+                ax1.plot(df.index, df['close'].rolling(20).mean(), color='yellow', linewidth=0.8, alpha=0.7, label='SMA20')
+            
+            ax1.set_title(f"{symbol} Price Action (H1)", fontsize=12, color='white')
+            ax1.grid(True, alpha=0.2)
+            ax1.legend(loc='upper left')
+            
+            # Plot Volume
+            ax2.bar(df.index, df['volume'], color='cyan', alpha=0.5)
+            ax2.grid(True, alpha=0.2)
+            ax2.set_ylabel("Volume")
+            
+            # Save to Bytes
+            buf = io.BytesIO()
+            plt.tight_layout()
+            plt.savefig(buf, format='png', dpi=100, facecolor='#0e1117')
+            plt.close(fig)
+            
+            buf.seek(0)
+            return buf.getvalue()
             
         except Exception as e:
-            msg = str(e).lower()
-            if "chrome" in msg or "chromium" in msg:
-                logger.warning("⚠️ Visual Cortex: Chrome not found (Railway Env). Skipping chart generation.")
-            else:
-                logger.error(f"Chart generation failed: {e}")
+            logger.error(f"Matplotlib Chart generation failed: {e}")
             return None
             
     def _get_analysis_prompt(self) -> str:
