@@ -49,7 +49,11 @@ class AITrainer:
         await self.connector.close()
         if not raw_crypto: return None
         
-        crypto_df = FeatureEngineer.process_data(raw_crypto)
+        if not raw_crypto: return None
+        
+        # CPU BOUND: Feature Engineering (Offload to thread)
+        logger.info("⚡ Processing LSTM features in background thread...")
+        crypto_df = await asyncio.to_thread(FeatureEngineer.process_data, raw_crypto)
         
         # 2. Makro (using helper)
         from src.brain.macro_helpers import fetch_macro_for_training

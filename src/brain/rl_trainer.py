@@ -34,7 +34,9 @@ class RLTrainer:
         
         if not raw_crypto: return None
         
-        crypto_df = FeatureEngineer.process_data(raw_crypto)
+        # CPU BOUND: Feature Engineering (Offload to thread)
+        logger.info("⚡ Processing RL features in background thread...")
+        crypto_df = await asyncio.to_thread(FeatureEngineer.process_data, raw_crypto)
         
         # Macro data (using helper)
         from src.brain.macro_helpers import fetch_macro_for_training
@@ -43,8 +45,6 @@ class RLTrainer:
         # If helper returned separate, merge
         if not macro_df.empty:
             df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
-        
-        # 2. Rest of processing continues...
         
         # 3. TEMİZLİK
         drop_cols = ['timestamp', 'symbol', 'source', 'target', 'open', 'high', 'low'] 
