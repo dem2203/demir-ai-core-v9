@@ -72,6 +72,7 @@ class BotEngine:
         self.performance_tracker = PerformanceTracker()
         self.exit_strategy = ExitStrategy()
         self.cycle_count = 0  # For periodic performance tracking
+        self.last_heartbeat_time = datetime.now() # Phase 21: Heartbeat
         
         logger.info("✅ All Sub-systems Initialized Successfully.")
 
@@ -109,6 +110,13 @@ class BotEngine:
             try:
                 # Ana İşlem Bloğu
                 await self.process_market_cycle()
+                
+                # Phase 21: Hourly Heartbeat
+                if (datetime.now() - self.last_heartbeat_time).total_seconds() > 3600:
+                    await self.notifier.send_message_raw(f"🦅 **STATUS REPORT**\nSystem Active. Scanning markets...\nTime: {datetime.now().strftime('%H:%M')}")
+                    self.last_heartbeat_time = datetime.now()
+                    logger.info("💓 Heartbeat sent to Telegram.")
+                    
                 error_count = 0 
                 
             except Exception as e:

@@ -3,11 +3,32 @@ import requests
 import asyncio
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from src.config.settings import Config
 from src.core.signal_filter import SignalFilter
 
 logger = logging.getLogger("NOTIFICATION_MANAGER")
+
+
+class DedupCache:
+    """
+    Prevents spamming the same signal repeatedly.
+    """
+    def __init__(self, cooldown_minutes: int = 60):
+        self.cache = {}
+        self.cooldown = timedelta(minutes=cooldown_minutes)
+
+    def is_duplicate(self, symbol: str, side: str) -> bool:
+        key = f"{symbol}_{side}"
+        now = datetime.now()
+        
+        if key in self.cache:
+            last_time = self.cache[key]
+            if now - last_time < self.cooldown:
+                return True
+        
+        self.cache[key] = now
+        return False
 
 class NotificationManager:
     """
@@ -22,6 +43,7 @@ class NotificationManager:
         self.telegram_url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage" if self.telegram_token else None
         self.signal_filter = SignalFilter(quality_threshold=70)
         self.rejected_log_path = "rejected_signals.json"
+        self.dedup_cache = DedupCache(cooldown_minutes=60) # Phase 21: Dedup
 
     async def send_signal(self, signal: dict, snapshot: dict = None):
         """
@@ -29,6 +51,11 @@ class NotificationManager:
         """
         if not self.telegram_token or not self.telegram_chat_id:
             logger.warning("Telegram credentials not configured!")
+            return
+        
+        # DEDUP CHECK (Phase 21)
+        if self.dedup_cache.is_duplicate(signal['symbol'], signal['side']):
+            logger.info(f"🔇 SKIPPING DUPLICATE SIGNAL: {signal['symbol']} {signal['side']}")
             return
         
         # PRECISION FILTER: Check signal quality
