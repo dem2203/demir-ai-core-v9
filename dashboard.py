@@ -343,7 +343,13 @@ elif page == "🧠 Neural Brain Monitor":
         
         with c1:
             st.markdown("### 🤖 Agent Status")
+            # FIX: Fallback to ai_decision if rl_action is missing/sleeping
+            ai_decision = info.get('ai_decision', 'NEUTRAL')
+            decision_map = {"SELL": 0, "HOLD": 1, "BUY": 2, "NEUTRAL": 1}
             rl_action = brain_state.get('rl_action', -1)
+            
+            if rl_action == -1 and ai_decision in decision_map:
+                 rl_action = decision_map[ai_decision]
             
             action_map = {0: "SELL", 1: "HOLD", 2: "BUY", -1: "SLEEPING"}
             action_color = {0: "red", 1: "gray", 2: "green", -1: "gray"}

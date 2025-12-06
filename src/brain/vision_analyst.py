@@ -225,7 +225,11 @@ class VisionAnalyst:
             return img_bytes
             
         except Exception as e:
-            logger.error(f"Chart generation failed: {e}")
+            msg = str(e).lower()
+            if "chrome" in msg or "chromium" in msg:
+                logger.warning("⚠️ Visual Cortex: Chrome not found (Railway Env). Skipping chart generation.")
+            else:
+                logger.error(f"Chart generation failed: {e}")
             return None
             
     def _get_analysis_prompt(self) -> str:
