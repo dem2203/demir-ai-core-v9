@@ -61,13 +61,14 @@ class RLTrainer:
             logger.error("No data for RL training.")
             return
         
+    def _train_sync(self, df):
+        """Blocking training logic to be run in a separate thread."""
         logger.info(f"Training Environment Ready. Data Shape: {df.shape}")
         
         # Ortamı Kur
         env = TradingEnv(df)
         
         # Modeli Tanımla (RecurrentPPO - LSTM Policy)
-        # MlpLstmPolicy: Girdi -> LSTM -> Karar
         try:
             model = RecurrentPPO("MlpLstmPolicy", env, verbose=1, learning_rate=0.0003, n_steps=128)
             logger.info("Using RecurrentPPO (LSTM) Architecture.")
@@ -76,9 +77,7 @@ class RLTrainer:
             model = PPO("MlpPolicy", env, verbose=1)
         
         # Eğit
-        # Railway'de hızlı eğitim: 10k timesteps (~2-3 dakika)
-        # Daha iyi sonuç için: 50k+ timesteps
-        FAST_MODE = True  # Railway için
+        FAST_MODE = True
         timesteps = 10000 if FAST_MODE else 50000
         
         logger.info(f"🏋️ Training for {timesteps} timesteps (FAST_MODE={FAST_MODE})")
@@ -90,6 +89,19 @@ class RLTrainer:
             
         model.save(self.MODEL_PATH)
         logger.info(f"✅ RL AGENT SAVED at {self.MODEL_PATH}.zip")
+
+    async def train_agent(self, symbol="BTC/USDT"):
+        logger.info("🚀 Starting Deep Recurrent RL Training (LSTM-PPO)...")
+        
+        # 1. Async Data Fetch (IO Bound - Keep in Main Thread)
+        df = await self.prepare_data(symbol)
+        if df is None:
+            logger.error("No data for RL training.")
+            return
+        
+        # 2. Sync Training (CPU Bound - Move to Thread)
+        logger.info("⏳ Offloading RL training to background thread...")
+        await asyncio.to_thread(self._train_sync, df)
 
 if __name__ == "__main__":
     trainer = RLTrainer()

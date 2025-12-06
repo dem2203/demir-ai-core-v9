@@ -89,6 +89,13 @@ class AITrainer:
         df['target'] = (df['close'].shift(-1) > df['close']).astype(int)
         df.dropna(inplace=True)
 
+        logger.info("⏳ Offloading LSTM training to background thread...")
+        await asyncio.to_thread(self._train_sync, df, model_path, scaler_path)
+        
+        return True
+
+    def _train_sync(self, df, model_path, scaler_path):
+        """Blocking training logic to be run in a separate thread."""
         feature_cols = [c for c in df.columns if c not in ['timestamp', 'symbol', 'source', 'target', 'open', 'high', 'low', 'close', 'volume']]
         data_values = df[feature_cols].values
         target_values = df['target'].values
@@ -107,11 +114,10 @@ class AITrainer:
 
         # 4. Eğitim
         model = self.build_lstm_model((X.shape[1], X.shape[2]))
-        model.fit(X, y, epochs=5, batch_size=32, verbose=0) # Log kirliliği olmasın diye verbose=0
+        model.fit(X, y, epochs=5, batch_size=32, verbose=0) 
 
         # 5. Kayıt
         model.save(model_path)
         joblib.dump(scaler, scaler_path)
         
-        logger.info(f"✅ BRAIN SAVED: {symbol} -> {model_path}")
-        return True
+        logger.info(f"✅ BRAIN SAVED (Background): -> {model_path}")
