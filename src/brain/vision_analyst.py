@@ -28,8 +28,8 @@ class VisionAnalyst:
     """
     
     def __init__(self):
-        self.google_key = os.getenv("GOOGLE_API_KEY")
-        self.openai_key = os.getenv("OPENAI_API_KEY")
+        self.google_key = os.getenv("GOOGLE_API_KEY") or getattr(Config, 'GEMINI_API_KEY', None)
+        self.openai_key = os.getenv("OPENAI_API_KEY") or getattr(Config, 'OPENAI_API_KEY', None)
         
         self.gemini_active = False
         self.openai_active = False
