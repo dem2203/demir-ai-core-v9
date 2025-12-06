@@ -65,31 +65,34 @@ class PatternRecognition:
         
         # Range detection
         price_range = (recent['high'].max() - recent['low'].min()) / recent['close'].mean()
-        is_ranging = price_range < 0.08  # %8'den az range
+        is_ranging = price_range < 0.12  # Relaxed to 12%
         
         # Faz belirleme
         confidence = 0
         
-        if is_ranging and volume_change < -0.1 and abs(price_change) < 0.03:
-            # Düşük volatilite, düşen hacim, yatay = Accumulation veya Distribution
+        if is_ranging and volume_change < 0.0 and abs(price_change) < 0.05:
+            # Düşük volatilite, düşen/yatay hacim, yatay = Accumulation veya Distribution
             if recent['close'].mean() < older['close'].mean():
                 phase = WyckoffPhase.ACCUMULATION
-                confidence = 0.7
+                confidence = 0.65
             else:
                 phase = WyckoffPhase.DISTRIBUTION
-                confidence = 0.7
+                confidence = 0.65
                 
-        elif price_change > 0.05 and volume_change > 0:
+        elif price_change > 0.03 and volume_change > -0.1: # Relaxed Markup
             phase = WyckoffPhase.MARKUP
-            confidence = min(0.9, 0.5 + price_change + volume_change * 0.3)
+            confidence = min(0.9, 0.5 + price_change + (volume_change * 0.2))
             
-        elif price_change < -0.05 and volume_change > 0:
+        elif price_change < -0.03 and volume_change > -0.1: # Relaxed Markdown
             phase = WyckoffPhase.MARKDOWN
-            confidence = min(0.9, 0.5 + abs(price_change) + volume_change * 0.3)
+            confidence = min(0.9, 0.5 + abs(price_change) + (volume_change * 0.2))
             
         else:
             phase = WyckoffPhase.UNKNOWN
-            confidence = 0.3
+            # Fallback: Simple Trend Check if unknown
+            if price_change > 0.05: phase = WyckoffPhase.MARKUP 
+            elif price_change < -0.05: phase = WyckoffPhase.MARKDOWN
+            confidence = 0.4
         
         # Trading implication
         if phase == WyckoffPhase.ACCUMULATION:
