@@ -5,77 +5,23 @@ import logging
 import joblib
 import asyncio
 from sklearn.preprocessing import MinMaxScaler
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
-from tensorflow.keras.optimizers import Adam
+from src.brain.models.transformer import TimeNet
 
-# Kendi modüllerimiz
-from src.brain.feature_engineering import FeatureEngineer
-from src.data_ingestion.connectors.binance_connector import BinanceConnector
-from src.data_ingestion.macro_connector import MacroConnector
+# ... (Imports remain similar)
 
-logger = logging.getLogger("AI_TRAINER_LSTM")
-
-class AITrainer:
-    """
-    DEMIR AI v11.1 - MULTI-ASSET TRAINER
-    Her coin için ayrı bir LSTM modeli eğitir ve kaydeder.
-    """
+    def build_transformer_model(self, input_shape):
+        """
+        Builds the Phase X TimeNet (Transformer) Model.
+        """
+        timenet = TimeNet(input_shape=input_shape)
+        return timenet.build_model()
     
-    MODELS_DIR = "src/brain/models/storage"
-    LOOKBACK = 60 
+    # ... inside _train_sync ...
+        
+        # 4. Eğitim (Phase X: TimeNet)
+        model = self.build_transformer_model((X.shape[1], X.shape[2]))
+        model.fit(X, y, epochs=5, batch_size=32, verbose=0) 
 
-    def __init__(self):
-        self.connector = BinanceConnector()
-        self.macro = MacroConnector()
-        
-        # Klasör yoksa oluştur
-        if not os.path.exists(self.MODELS_DIR):
-            os.makedirs(self.MODELS_DIR)
-
-    def _get_paths(self, symbol):
-        """Coin ismine özel dosya yolları üretir."""
-        clean_sym = symbol.replace("/", "")
-        model_path = os.path.join(self.MODELS_DIR, f"lstm_v11_{clean_sym}.h5")
-        scaler_path = os.path.join(self.MODELS_DIR, f"scaler_{clean_sym}.pkl")
-        return model_path, scaler_path
-
-    async def fetch_integrated_data(self, symbol, limit=2000):
-        """Kripto ve Makro veriyi çeker ve birleştirir."""
-        logger.info(f"Fetching integrated data for {symbol}...")
-        
-        # 1. Kripto
-        raw_crypto = await self.connector.fetch_candles(symbol, limit=limit)
-        await self.connector.close()
-        if not raw_crypto: return None
-        
-        if not raw_crypto: return None
-        
-        # CPU BOUND: Feature Engineering (Offload to thread)
-        logger.info("⚡ Processing LSTM features in background thread...")
-        crypto_df = await asyncio.to_thread(FeatureEngineer.process_data, raw_crypto)
-        
-        # 2. Makro (using helper)
-        from src.brain.macro_helpers import fetch_macro_for_training
-        full_df, macro_df = await fetch_macro_for_training(self.macro, crypto_df, period="1y", interval="1h")
-        
-        # If helper returned separate dfs, merge them
-        if not macro_df.empty:
-            full_df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
-        
-        return full_df
-
-    def build_lstm_model(self, input_shape):
-        model = Sequential([
-            LSTM(units=50, return_sequences=True, input_shape=input_shape),
-            Dropout(0.2),
-            LSTM(units=50, return_sequences=False),
-            Dropout(0.2),
-            Dense(units=25),
-            Dense(units=1, activation='sigmoid')
-        ])
-        model.compile(optimizer=Adam(learning_rate=0.001), loss='binary_crossentropy', metrics=['accuracy'])
-        return model
 
     async def train_model_for_symbol(self, symbol):
         """Belirtilen coin için özel model eğitir."""
@@ -116,8 +62,8 @@ class AITrainer:
         
         X, y = np.array(X), np.array(y)
 
-        # 4. Eğitim
-        model = self.build_lstm_model((X.shape[1], X.shape[2]))
+        # 4. Eğitim (Phase X: TimeNet)
+        model = self.build_transformer_model((X.shape[1], X.shape[2]))
         model.fit(X, y, epochs=5, batch_size=32, verbose=0) 
 
         # 5. Kayıt

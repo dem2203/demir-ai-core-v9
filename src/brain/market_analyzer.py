@@ -107,7 +107,7 @@ class MarketAnalyzer:
                 scaled = self.scalers[symbol].transform(recent)
                 lstm_prob = self.lstm_models[symbol].predict(np.array([scaled]), verbose=0)[0][0]
             except Exception as e:
-                logger.debug(f"LSTM prediction failed: {e}")
+                logger.debug(f"TimeNet prediction failed: {e}")
         return lstm_prob
 
     def _get_lstm_paths(self, symbol):
