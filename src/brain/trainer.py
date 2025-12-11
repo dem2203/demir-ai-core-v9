@@ -5,9 +5,64 @@ import logging
 import joblib
 import asyncio
 from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.optimizers import Adam
 from src.brain.models.transformer import TimeNet
 
-# ... (Imports remain similar)
+# Kendi modüllerimiz
+from src.brain.feature_engineering import FeatureEngineer
+from src.data_ingestion.connectors.binance_connector import BinanceConnector
+from src.data_ingestion.macro_connector import MacroConnector
+
+logger = logging.getLogger("AI_TRAINER_TRANSFORMER")
+
+class AITrainer:
+    """
+    DEMIR AI v11.1 - MULTI-ASSET TRAINER (Phase X: TimeNet Upgrade)
+    Her coin için ayrı bir Transformer (TimeNet) modeli eğitir ve kaydeder.
+    """
+    
+    MODELS_DIR = "src/brain/models/storage"
+    LOOKBACK = 60 
+
+    def __init__(self):
+        self.connector = BinanceConnector()
+        self.macro = MacroConnector()
+        
+        # Klasör yoksa oluştur
+        if not os.path.exists(self.MODELS_DIR):
+            os.makedirs(self.MODELS_DIR)
+
+    def _get_paths(self, symbol):
+        """Coin ismine özel dosya yolları üretir."""
+        clean_sym = symbol.replace("/", "")
+        model_path = os.path.join(self.MODELS_DIR, f"lstm_v11_{clean_sym}.h5")
+        scaler_path = os.path.join(self.MODELS_DIR, f"scaler_{clean_sym}.pkl")
+        return model_path, scaler_path
+
+    async def fetch_integrated_data(self, symbol, limit=2000):
+        """Kripto ve Makro veriyi çeker ve birleştirir."""
+        logger.info(f"Fetching integrated data for {symbol}...")
+        
+        # 1. Kripto
+        raw_crypto = await self.connector.fetch_candles(symbol, limit=limit)
+        await self.connector.close()
+        if not raw_crypto: return None
+        
+        if not raw_crypto: return None
+        
+        # CPU BOUND: Feature Engineering (Offload to thread)
+        logger.info("⚡ Processing Transformer features in background thread...")
+        crypto_df = await asyncio.to_thread(FeatureEngineer.process_data, raw_crypto)
+        
+        # 2. Makro (using helper)
+        from src.brain.macro_helpers import fetch_macro_for_training
+        full_df, macro_df = await fetch_macro_for_training(self.macro, crypto_df, period="1y", interval="1h")
+        
+        # If helper returned separate dfs, merge them
+        if not macro_df.empty:
+            full_df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
+        
+        return full_df
 
     def build_transformer_model(self, input_shape):
         """
@@ -15,13 +70,6 @@ from src.brain.models.transformer import TimeNet
         """
         timenet = TimeNet(input_shape=input_shape)
         return timenet.build_model()
-    
-    # ... inside _train_sync ...
-        
-        # 4. Eğitim (Phase X: TimeNet)
-        model = self.build_transformer_model((X.shape[1], X.shape[2]))
-        model.fit(X, y, epochs=5, batch_size=32, verbose=0) 
-
 
     async def train_model_for_symbol(self, symbol):
         """Belirtilen coin için özel model eğitir."""
@@ -39,35 +87,38 @@ from src.brain.models.transformer import TimeNet
         df['target'] = (df['close'].shift(-1) > df['close']).astype(int)
         df.dropna(inplace=True)
 
-        logger.info("⏳ Offloading LSTM training to background thread...")
+        logger.info("⏳ Offloading Transformer training to background thread...")
         await asyncio.to_thread(self._train_sync, df, model_path, scaler_path)
         
         return True
 
     def _train_sync(self, df, model_path, scaler_path):
         """Blocking training logic to be run in a separate thread."""
-        feature_cols = [c for c in df.columns if c not in ['timestamp', 'symbol', 'source', 'target', 'open', 'high', 'low', 'close', 'volume']]
-        data_values = df[feature_cols].values
-        target_values = df['target'].values
+        try:
+            feature_cols = [c for c in df.columns if c not in ['timestamp', 'symbol', 'source', 'target', 'open', 'high', 'low', 'close', 'volume']]
+            data_values = df[feature_cols].values
+            target_values = df['target'].values
 
-        # 2. Normalizasyon
-        scaler = MinMaxScaler(feature_range=(0, 1))
-        scaled_data = scaler.fit_transform(data_values)
+            # 2. Normalizasyon
+            scaler = MinMaxScaler(feature_range=(0, 1))
+            scaled_data = scaler.fit_transform(data_values)
 
-        # 3. Zaman Serisi
-        X, y = [], []
-        for i in range(self.LOOKBACK, len(scaled_data)):
-            X.append(scaled_data[i-self.LOOKBACK:i])
-            y.append(target_values[i])
-        
-        X, y = np.array(X), np.array(y)
+            # 3. Zaman Serisi
+            X, y = [], []
+            for i in range(self.LOOKBACK, len(scaled_data)):
+                X.append(scaled_data[i-self.LOOKBACK:i])
+                y.append(target_values[i])
+            
+            X, y = np.array(X), np.array(y)
 
-        # 4. Eğitim (Phase X: TimeNet)
-        model = self.build_transformer_model((X.shape[1], X.shape[2]))
-        model.fit(X, y, epochs=5, batch_size=32, verbose=0) 
+            # 4. Eğitim (Phase X: TimeNet)
+            model = self.build_transformer_model((X.shape[1], X.shape[2]))
+            model.fit(X, y, epochs=5, batch_size=32, verbose=0) 
 
-        # 5. Kayıt
-        model.save(model_path)
-        joblib.dump(scaler, scaler_path)
-        
-        logger.info(f"✅ BRAIN SAVED (Background): -> {model_path}")
+            # 5. Kayıt
+            model.save(model_path)
+            joblib.dump(scaler, scaler_path)
+            
+            logger.info(f"✅ BRAIN SAVED (Background): -> {model_path}")
+        except Exception as e:
+            logger.error(f"Training failed: {e}")
