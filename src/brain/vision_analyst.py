@@ -38,7 +38,7 @@ class VisionAnalyst:
         if self.google_key:
             try:
                 genai.configure(api_key=self.google_key)
-                self.gemini_model = genai.GenerativeModel("gemini-1.5-flash")
+                self.gemini_model = genai.GenerativeModel("gemini-1.5-flash-001")
                 self.gemini_active = True
                 logger.info("👁️ Gemini Vision: ACTIVE")
             except Exception as e:

@@ -684,8 +684,8 @@ class MarketAnalyzer:
         snapshot = {
             "symbol": symbol,
             "price": float(last_row['close']),
-            "dxy": float(last_row.get('macro_DXY', 0)), 
-            "vix": float(last_row.get('macro_VIX', 0)), 
+            "dxy": float(macro_data.get('dxy', 0)), 
+            "vix": float(macro_data.get('vix', 0)), 
             "macro_score": macro_data.get('macro_score', 0),
             "interest_rate": macro_data.get('interest_rate', 0),
             "macro_debug": macro_data.get('debug_errors', 'OK'),
