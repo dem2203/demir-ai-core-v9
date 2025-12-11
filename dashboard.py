@@ -4,10 +4,8 @@ import json
 import os
 import time
 import asyncio
-from src.backtest.backtester import Backtester
 from src.config.settings import Config
 from src.execution.paper_trader import PaperTrader
-from src.brain.optimizer import StrategyOptimizer 
 from src.core.risk_manager import RiskManager # Yeni
 
 # --- Sayfa Ayarları ---
