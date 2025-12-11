@@ -688,6 +688,7 @@ class MarketAnalyzer:
             "vix": float(last_row.get('macro_VIX', 0)), 
             "macro_score": macro_data.get('macro_score', 0),
             "interest_rate": macro_data.get('interest_rate', 0),
+            "macro_debug": macro_data.get('debug_errors', 'OK'),
             "funding_rate": funding_rate * 100,
             "ai_decision": ai_decision,
             "ai_confidence": ai_confidence,
