@@ -66,14 +66,14 @@ class VisionAnalyst:
         Returns combined consensus analysis.
         """
         if (not self.gemini_active and not self.openai_active) or df.empty:
-            return self._empty_analysis()
+            return self._empty_analysis("No Vision APIs active or empty DataFrame")
             
         try:
             # 1. Generate Chart Image
             img_bytes = self._generate_chart_image(symbol, df)
             
             if not img_bytes:
-                return self._empty_analysis()
+                return self._empty_analysis("Chart generation failed")
             
             # 2. Query BOTH AIs (if available)
             analyses = []
@@ -90,7 +90,7 @@ class VisionAnalyst:
             
             # 3. Combine Results
             if len(analyses) == 0:
-                return self._empty_analysis()
+                return self._empty_analysis("Both AI models failed to respond")
             elif len(analyses) == 1:
                 # Single model available
                 _, result = analyses[0]
@@ -103,7 +103,7 @@ class VisionAnalyst:
             
         except Exception as e:
             logger.error(f"Visual Analysis failed for {symbol}: {e}")
-            return self._empty_analysis()
+            return self._empty_analysis(f"Analysis Error: {str(e)}")
             
     def _query_gemini(self, img_bytes: bytes) -> Optional[Dict]:
         """Query Google Gemini Vision API"""
@@ -294,12 +294,12 @@ Do not include markdown formatting or extra text. Just the JSON.
                 "model": model_name
             }
             
-    def _empty_analysis(self) -> Dict:
+    def _empty_analysis(self, error_msg: str = "Visual analysis disabled or failed") -> Dict:
         return {
             "trend": "NEUTRAL",
             "pattern": "None",
             "visual_score": 50,
-            "reasoning": "Visual analysis disabled or failed",
+            "reasoning": error_msg,
             "dual_vision": False,
             "agreement": "N/A",
             "timestamp": datetime.now().isoformat()

@@ -36,12 +36,14 @@ class MacroConnector:
     def fetch_data(self) -> Dict[str, float]:
         """Get latest macro indicators"""
         
-        # 1. FRED Data (Economic)
+        # 1. FRED Data (Economic + Market Proxy)
         indicators = {
             "interest_rate": "FEDFUNDS",
             "cpi": "CPIAUCSL",
             "unemployment": "UNRATE",
-            "m2_money_supply": "M2SL"
+            "m2_money_supply": "M2SL",
+            "vix": "VIXCLS",       # CBOE Volatility Index from FRED
+            "dxy": "DTWEXBGS"      # Nominal Broad U.S. Dollar Index (Proxy for DXY)
         }
         
         result = {}
@@ -50,31 +52,25 @@ class MacroConnector:
             value = self._get_series_latest(series_id)
             if value is not None:
                 result[name] = value
+
+        # 2. Market Data Fallback (yfinance) - Only if FRED fails or for specific real-time checks
+        # Railway often blocks yfinance, so we rely on FRED first.
+        if "dxy" not in result or "vix" not in result:
+            try:
+                # DXY
+                if "dxy" not in result:
+                    dxy_ticker = yf.Ticker("DX-Y.NYB")
+                    if hasattr(dxy_ticker, 'fast_info') and 'last_price' in dxy_ticker.fast_info:
+                        result['dxy'] = dxy_ticker.fast_info['last_price']
                 
-        # 2. Market Data (DXY, VIX) via YFinance
-        try:
-            # DXY
-            dxy_ticker = yf.Ticker("DX-Y.NYB")
-            # Try fast_info first (faster)
-            if hasattr(dxy_ticker, 'fast_info') and 'last_price' in dxy_ticker.fast_info:
-                 result['dxy'] = dxy_ticker.fast_info['last_price']
-            else:
-                 hist = dxy_ticker.history(period="1d")
-                 if not hist.empty: result['dxy'] = hist['close'].iloc[-1]
-            
-            # VIX
-            vix_ticker = yf.Ticker("^VIX")
-            if hasattr(vix_ticker, 'fast_info') and 'last_price' in vix_ticker.fast_info:
-                 result['vix'] = vix_ticker.fast_info['last_price']
-            else:
-                 hist = vix_ticker.history(period="1d")
-                 if not hist.empty: result['vix'] = hist['close'].iloc[-1]
-                 
-        except Exception as e:
-            logger.warning(f"Failed to fetch DXY/VIX: {e}")
-            # Do NOT mock here, let it be missing or handled downstream if strictly no mock
-            # Dashboard shows "N/A" if missing, which adheres to "No Mock" rule.
-                
+                # VIX
+                if "vix" not in result:
+                    vix_ticker = yf.Ticker("^VIX")
+                    if hasattr(vix_ticker, 'fast_info') and 'last_price' in vix_ticker.fast_info:
+                        result['vix'] = vix_ticker.fast_info['last_price']
+            except Exception as e:
+                logger.warning(f"yfinance fallback failed: {e}")
+
         # Calculate Macro Trend Score (-100 to 100)
         score = 0
         rate = result.get("interest_rate", 5.0)
@@ -82,10 +78,12 @@ class MacroConnector:
         if rate < 3.0: score += 30
         elif rate > 5.0: score -= 30
         
+        # DTWEXBGS is usually higher than DXY (e.g., 120 vs 104). Adjust logic slightly or just track trend.
+        # For simplicity, we assume higher is bearish for crypto.
         dxy_val = result.get('dxy')
         if dxy_val:
-            if dxy_val > 105: score -= 20 # Strong Dollar -> Bad for Crypto
-            elif dxy_val < 95: score += 20
+            if dxy_val > 115: score -= 20 # Strong Dollar (Broad Index) -> Bad for Crypto
+            elif dxy_val < 100: score += 20
         
         result["macro_score"] = score
         result["timestamp"] = datetime.now().isoformat()
@@ -93,7 +91,7 @@ class MacroConnector:
         # Log summary
         rate_str = f"{rate}%" if result.get("interest_rate") else "N/A"
         dxy_str = f"{result.get('dxy', 0):.2f}" if result.get('dxy') else "N/A"
-        logger.info(f"🌍 Macro Data: Rate={rate_str} | DXY={dxy_str} | Score={score}")
+        logger.info(f"🌍 Macro Data: Rate={rate_str} | DXY(Broad)={dxy_str} | Score={score}")
         
         return result
         
@@ -151,13 +149,9 @@ class MacroConnector:
             'cpi': [data.get('cpi', 0)],
             'unemployment': [data.get('unemployment', 0)],
             'm2_money_supply': [data.get('m2_money_supply', 0)],
-            'macro_DXY': [data.get('dxy', 100.0)], # Fallback purely for DataFrame shape if strict valid, but better to be None? 
-                                                  # FeatureEngineer expects floats. 100 is neutral.
+            'macro_DXY': [data.get('dxy', 100.0)],
             'macro_VIX': [data.get('vix', 20.0)]
         })
-        
-        # If DXY/VIX were missing, we used neutral defaults (100, 20) to ensure pipeline continuity
-        # But we logged the "N/A" earlier.
         
         logger.info(f"📊 Macro data fetched: Score={data.get('macro_score', 0):.1f}")
         return df
