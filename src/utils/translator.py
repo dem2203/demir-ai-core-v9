@@ -1,0 +1,90 @@
+
+class Translator:
+    """
+    Kripto finansal terimlerini Türkçe açıklamalarıyla eşleştirir.
+    Format: "Term (Açıklama)"
+    """
+    
+    DICTIONARY = {
+        # Yönler / Trendler
+        "BULLISH": "Yükseliş (Boğa)",
+        "BEARISH": "Düşüş (Ayı)",
+        "NEUTRAL": "Nötr (Yatay)",
+        "STRONG_BULLISH": "Güçlü Yükseliş",
+        "STRONG_BEARISH": "Güçlü Düşüş",
+        "UPTREND": "Yükseliş Trendi",
+        "DOWNTREND": "Düşüş Trendi",
+        "SIDEWAYS": "Yatay Piyasa",
+        "RANGING": "Kanal Hareketi",
+        
+        # Piyasa Rejimleri
+        "TRENDING_BULL": "Yükseliş Trendi (Boğa)",
+        "TRENDING_BEAR": "Düşüş Trendi (Ayı)",
+        "SCALPER_PARADISE": "Scalp Uygun (Hızlı Al-Sat)",
+        "ACCUMULATION": "Toplama Evresi (Akümülasyon)",
+        "DISTRIBUTION": "Dağıtım Evresi (Satış)",
+        "EXPANSION": "Genişleme (Fiyat Kopuşu)",
+        
+        # Teknik Terimler
+        "RSI": "RSI (Aşırı Alım/Satım Göstergesi)",
+        "MACD": "MACD (Trend Takipçisi)",
+        "Bollinger Bands": "Bollinger (Volatilite Bandı)",
+        "Volume": "Hacim",
+        "Open Interest": "Açık Pozisyonlar (Vadeli)",
+        "Funding Rate": "Fonlama Oranı (Long/Short Dengesi)",
+        "Order Book": "Emir Defteri",
+        "Imbalance": "Dengesizlik (Alıcı/Satıcı Baskısı)",
+        "Liquidation": "Likidasyon (Zorunlu Kapanış)",
+        "Support": "Destek Seviyesi",
+        "Resistance": "Direnç Seviyesi",
+        "Pivot": "Dönüş Noktası",
+        "Fibonacci": "Fibonacci (Altın Oran Seviyeleri)",
+        "Divergence": "Uyumsuzluk (Fiyat/Osilatör Farkı)",
+        
+        # Formasyonlar
+        "Double Bottom": "İkili Dip (Dönüş)",
+        "Double Top": "İkili Tepe (Dönüş)",
+        "Head & Shoulders": "Omuz Baş Omuz (Düşüş)",
+        "Inv. Head & Shoulders": "Ters OBO (Yükseliş)",
+        "Bull Flag": "Boğa Bayrağı (Devam)",
+        "Bear Flag": "Ayı Bayrağı (Devam)",
+        "Triangle": "Üçgen Sıkışması",
+        "Wedge": "Kama Formasyonu",
+        "Doji": "Doji (Kararsızlık Mumu)",
+        "Engulfing": "Yutan Mum (Dönüş)",
+        "Hammer": "Çekiç (Dip Dönüş)",
+        
+        # Genel
+        "ROI": "Yatırım Getirisi",
+        "PnL": "Kar/Zarar",
+        "Win Rate": "Kazanma Oranı",
+        "Confidence": "Yapay Zeka Güveni",
+        "Consensus": "Ortak Karar",
+        "Agreement": "Uyum"
+    }
+    
+    @staticmethod
+    def t(text):
+        """
+        Metin içindeki terimleri bulur ve Türkçe açıklamasını parantez içine ekler.
+        Örnek: "STRONG_BULLISH" -> "STRONG_BULLISH (Güçlü Yükseliş)"
+        """
+        if not isinstance(text, str): return text
+        
+        # Tam eşleşme kontrolü (Önce bunu dene)
+        if text in Translator.DICTIONARY:
+            return f"{text} ({Translator.DICTIONARY[text].split('(')[-1][:-1]})"
+            
+        # Parçalı eşleşme (Cümle içindeki kelimeleri tarama - Basitçe replace)
+        # Not: Bu biraz riskli olabilir, ama Dashboard'da genelde kısa keywordler var.
+        # Şimdilik sadece tam eşleşme veya anahtar kelime lookup yapalım.
+        
+        return text
+
+    @staticmethod
+    def get_desc(key):
+        """Direkt açıklamayı döndürür"""
+        val = Translator.DICTIONARY.get(key, key)
+        if "(" in val:
+            return val.split("(")[1].replace(")", "")
+        return val
