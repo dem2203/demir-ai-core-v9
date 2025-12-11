@@ -47,14 +47,16 @@ class MacroConnector:
         }
         
         result = {}
+        errors = []
         
         for name, series_id in indicators.items():
-            value = self._get_series_latest(series_id)
+            value, error = self._get_series_latest(series_id)
             if value is not None:
                 result[name] = value
+            elif error:
+                errors.append(f"{name}: {error}")
 
-        # 2. Market Data Fallback (yfinance) - Only if FRED fails or for specific real-time checks
-        # Railway often blocks yfinance, so we rely on FRED first.
+        # 2. Market Data Fallback (yfinance)
         if "dxy" not in result or "vix" not in result:
             try:
                 # DXY
@@ -69,7 +71,13 @@ class MacroConnector:
                     if hasattr(vix_ticker, 'fast_info') and 'last_price' in vix_ticker.fast_info:
                         result['vix'] = vix_ticker.fast_info['last_price']
             except Exception as e:
-                logger.warning(f"yfinance fallback failed: {e}")
+                msg = f"yfinance fallback failed: {e}"
+                logger.warning(msg)
+                errors.append(msg)
+        
+        # Store errors in result for debug
+        if errors:
+            result['debug_errors'] = "; ".join(errors)
 
         # Calculate Macro Trend Score (-100 to 100)
         score = 0
@@ -95,16 +103,16 @@ class MacroConnector:
         
         return result
         
-    def _get_series_latest(self, series_id: str) -> Optional[float]:
-        """Fetch single series from FRED"""
+    def _get_series_latest(self, series_id: str) -> tuple[Optional[float], Optional[str]]:
+        """Fetch single series from FRED. Returns (value, error_msg)"""
         if not self.api_key:
-            return None
+            return None, "FRED API Key missing"
             
         # Check cache
         if series_id in self.cache:
             ts, val = self.cache[series_id]
             if (datetime.now() - ts).total_seconds() < self.cache_duration:
-                return val
+                return val, None
                 
         try:
             params = {
@@ -122,13 +130,13 @@ class MacroConnector:
             if "observations" in data and len(data["observations"]) > 0:
                 value = float(data["observations"][0]["value"])
                 self.cache[series_id] = (datetime.now(), value)
-                return value
+                return value, None
+            else:
+                return None, "No observations found"
                 
         except Exception as e:
             logger.error(f"Failed to fetch {series_id}: {e}")
-            return None
-            
-        return None
+            return None, str(e)
     
     async def fetch_macro_data(self, period: str = "5d", interval: str = "1h") -> pd.DataFrame:
         """
@@ -150,7 +158,8 @@ class MacroConnector:
             'unemployment': [data.get('unemployment', 0)],
             'm2_money_supply': [data.get('m2_money_supply', 0)],
             'macro_DXY': [data.get('dxy', 100.0)],
-            'macro_VIX': [data.get('vix', 20.0)]
+            'macro_VIX': [data.get('vix', 20.0)],
+            'macro_debug': [data.get('debug_errors', 'OK')]
         })
         
         logger.info(f"📊 Macro data fetched: Score={data.get('macro_score', 0):.1f}")

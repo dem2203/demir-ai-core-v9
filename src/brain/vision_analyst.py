@@ -77,25 +77,33 @@ class VisionAnalyst:
             
             # 2. Query BOTH AIs (if available)
             analyses = []
+            errors = []
             
             if self.gemini_active:
-                gemini_result = self._query_gemini(img_bytes)
+                gemini_result, gemini_error = self._query_gemini(img_bytes)
                 if gemini_result:
                     analyses.append(("Gemini", gemini_result))
+                elif gemini_error:
+                    errors.append(f"Gemini Error: {gemini_error}")
                     
             if self.openai_active:
-                openai_result = self._query_openai(img_bytes)
+                openai_result, openai_error = self._query_openai(img_bytes)
                 if openai_result:
                     analyses.append(("GPT-4o", openai_result))
+                elif openai_error:
+                    errors.append(f"GPT-4o Error: {openai_error}")
             
             # 3. Combine Results
             if len(analyses) == 0:
-                return self._empty_analysis("Both AI models failed to respond")
+                combined_error = " | ".join(errors) if errors else "Both AI models failed silently"
+                return self._empty_analysis(combined_error)
             elif len(analyses) == 1:
                 # Single model available
                 _, result = analyses[0]
                 result['dual_vision'] = False
                 result['agreement'] = 'N/A'
+                # Append other errors to reasoning if one failed and other succeeded?
+                # Maybe useful but let's keep it clean for now.
                 return result
             else:
                 # Dual Vision: Compare and Combine
@@ -105,8 +113,8 @@ class VisionAnalyst:
             logger.error(f"Visual Analysis failed for {symbol}: {e}")
             return self._empty_analysis(f"Analysis Error: {str(e)}")
             
-    def _query_gemini(self, img_bytes: bytes) -> Optional[Dict]:
-        """Query Google Gemini Vision API"""
+    def _query_gemini(self, img_bytes: bytes) -> tuple[Optional[Dict], Optional[str]]:
+        """Query Google Gemini Vision API. Returns (result, error_message)"""
         try:
             prompt = self._get_analysis_prompt()
             
@@ -116,14 +124,14 @@ class VisionAnalyst:
             }
             
             response = self.gemini_model.generate_content([prompt, image_part])
-            return self._parse_response(response.text, "Gemini")
+            return self._parse_response(response.text, "Gemini"), None
             
         except Exception as e:
             logger.error(f"Gemini query failed: {e}")
-            return None
+            return None, str(e)
             
-    def _query_openai(self, img_bytes: bytes) -> Optional[Dict]:
-        """Query OpenAI GPT-4o Vision API"""
+    def _query_openai(self, img_bytes: bytes) -> tuple[Optional[Dict], Optional[str]]:
+        """Query OpenAI GPT-4o Vision API. Returns (result, error_message)"""
         try:
             prompt = self._get_analysis_prompt()
             
@@ -150,11 +158,11 @@ class VisionAnalyst:
                 max_tokens=300
             )
             
-            return self._parse_response(response.choices[0].message.content, "GPT-4o")
+            return self._parse_response(response.choices[0].message.content, "GPT-4o"), None
             
         except Exception as e:
             logger.error(f"OpenAI query failed: {e}")
-            return None
+            return None, str(e)
             
     def _combine_analyses(self, analyses: List[tuple]) -> Dict:
         """
