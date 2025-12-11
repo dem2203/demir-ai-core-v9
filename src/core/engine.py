@@ -92,10 +92,11 @@ class BotEngine:
             return # Bağlantı yoksa başlama
 
         # Telegram'a "Ben Başladım" mesajı at
-        await self.notifier.send_message_raw("🦅 **DEMIR AI ONLINE**\nSistem başlatıldı. Beyin modelleri kontrol ediliyor...")
+        await self.notifier.send_message_raw("🦅 **DEMIR AI ONLINE**\nSistem başlatıldı. Beyin eğitimi arka planda başlatılıyor...")
         
-        # Ensure AI Brain is Trained (Cold Start Fix)
-        await self.analyzer.ensure_active_brain()
+        # Ensure AI Brain is Trained (Non-Blocking Background Task)
+        # Fixes 502 Error: Training takes time, so we don't block startup.
+        asyncio.create_task(self.analyzer.ensure_active_brain())
         
         self.is_running = True
         await self.run_forever()
