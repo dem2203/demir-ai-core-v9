@@ -55,66 +55,68 @@ class NotificationManager:
 
     async def send_signal(self, signal: dict, snapshot: dict = None):
         """
-        Sends signal to Telegram (with Precision Filter).
+        Sends signal to Telegram (Strictly for STRONG signals).
         """
         if not self.telegram_token or not self.telegram_chat_id:
-            logger.warning("Telegram credentials not configured!")
+            return
+            
+        # 1. STRICT FILTER: Only STRONG signals
+        if signal.get('quality') != 'STRONG':
+            # Log silent rejection
             return
         
-        # DEDUP CHECK (Phase 21 Verified)
-        # Assuming signal has 'entry_price' or 'price'
+        # 2. DEDUP CHECK
         price = signal.get('entry_price', signal.get('price', 0))
         if self.dedup_cache.is_duplicate(signal['symbol'], signal['side'], price):
-            logger.info(f"🔇 SKIPPING DUPLICATE SIGNAL: {signal['symbol']} {signal['side']} @ {price}")
             return
-        
-        # PRECISION FILTER: Check signal quality
-        if snapshot:
-            should_send, quality_score, filter_reason = self.signal_filter.should_send_signal(signal, snapshot)
-            
-            if not should_send:
-                logger.warning(f"⛔ SIGNAL REJECTED: {filter_reason}")
-                self._log_rejected_signal(signal, quality_score, filter_reason)
-                return
-        else:
-            quality_score = 0
         
         try:
             side_icon = "🟢 LONG 🚀" if signal['side'] == "BUY" else "🔴 SHORT 🔻"
             conf = signal['confidence']
-            conf_icon = "⭐⭐⭐" if conf > 85 else ("⭐⭐" if conf > 70 else "⭐")
             
-            # AI Detayları
-            source = signal.get('source', 'AI Model')
-            pattern = signal.get('pattern', 'None')
-            quality = signal.get('quality', 'Standard')
-            
-            # Kalite İkonu
-            q_icon = "💎" if quality == "STRONG" else ("⚠️" if quality == "CONFLICTING" else "⚡")
-
+            # Formatted for optimal readability on mobile
             message = (
-                f"🎯 **PRECISION SIGNAL** (Score: {quality_score}/100)\n"
                 f"{side_icon} **{signal['symbol']}**\n"
                 f"━━━━━━━━━━━━━━\n"
-                f"🧠 **Decision:** {source}\n"
-                f"📊 **Confidence:** {conf:.1f}% {conf_icon}\n"
-                f"💎 **Quality:** {quality} {q_icon}\n"
+                f"🧠 **Decision:** {signal.get('quality', 'STRONG')} ({conf:.1f}%)\n"
+                f"📉 **Reason:** {signal.get('reason', 'AI Model Decision')}\n"
                 f"━━━━━━━━━━━━━━\n"
-                f"📐 **Pattern:** {pattern}\n"
-                f"📈 **Reason:** {signal.get('reason', 'N/A')}\n"
-                f"━━━━━━━━━━━━━━\n"
-                f"📍 **ENTRY:** ${signal['entry_price']:.4f}\n"
+                f"🚪 **ENTRY:** ${signal['entry_price']:.4f}\n"
                 f"🎯 **TP:** ${signal['tp_price']:.4f}\n"
                 f"🛡️ **SL:** ${signal['sl_price']:.4f}\n"
                 f"💰 **Size:** {signal.get('kelly_size', 'N/A')}%\n"
                 f"━━━━━━━━━━━━━━\n"
-                f"⚠️ _AI Decision based on RL & Confluence._"
+                f"⚠️ _Trade at your own risk. AI Beta v9.0_"
             )
             
             await self.send_message_raw(message)
-            logger.info("✅ Signal sent to Telegram")
+            logger.info(f"✅ STRONG Signal sent: {signal['symbol']}")
+            
         except Exception as e:
             logger.error(f"Telegram Error: {e}")
+
+    async def send_heartbeat(self, price_info: dict):
+        """Sends hourly heartbeat if no signals were sent."""
+        if not self.telegram_token: return
+        
+        try:
+            msg = (
+                f"💓 **System Heartbeat**\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"🤖 AI Engine: **ONLINE**\n"
+                f"📅 Time: {datetime.now().strftime('%H:%M')}\n"
+                f"━━━━━━━━━━━━━━\n"
+            )
+            
+            for sym, price in price_info.items():
+                msg += f"🔹 **{sym}:** ${price:,.2f}\n"
+                
+            msg += f"━━━━━━━━━━━━━━\n"
+            msg += f"Scanning for opportunities..."
+            
+            await self.send_message_raw(msg)
+        except Exception as e:
+            logger.error(f"Heartbeat failed: {e}")
 
     async def send_message_raw(self, text: str):
         """Send raw text to Telegram"""

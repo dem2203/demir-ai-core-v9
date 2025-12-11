@@ -73,6 +73,7 @@ class BotEngine:
         self.exit_strategy = ExitStrategy()
         self.cycle_count = 0  # For periodic performance tracking
         self.last_heartbeat_time = datetime.now() # Phase 21: Heartbeat
+        self.latest_prices = {} # For Heartbeat
         
         logger.info("✅ All Sub-systems Initialized Successfully.")
 
@@ -117,7 +118,7 @@ class BotEngine:
                 
                 # Phase 21: Hourly Heartbeat
                 if (datetime.now() - self.last_heartbeat_time).total_seconds() > 3600:
-                    await self.notifier.send_message_raw(f"🦅 **STATUS REPORT**\nSystem Active. Scanning markets...\nTime: {datetime.now().strftime('%H:%M')}")
+                    await self.notifier.send_heartbeat(self.latest_prices)
                     self.last_heartbeat_time = datetime.now()
                     logger.info("💓 Heartbeat sent to Telegram.")
                     
@@ -163,6 +164,7 @@ class BotEngine:
                 price = data[-1]['close']
                 current_prices[symbol] = price
         
+        self.latest_prices = current_prices
         self.paper_trader.get_portfolio_status(current_prices)
         
         # ADIM 3: Her Coin İçin Analiz Yap (Paralel İşlem)
