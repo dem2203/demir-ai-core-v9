@@ -60,7 +60,8 @@ page = st.sidebar.radio("System Modules", [
     "📈 Live Trading Chart",  # Phase 14: NEW TAB
     "💼 Advisory Portfolio", 
     "🧪 Backtest Lab",
-    "⚙️ Strategy Optimizer"
+    "⚙️ Strategy Optimizer",
+    "🔧 Debug"
 ])
 
 def load_json(filename):
@@ -742,3 +743,30 @@ elif page == "⚙️ Strategy Optimizer":
                 st.json(best['params'])
             else:
                 st.error("Optimization failed.")
+
+# ==========================================
+# 5. DEBUG PANEL
+# ==========================================
+elif page == "🔧 Debug":
+    st.header("🔧 System Debug Panel")
+    
+    st.subheader("🔑 Environment Check")
+    keys = {
+        "BINANCE_API_KEY": bool(Config.BINANCE_API_KEY),
+        "GOOGLE_API_KEY": bool(Config.GEMINI_API_KEY),
+        "OPENAI_API_KEY": bool(Config.OPENAI_API_KEY),
+        "FRED_API_KEY": bool(Config.FRED_API_KEY),
+        "TELEGRAM_TOKEN": bool(Config.TELEGRAM_TOKEN)
+    }
+    st.json(keys)
+    
+    st.subheader("⚙️ Configuration")
+    st.write(f"Target Coins: {Config.TARGET_COINS}")
+    
+    st.subheader("📄 Dashboard Data (Raw)")
+    data = load_json("dashboard_data.json")
+    st.json(data)
+    
+    st.subheader("💼 Portfolio Data (Raw)")
+    port = load_json("portfolio.json")
+    st.json(port)
