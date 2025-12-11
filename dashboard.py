@@ -698,6 +698,7 @@ elif page == "🧪 Backtest Lab":
     if st.button("🚀 Run Simulation"):
         with st.spinner("Crunching numbers..."):
             async def run():
+                from src.backtest.backtester import Backtester
                 bt = Backtester()
                 return await bt.run_backtest(symbol, days)
             
@@ -728,6 +729,7 @@ elif page == "⚙️ Strategy Optimizer":
     if st.button("🧬 Start Optimization"):
         with st.spinner("Optimizing... This may take a while."):
             async def run_opt():
+                from src.brain.optimizer import StrategyOptimizer
                 opt = StrategyOptimizer()
                 return await opt.optimize(target_sym, 30)
             
