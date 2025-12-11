@@ -38,9 +38,15 @@ class VisionAnalyst:
         if self.google_key:
             try:
                 genai.configure(api_key=self.google_key)
-                self.gemini_model = genai.GenerativeModel("gemini-1.5-flash-001")
+                # List of models to try in order of preference (Speed > Quality for this use case)
+                self.gemini_models_list = [
+                    "gemini-1.5-flash", 
+                    "gemini-1.5-flash-latest",
+                    "gemini-1.5-pro",
+                    "gemini-pro-vision"
+                ]
                 self.gemini_active = True
-                logger.info("👁️ Gemini Vision: ACTIVE")
+                logger.info("👁️ Gemini Vision: ACTIVE (Fallback Mode Ready)")
             except Exception as e:
                 logger.error(f"Gemini initialization failed: {e}")
         else:
@@ -114,21 +120,33 @@ class VisionAnalyst:
             return self._empty_analysis(f"Analysis Error: {str(e)}")
             
     def _query_gemini(self, img_bytes: bytes) -> tuple[Optional[Dict], Optional[str]]:
-        """Query Google Gemini Vision API. Returns (result, error_message)"""
-        try:
-            prompt = self._get_analysis_prompt()
-            
-            image_part = {
-                "mime_type": "image/png",
-                "data": img_bytes
-            }
-            
-            response = self.gemini_model.generate_content([prompt, image_part])
-            return self._parse_response(response.text, "Gemini"), None
-            
-        except Exception as e:
-            logger.error(f"Gemini query failed: {e}")
-            return None, str(e)
+        """Query Google Gemini Vision API with Fallback Logic. Returns (result, error_message)"""
+        
+        last_error = None
+        
+        for model_name in self.gemini_models_list:
+            try:
+                model = genai.GenerativeModel(model_name)
+                
+                prompt = self._get_analysis_prompt()
+                image_part = {"mime_type": "image/png", "data": img_bytes}
+                
+                response = model.generate_content([prompt, image_part])
+                
+                # If successful, parse and return
+                return self._parse_response(response.text, f"Gemini ({model_name})"), None
+                
+            except Exception as e:
+                error_str = str(e)
+                logger.warning(f"Gemini model '{model_name}' failed: {error_str}")
+                last_error = error_str
+                
+                # If it's a quote error, stop trying? No, usually 404 or 400.
+                if "429" in error_str: # Rate limit
+                    break 
+                    
+        # If all failed
+        return None, f"All Gemini models failed. Last error: {last_error}"
             
     def _query_openai(self, img_bytes: bytes) -> tuple[Optional[Dict], Optional[str]]:
         """Query OpenAI GPT-4o Vision API. Returns (result, error_message)"""
