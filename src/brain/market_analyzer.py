@@ -196,6 +196,34 @@ class MarketAnalyzer:
             
         return decision, score
 
+    async def ensure_active_brain(self):
+        """
+        Check if AI models exist. If not, trigger 'Cold Start' training.
+        """
+        from src.config.settings import Config
+        from src.brain.trainer import AITrainer
+        
+        logger.info("🧠 Checking Brain Health (Model Verification)...")
+        
+        trainer = None
+        
+        for symbol in Config.TARGET_COINS:
+            if not self.load_lstm_for_symbol(symbol):
+                logger.warning(f"⚠️ Brain is cold for {symbol} (No Model). Starting accelerated learning...")
+                
+                if not trainer: trainer = AITrainer()
+                
+                success = await trainer.train_model_for_symbol(symbol)
+                
+                if success:
+                    logger.info(f"✅ Brain activation complete for {symbol}.")
+                    # Reload the newly trained model
+                    self.load_lstm_for_symbol(symbol)
+                else:
+                    logger.error(f"❌ Brain activation failed for {symbol}.")
+            else:
+                logger.info(f"🧠 Brain is active for {symbol}.")
+
     async def analyze_market(self, symbol: str, raw_data_1h: List[Dict]) -> Optional[Dict]:
         # NOT: raw_data_1h parametresi engine'den geliyor ama biz burada kendi verimizi çekeceğiz
         # Engine'i güncellemek yerine burada override ediyoruz.

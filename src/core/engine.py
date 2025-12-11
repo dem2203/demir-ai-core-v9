@@ -92,7 +92,10 @@ class BotEngine:
             return # Bağlantı yoksa başlama
 
         # Telegram'a "Ben Başladım" mesajı at
-        await self.notifier.send_message_raw("🦅 **DEMIR AI ONLINE**\nSistem başlatıldı. Piyasa taranıyor (Zero-Mock Mode).")
+        await self.notifier.send_message_raw("🦅 **DEMIR AI ONLINE**\nSistem başlatıldı. Beyin modelleri kontrol ediliyor...")
+        
+        # Ensure AI Brain is Trained (Cold Start Fix)
+        await self.analyzer.ensure_active_brain()
         
         self.is_running = True
         await self.run_forever()
