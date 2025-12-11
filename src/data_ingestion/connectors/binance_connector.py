@@ -1,7 +1,5 @@
 import ccxt.async_support as ccxt
-import asyncio
-from typing import Dict, List, Optional
-import ccxt.async_support as ccxt
+import ccxt as ccxt_sync # Synchronous library for dashboard usage
 import asyncio
 from typing import Dict, List, Optional
 import logging
@@ -97,35 +95,39 @@ class BinanceConnector:
         
     def fetch_ohlcv(self, symbol: str, timeframe: str = '1h', limit: int = 100) -> pd.DataFrame:
         """
-        Synchronous wrapper for Dashboard usage.
+        Synchronous wrapper for Dashboard usage using sync CCXT to avoid event loop issues.
         Returns Pandas DataFrame.
         """
         try:
-            # Handle async call in sync context
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            if loop.is_running():
-                # If loop is running (e.g. Streamlit), we can't use run_until_complete directly
-                # This is a bit tricky. For now, create a new loop for this specific call if possible,
-                # or rely on nest_asyncio if available. 
-                # Simpler fallback: just allow the error or use a clean resource.
-                # Use a fresh loop in a separate thread if needed, but let's try standard approach first.
-                future = asyncio.run_coroutine_threadsafe(self.fetch_candles(symbol, timeframe, limit), loop)
-                data = future.result()
-            else:
-                data = loop.run_until_complete(self.fetch_candles(symbol, timeframe, limit))
+            # Use synchronous exchange instance
+            sync_exchange = ccxt_sync.binance({
+                'apiKey': self.api_key,
+                'secret': self.api_secret,
+                'enableRateLimit': True,
+                'options': {'defaultType': 'future'}
+            })
+            
+            data = sync_exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
             
             if not data:
                 return pd.DataFrame()
             
-            df = pd.DataFrame(data)
+            formatted_data = []
+            for candle in data:
+                formatted_data.append({
+                    'timestamp': candle[0],
+                    'open': float(candle[1]),
+                    'high': float(candle[2]),
+                    'low': float(candle[3]),
+                    'close': float(candle[4]),
+                    'volume': float(candle[5])
+                })
+                
+            df = pd.DataFrame(formatted_data)
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             df.set_index('timestamp', inplace=True)
             
+            # Ensure types
             numeric_cols = ['open', 'high', 'low', 'close', 'volume']
             df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors='coerce')
             

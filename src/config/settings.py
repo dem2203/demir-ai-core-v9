@@ -57,6 +57,10 @@ class Config:
     
     # --- Streamlit Settings ---
     STREAMLIT_SERVER_HEADLESS = os.getenv("STREAMLIT_SERVER_HEADLESS", "true")
+    
+    # --- AI Models (Vision & Text) ---
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
     @staticmethod
     def validate_keys():

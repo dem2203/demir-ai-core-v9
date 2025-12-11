@@ -201,7 +201,8 @@ class VisionAnalyst:
         """Convert DataFrame to candlestick chart image bytes using Matplotlib (Server-side safe)"""
         try:
             import matplotlib.pyplot as plt
-            import matplotlib.finance as mpf  # Note: Standard mpl doesn't have candles easily, using manual drawing or simple lines for now if mpf not installed
+            # Removed mpf import as it requires 'mplfinance' package which wasn't added.
+            # We use standard plt for reliability and speed.
             # However, for simplicity and dependency safety, we will draw a detailed line chart with volume
             # OR we can manually draw candles with matplotlib.patches which is robust.
             
