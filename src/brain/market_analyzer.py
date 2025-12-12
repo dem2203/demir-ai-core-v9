@@ -19,6 +19,7 @@ from src.data_ingestion.connectors.binance_connector import BinanceConnector
 from src.data_ingestion.connectors.bybit_connector import BybitConnector
 from src.data_ingestion.connectors.coinbase_connector import CoinbaseConnector
 from src.data_ingestion.orderbook_analyzer import OrderBookAnalyzer
+from src.data_ingestion.trade_flow_analyzer import TradeFlowAnalyzer  # Order Flow
 from src.brain.correlation_engine import CorrelationEngine
 from src.brain.state_builder import StateVectorBuilder  # PHASE 7: True AI
 
@@ -63,6 +64,7 @@ class MarketAnalyzer:
         
         # PHASE 4A: Market Intelligence
         self.orderbook_analyzer = OrderBookAnalyzer()
+        self.trade_flow = TradeFlowAnalyzer()  # Real-time whale detection
         self.correlation_engine = CorrelationEngine()
         
         # PHASE 7: True AI Decision Engine
