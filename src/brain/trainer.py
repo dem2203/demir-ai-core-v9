@@ -4,33 +4,41 @@ import os
 import logging
 import joblib
 import asyncio
+import argparse
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.optimizers import Adam
 from src.brain.models.transformer import TimeNet
-
-# Kendi modüllerimiz
 from src.brain.feature_engineering import FeatureEngineer
-from src.data_ingestion.connectors.binance_connector import BinanceConnector
-from src.data_ingestion.macro_connector import MacroConnector
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("AI_TRAINER_TRANSFORMER")
 
 class AITrainer:
     """
     DEMIR AI v11.1 - MULTI-ASSET TRAINER (Phase X: TimeNet Upgrade)
     Her coin için ayrı bir Transformer (TimeNet) modeli eğitir ve kaydeder.
+    Uses PUBLIC API - no authentication required!
     """
     
     MODELS_DIR = "src/brain/models/storage"
     LOOKBACK = 60 
 
     def __init__(self):
-        self.connector = BinanceConnector()
-        self.macro = MacroConnector()
+        self.exchange = None
         
         # Klasör yoksa oluştur
         if not os.path.exists(self.MODELS_DIR):
             os.makedirs(self.MODELS_DIR)
+    
+    async def _get_exchange(self):
+        """Create public exchange connection (no API key needed)"""
+        if not self.exchange:
+            import ccxt.async_support as ccxt
+            self.exchange = ccxt.binance({
+                'enableRateLimit': True,
+                'options': {'defaultType': 'spot'}
+            })
+        return self.exchange
 
     def _get_paths(self, symbol):
         """Coin ismine özel dosya yolları üretir."""
@@ -39,30 +47,47 @@ class AITrainer:
         scaler_path = os.path.join(self.MODELS_DIR, f"scaler_{clean_sym}.pkl")
         return model_path, scaler_path
 
-    async def fetch_integrated_data(self, symbol, limit=2000):
-        """Kripto ve Makro veriyi çeker ve birleştirir."""
-        logger.info(f"Fetching integrated data for {symbol}...")
+    async def fetch_integrated_data(self, symbol, limit=1000):
+        """Fetch market data using PUBLIC API (no auth needed)."""
+        logger.info(f"Fetching data for {symbol} using PUBLIC API...")
         
-        # 1. Kripto
-        raw_crypto = await self.connector.fetch_candles(symbol, limit=limit)
-        await self.connector.close()
-        if not raw_crypto: return None
+        exchange = await self._get_exchange()
         
-        if not raw_crypto: return None
+        try:
+            # Fetch OHLCV using public API
+            ohlcv = await exchange.fetch_ohlcv(
+                symbol.replace('/', ''), 
+                timeframe='1h', 
+                limit=min(limit, 1000)
+            )
+            
+            logger.info(f"\u2705 Fetched {len(ohlcv)} candles")
+            
+            # Convert to list of dicts for FeatureEngineer
+            raw_data = []
+            for candle in ohlcv:
+                raw_data.append({
+                    'timestamp': candle[0],
+                    'open': candle[1],
+                    'high': candle[2],
+                    'low': candle[3],
+                    'close': candle[4],
+                    'volume': candle[5],
+                    'symbol': symbol
+                })
+        finally:
+            await exchange.close()
+            self.exchange = None
         
-        # CPU BOUND: Feature Engineering (Offload to thread)
-        logger.info("⚡ Processing Transformer features in background thread...")
-        crypto_df = await asyncio.to_thread(FeatureEngineer.process_data, raw_crypto)
+        if not raw_data or len(raw_data) < 100:
+            logger.error("Insufficient data fetched!")
+            return None
         
-        # 2. Makro (using helper)
-        from src.brain.macro_helpers import fetch_macro_for_training
-        full_df, macro_df = await fetch_macro_for_training(self.macro, crypto_df, period="1y", interval="1h")
+        # Process with FeatureEngineer
+        logger.info("\u26a1 Processing features...")
+        df = await asyncio.to_thread(FeatureEngineer.process_data, raw_data)
         
-        # If helper returned separate dfs, merge them
-        if not macro_df.empty:
-            full_df = FeatureEngineer.merge_crypto_and_macro(crypto_df, macro_df)
-        
-        return full_df
+        return df
 
     def build_transformer_model(self, input_shape):
         """
@@ -113,7 +138,7 @@ class AITrainer:
 
             # 4. Eğitim (Phase X: TimeNet)
             model = self.build_transformer_model((X.shape[1], X.shape[2]))
-            model.fit(X, y, epochs=5, batch_size=32, verbose=0) 
+            model.fit(X, y, epochs=10, batch_size=32, verbose=1)  # Verbose for visibility
 
             # 5. Kayıt
             model.save(model_path)
@@ -122,3 +147,35 @@ class AITrainer:
             logger.info(f"✅ BRAIN SAVED (Background): -> {model_path}")
         except Exception as e:
             logger.error(f"Training failed: {e}")
+
+
+async def main():
+    """Train LSTM models for specified symbols."""
+    parser = argparse.ArgumentParser(description="Train LSTM TimeNet Model")
+    parser.add_argument("--symbol", type=str, default="BTC/USDT", help="Trading symbol")
+    parser.add_argument("--all", action="store_true", help="Train all 3 coins")
+    
+    args = parser.parse_args()
+    
+    trainer = AITrainer()
+    
+    if args.all:
+        symbols = ["BTC/USDT", "ETH/USDT", "LTC/USDT"]
+        for symbol in symbols:
+            logger.info(f"\n{'='*50}")
+            logger.info(f"🧠 Training LSTM for {symbol}...")
+            logger.info(f"{'='*50}")
+            success = await trainer.train_model_for_symbol(symbol)
+            if success:
+                logger.info(f"✅ {symbol} LSTM training complete!")
+            else:
+                logger.error(f"❌ {symbol} training failed!")
+    else:
+        logger.info(f"🧠 Training LSTM for {args.symbol}...")
+        await trainer.train_model_for_symbol(args.symbol)
+    
+    logger.info("\n🎉 All LSTM training complete!")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

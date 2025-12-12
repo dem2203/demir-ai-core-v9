@@ -88,13 +88,35 @@ class MarketAnalyzer:
         self.sentiment = SentimentAnalyzer()
         
         # PHASE 6: RL Agent (Self-Learning Trader) - 200K TIMESTEPS TRAINED!
-        self.rl_agent_phase6 = RLAgent()
-        self.rl_agent_phase6.load("ppo_btc_v2")  # Trained on 200K timesteps (4x stronger than v1)
+        # Multi-coin support: each coin has its own trained model
+        self.rl_agents = {}  # Symbol -> RLAgent
+        self.rl_model_map = {
+            'BTC/USDT': 'ppo_btc_v2',
+            'ETH/USDT': 'ppo_eth_v2', 
+            'LTC/USDT': 'ppo_ltc_v2'
+        }
         
         self.regime_classifier = RegimeClassifier()
         
         # Başlangıç Yüklemeleri
         self.load_rl_agent()
+    
+    def get_rl_agent_for_symbol(self, symbol: str) -> RLAgent:
+        """
+        Get the RL agent for a specific symbol.
+        Loads model on first use, caches for reuse.
+        (Her coin için kendi RL modelini döner, ilk kullanımda yükler)
+        """
+        if symbol not in self.rl_agents:
+            model_name = self.rl_model_map.get(symbol, 'ppo_btc_v2')  # Fallback to BTC
+            agent = RLAgent()
+            loaded = agent.load(model_name)
+            if loaded:
+                logger.info(f"🧠 Loaded RL model for {symbol}: {model_name}")
+            else:
+                logger.warning(f"⚠️ Could not load RL model {model_name}, using uninitialized agent")
+            self.rl_agents[symbol] = agent
+        return self.rl_agents[symbol]
 
     # ... [Rest of class methods unchanged until analyze_market] ... 
     # NOTE: I will only replace the analyze_market part in a separate call if needed or include the import + init here.
