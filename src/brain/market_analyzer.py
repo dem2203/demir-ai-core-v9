@@ -87,13 +87,13 @@ class MarketAnalyzer:
         # PHASE 13: Sentiment Analysis
         self.sentiment = SentimentAnalyzer()
         
-        # PHASE 6: RL Agent (Self-Learning Trader) - 200K TIMESTEPS TRAINED!
+        # PHASE 6: RL Agent (Self-Learning Trader) - v3: 2 YEARS DATA + 500K TIMESTEPS!
         # Multi-coin support: each coin has its own trained model
         self.rl_agents = {}  # Symbol -> RLAgent
         self.rl_model_map = {
-            'BTC/USDT': 'ppo_btc_v2',
-            'ETH/USDT': 'ppo_eth_v2', 
-            'LTC/USDT': 'ppo_ltc_v2'
+            'BTC/USDT': 'ppo_btc_v3',  # 2 years data, 500K steps, Sharpe 0.18
+            'ETH/USDT': 'ppo_eth_v3',  # 2 years data, 500K steps, Sharpe 0.10
+            'LTC/USDT': 'ppo_ltc_v3'   # 2 years data, 500K steps, Sharpe 0.09
         }
         
         self.regime_classifier = RegimeClassifier()

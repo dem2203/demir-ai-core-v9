@@ -59,30 +59,57 @@ class RLTrainer:
         exchange = await self._get_exchange()
         
         try:
-            # Fetch OHLCV using public API (timeframe: 1h)
+            # Fetch OHLCV in batches (Binance limit: 1000 per request)
+            # Need multiple requests for 2+ years of data
+            all_ohlcv = []
+            fetched = 0
+            since = None  # Start from now, go backwards
+            
+            # First fetch to get latest data
             ohlcv = await exchange.fetch_ohlcv(
                 self.symbol.replace('/', ''), 
                 timeframe='1h', 
-                limit=min(num_candles, 1000)  # Binance limit
+                limit=1000
             )
+            all_ohlcv = ohlcv
+            fetched += len(ohlcv)
+            logger.info(f"   Batch 1: {len(ohlcv)} candles (total: {fetched})")
             
-            if len(ohlcv) < 500:
-                logger.warning(f"Only fetched {len(ohlcv)} candles, fetching more...")
-                # Fetch more in batches if needed
-                since = ohlcv[0][0] - (1000 * 60 * 60 * 1000)  # 1000 hours earlier
-                more = await exchange.fetch_ohlcv(
+            # Fetch more batches going backwards in time
+            while fetched < num_candles and len(ohlcv) > 0:
+                # Calculate timestamp 1000 hours before oldest candle
+                oldest_timestamp = all_ohlcv[0][0]
+                since = oldest_timestamp - (1000 * 60 * 60 * 1000)  # 1000 hours earlier
+                
+                # Rate limit protection
+                await asyncio.sleep(0.5)
+                
+                ohlcv = await exchange.fetch_ohlcv(
                     self.symbol.replace('/', ''), 
                     timeframe='1h',
                     since=since,
                     limit=1000
                 )
-                ohlcv = more + ohlcv
+                
+                if len(ohlcv) == 0:
+                    logger.warning("No more historical data available")
+                    break
+                
+                # Prepend older data
+                all_ohlcv = ohlcv + all_ohlcv
+                fetched = len(all_ohlcv)
+                batch_num = fetched // 1000 + 1
+                logger.info(f"   Batch {batch_num}: {len(ohlcv)} candles (total: {fetched})")
             
-            logger.info(f"✅ Fetched {len(ohlcv)} candles")
+            # Limit to requested amount
+            if len(all_ohlcv) > num_candles:
+                all_ohlcv = all_ohlcv[-num_candles:]  # Keep most recent
+            
+            logger.info(f"✅ Fetched {len(all_ohlcv)} candles (~{len(all_ohlcv)//24} days)")
             
             # Convert to list of dicts for FeatureEngineer
             raw_data = []
-            for candle in ohlcv:
+            for candle in all_ohlcv:
                 raw_data.append({
                     'timestamp': candle[0],
                     'open': candle[1],
@@ -128,16 +155,17 @@ class RLTrainer:
         self, 
         total_timesteps: int = 100_000,
         initial_balance: float = 10_000.0,
-        save_name: str = "ppo_trader_v1"
+        save_name: str = "ppo_trader_v1",
+        num_candles: int = 10_000  # 2 yıl = 17,520 candle
     ):
         """
         Run complete training pipeline
         (Tam eğitim hattını çalıştır)
         """
-        logger.info("🚀 Starting RL Agent Training Pipeline...")
+        logger.info(f"🚀 Starting RL Agent Training Pipeline ({num_candles} candles, {total_timesteps} steps)...")
         
         # 1. Prepare data (Veri hazırla)
-        data = await self.prepare_training_data(num_candles=10000)
+        data = await self.prepare_training_data(num_candles=num_candles)
         
         # 2. Create environment (Ortam oluştur)
         logger.info("🏗️ Creating TradingEnv...")
@@ -209,6 +237,7 @@ async def main():
     parser.add_argument("--steps", type=int, default=100_000, help="Training timesteps")
     parser.add_argument("--balance", type=float, default=10_000.0, help="Initial balance")
     parser.add_argument("--name", type=str, default="ppo_trader_v1", help="Model save name")
+    parser.add_argument("--candles", type=int, default=10_000, help="Number of candles (17520=2 years)")
     
     args = parser.parse_args()
     
@@ -216,7 +245,8 @@ async def main():
     await trainer.train(
         total_timesteps=args.steps,
         initial_balance=args.balance,
-        save_name=args.name
+        save_name=args.name,
+        num_candles=args.candles
     )
 
 
