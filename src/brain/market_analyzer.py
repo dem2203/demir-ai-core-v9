@@ -34,6 +34,9 @@ from src.brain.vision_analyst import VisionAnalyst  # PHASE 12: Visual Cortex
 from src.brain.sentiment_analyzer import SentimentAnalyzer  # PHASE 13: Sentiment
 from src.data_ingestion.macro_connector import MacroConnector  # PHASE 17: Macro IQ
 
+# PHASE 6: Reinforcement Learning Agent (Pekiştirmeli Öğrenme Ajanı)
+from src.brain.rl_agent.ppo_agent import RLAgent
+
 logger = logging.getLogger("MARKET_ANALYZER_PRO")
 
 class MarketAnalyzer:
@@ -79,6 +82,10 @@ class MarketAnalyzer:
         
         # PHASE 13: Sentiment Analysis
         self.sentiment = SentimentAnalyzer()
+        
+        # PHASE 6: RL Agent (Self-Learning Trader)
+        self.rl_agent_phase6 = RLAgent()
+        self.rl_agent_phase6.load("ppo_trader_v1")  # Load if exists (optional)
         
         self.regime_classifier = RegimeClassifier()
         
