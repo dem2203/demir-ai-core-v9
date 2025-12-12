@@ -53,14 +53,14 @@ st.title("🦅 DEMIR AI - Institutional Trading Terminal")
 st.caption("v23.0 | Zero-Mock | On-Chain Intel | Liquidation Hunter | Wyckoff | Adaptive AI")
 
 # --- Yan Menü ---
-page = st.sidebar.radio("System Modules", [
-    "📡 Live Market Intelligence", 
-    "🧠 Neural Brain Monitor",
-    "📈 Live Trading Chart",  # Phase 14: NEW TAB
-    "💼 Advisory Portfolio", 
-    "🧪 Backtest Lab",
-    "⚙️ Strategy Optimizer",
-    "🔧 Debug"
+page = st.sidebar.radio("System Modules (Sistem Modülleri)", [
+    "📡 Live Market Intelligence (Canlı Piyasa İstihbaratı)", 
+    "🧠 Neural Brain Monitor (Sinir Ağı İzleme)",
+    "📈 Live Trading Chart (Canlı İşlem Grafiği)",
+    "💼 Advisory Portfolio (Danışmanlık Portföyü)", 
+    "🧪 Backtest Lab (Geçmiş Test Laboratuvarı)",
+    "⚙️ Strategy Optimizer (Strateji Optimize Edici)",
+    "🔧 Debug (Hata Ayıklama)"
 ])
 
 def load_json(filename):
@@ -78,7 +78,7 @@ risk_manager = RiskManager()
 # ==========================================
 # 1. CANLI İZLEME (Live Market Intelligence)
 # ==========================================
-if page == "📡 Live Market Intelligence":
+if page == "📡 Live Market Intelligence (Canlı Piyasa İstihbaratı)":
     st.sidebar.markdown("---")
     st.sidebar.info("System Status: **ONLINE**")
     
@@ -318,7 +318,7 @@ if page == "📡 Live Market Intelligence":
 # ==========================================
 # 2. NEURAL BRAIN MONITOR (Visual Intelligence)
 # ==========================================
-elif page == "🧠 Neural Brain Monitor":
+elif page == "🧠 Neural Brain Monitor (Sinir Ağı İzleme)":
     st.header("🧠 Neural Brain Monitor")
     st.caption("Visualizing the internal state of the Reinforcement Learning Agent.")
     
@@ -530,7 +530,7 @@ elif page == "🧠 Neural Brain Monitor":
 # ==========================================
 # 3. LIVE TRADING CHART (Phase 14)
 # ==========================================
-elif page == "📈 Live Trading Chart":
+elif page == "📈 Live Trading Chart (Canlı İşlem Grafiği)":
     st.title("📈 Live Paper Trading Chart")
     
     # Import chart visualizer
@@ -619,7 +619,7 @@ elif page == "📈 Live Trading Chart":
 # ==========================================
 # 4. ADVISORY PORTFOLIO
 # ==========================================
-elif page == "💼 Advisory Portfolio":
+elif page == "💼 Advisory Portfolio (Danışmanlık Portföyü)":
     st.header("💼 Advisory Portfolio Tracker")
     st.caption("Simulated execution of AI signals. No real funds at risk.")
     
@@ -690,7 +690,7 @@ elif page == "💼 Advisory Portfolio":
 # ==========================================
 # 3. BACKTEST LAB
 # ==========================================
-elif page == "🧪 Backtest Lab":
+elif page == "🧪 Backtest Lab (Geçmiş Test Laboratuvarı)":
     st.header("⏳ Historical Simulation")
     c1, c2 = st.columns(2)
     with c1: symbol = st.selectbox("Asset", Config.TARGET_COINS)
@@ -721,7 +721,7 @@ elif page == "🧪 Backtest Lab":
 # ==========================================
 # 4. OPTIMIZER
 # ==========================================
-elif page == "⚙️ Strategy Optimizer":
+elif page == "⚙️ Strategy Optimizer (Strateji Optimize Edici)":
     st.header("🧬 Genetic Strategy Optimizer")
     st.info("Uses genetic algorithms to find optimal parameters for the current market regime.")
     
@@ -748,7 +748,7 @@ elif page == "⚙️ Strategy Optimizer":
 # ==========================================
 # 5. DEBUG PANEL
 # ==========================================
-elif page == "🔧 Debug":
+elif page == "🔧 Debug (Hata Ayıklama)":
     st.header("🔧 System Debug Panel")
     
     st.subheader("🔑 Environment Check")
