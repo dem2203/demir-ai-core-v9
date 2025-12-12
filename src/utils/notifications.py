@@ -117,6 +117,79 @@ class NotificationManager:
             await self.send_message_raw(msg)
         except Exception as e:
             logger.error(f"Heartbeat failed: {e}")
+    
+    async def send_early_warning(self, symbol: str, warnings: list, visual_prediction: dict = None):
+        """
+        PROAKTIF ERKEN UYARI MESAJI (Proactive Early Warning)
+        
+        İndikatörlerden FARKLI olarak:
+        - Hareket OLMADAN ÖNCE uyarır
+        - Ne olacağını TAHMİN eder
+        - ERKEN GİRİŞ noktası verir
+        """
+        if not self.telegram_token or not self.telegram_chat_id:
+            return
+        
+        if not warnings:
+            return
+        
+        try:
+            # Build message
+            msg = f"⚡ **ERKEN UYARI - {symbol}**\n"
+            msg += f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            
+            # Add each warning
+            for w in warnings[:3]:  # Max 3 warnings
+                priority_emoji = {
+                    'CRITICAL': '🔴',
+                    'HIGH': '🟠',
+                    'MEDIUM': '🟡',
+                    'LOW': '⚪'
+                }.get(w.get('priority'), '⚪')
+                
+                msg += f"{priority_emoji} **{w.get('title', 'Uyarı')}**\n"
+                msg += f"   {w.get('message', '')}\n"
+                msg += f"   ➡️ _{w.get('action', '')}_\n\n"
+            
+            # Add AI prediction if available
+            if visual_prediction and visual_prediction.get('probability', 0) >= 60:
+                msg += f"━━━━━━━━━━━━━━━━━━━━\n"
+                msg += f"🧠 **AI TAHMİNİ**\n"
+                msg += f"📊 Trend: **{visual_prediction.get('trend', 'N/A')}**\n"
+                msg += f"🎯 Olasılık: **%{visual_prediction.get('probability', 0)}**\n"
+                
+                prediction = visual_prediction.get('prediction', '')
+                if prediction:
+                    msg += f"📈 Tahmin: _{prediction}_\n"
+                
+                early_entry = visual_prediction.get('early_entry_price')
+                target = visual_prediction.get('target_price')
+                stop = visual_prediction.get('stop_loss')
+                
+                if early_entry:
+                    msg += f"\n💰 **ERKEN GİRİŞ:**\n"
+                    msg += f"   📍 Giriş: ${early_entry:,.0f}\n" if isinstance(early_entry, (int, float)) else f"   📍 Giriş: {early_entry}\n"
+                    if target:
+                        msg += f"   🎯 Hedef: ${target:,.0f}\n" if isinstance(target, (int, float)) else f"   🎯 Hedef: {target}\n"
+                    if stop:
+                        msg += f"   🛡️ Stop: ${stop:,.0f}\n" if isinstance(stop, (int, float)) else f"   🛡️ Stop: {stop}\n"
+                
+                time_horizon = visual_prediction.get('time_horizon')
+                if time_horizon:
+                    msg += f"   ⏰ Süre: {time_horizon}\n"
+                
+                risk_warning = visual_prediction.get('risk_warning')
+                if risk_warning:
+                    msg += f"\n⚠️ Risk: _{risk_warning}_\n"
+            
+            msg += f"\n━━━━━━━━━━━━━━━━━━━━\n"
+            msg += f"_Bu bir ERKEN UYARIDIR. Hareket henüz başlamadı._"
+            
+            await self.send_message_raw(msg)
+            logger.info(f"📢 Early Warning sent for {symbol}: {len(warnings)} warnings")
+            
+        except Exception as e:
+            logger.error(f"Early Warning send failed: {e}")
 
     async def send_message_raw(self, text: str):
         """Send raw text to Telegram"""

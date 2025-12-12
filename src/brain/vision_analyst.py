@@ -274,22 +274,35 @@ class VisionAnalyst:
             return None
             
     def _get_analysis_prompt(self) -> str:
-        """Standard prompt for both models"""
+        """PREDICTIVE analysis prompt - focuses on FUTURE price movement"""
         return """
-You are an expert technical analyst. I will provide a cryptocurrency price chart.
-Analyze the visual patterns and price action.
+You are an elite institutional trader with 20 years of experience. I will provide a cryptocurrency price chart.
+
+YOUR TASK: PREDICT what will happen in the NEXT 4-8 HOURS based on what you see.
 
 Focus on:
-1. The immediate trend (Bullish/Bearish/Neutral)
-2. Any visible chart patterns (Bull Flag, Head & Shoulders, Double Bottom, etc.)
-3. Key mental levels (Support/Resistance)
+1. PREDICTION: Where is price likely to go? (Up/Down/Sideways)
+2. PROBABILITY: How confident are you? (Give a percentage)
+3. PATTERN COMPLETION: Is a pattern forming? When will it complete/breakout?
+4. EARLY ENTRY: Where should a trader enter BEFORE the move happens?
+5. RISK: What could invalidate this prediction?
+
+CRITICAL: Do NOT just describe current state. PREDICT THE FUTURE.
 
 Respond ONLY with a JSON object in this exact format:
 {
     "trend": "BULLISH/BEARISH/NEUTRAL",
+    "prediction": "Brief prediction of what will happen in 4-8 hours",
+    "probability": 75,
     "pattern": "Pattern Name or None",
-    "visual_score": 0-100 (Where 0 is extremely bearish, 100 is extremely bullish, 50 neutral),
-    "reasoning": "Brief explanation of what you see"
+    "pattern_status": "FORMING/COMPLETE/BREAKOUT_IMMINENT",
+    "early_entry_price": 94500,
+    "target_price": 96000,
+    "stop_loss": 93500,
+    "time_horizon": "2-4 hours",
+    "visual_score": 0-100,
+    "reasoning": "Detailed explanation of WHY you predict this",
+    "risk_warning": "What could go wrong / invalidation level"
 }
 Do not include markdown formatting or extra text. Just the JSON.
 """
