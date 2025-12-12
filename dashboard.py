@@ -362,7 +362,7 @@ elif page == "🧠 Neural Brain Monitor (Sinir Ağı İzleme)":
             """, unsafe_allow_html=True)
             
             st.markdown("---")
-            st.metric("Confidence", f"{info.get('ai_confidence', 0):.1f}%")
+            st.metric(Translator.t("Confidence"), f"{info.get('ai_confidence', 0):.1f}%")
             
             # PHASE 12: Visual Cortex Display
             visual_data = info.get('visual_analysis', {})
@@ -376,16 +376,16 @@ elif page == "🧠 Neural Brain Monitor (Sinir Ağı İzleme)":
             if dual_vision:
                 st.success("🔥 DUAL VISION ACTIVE - Cross-validation enabled!")
                 c_v1, c_v2, c_v3 = st.columns(3)
-                c_v1.metric("Consensus Score", f"{v_score}/100", delta=v_score-50)
-                c_v2.metric("Consensus Trend", v_trend, delta="normal" if v_trend=="BULLISH" else "inverse" if v_trend=="BEARISH" else "off")
+                c_v1.metric(Translator.t("Consensus Score"), f"{v_score}/100", delta=v_score-50)
+                c_v2.metric(Translator.t("Consensus Trend"), v_trend, delta="normal" if v_trend=="BULLISH" else "inverse" if v_trend=="BEARISH" else "off")
                 
                 # Agreement Level
                 if agreement == "STRONG":
-                    c_v3.metric("Agreement", "✅ STRONG", delta_color="normal")
+                    c_v3.metric(Translator.t("Agreement"), "✅ STRONG", delta_color="normal")
                 elif agreement == "MODERATE":
-                    c_v3.metric("Agreement", "⚠️ MODERATE", delta_color="off")
+                    c_v3.metric(Translator.t("Agreement"), "⚠️ MODERATE", delta_color="off")
                 else:
-                    c_v3.metric("Agreement", "❌ CONFLICT", delta_color="inverse")
+                    c_v3.metric(Translator.t("Agreement"), "❌ CONFLICT", delta_color="inverse")
                 
                 # Individual AI Scores
                 with st.expander("👁️ Individual AI Opinions"):
@@ -395,8 +395,8 @@ elif page == "🧠 Neural Brain Monitor (Sinir Ağı İzleme)":
                     st.write(f"🔵 **GPT-4o:** {gpt_score}/100")
             else:
                 c_v1, c_v2 = st.columns(2)
-                c_v1.metric("Visual Score", f"{v_score}/100", delta=v_score-50)
-                c_v2.metric("Visual Trend", v_trend, delta="normal" if v_trend=="BULLISH" else "inverse" if v_trend=="BEARISH" else "off")
+                c_v1.metric(Translator.t("Visual Score"), f"{v_score}/100", delta=v_score-50)
+                c_v2.metric(Translator.t("Visual Trend"), v_trend, delta="normal" if v_trend=="BULLISH" else "inverse" if v_trend=="BEARISH" else "off")
             
             if visual_data.get('pattern') and visual_data['pattern'] != 'None':
                 st.info(f"📐 Pattern Detected: **{visual_data['pattern']}**")
@@ -659,9 +659,9 @@ elif page == "💼 Advisory Portfolio (Danışmanlık Portföyü)":
         pnl_total = equity - PaperTrader.INITIAL_BALANCE
         
         m1, m2, m3 = st.columns(3)
-        m1.metric("Total Equity", f"${equity:,.2f}")
-        m2.metric("Cash Balance", f"${balance:,.2f}")
-        m3.metric("Total PnL", f"${pnl_total:,.2f}", delta_color="normal" if pnl_total >= 0 else "inverse")
+        m1.metric(Translator.t("Total Equity"), f"${equity:,.2f}")
+        m2.metric(Translator.t("Cash Balance"), f"${balance:,.2f}")
+        m3.metric(Translator.t("PnL"), f"${pnl_total:,.2f}", delta_color="normal" if pnl_total >= 0 else "inverse")
         
         st.markdown("---")
         st.subheader("🔓 Open Positions")
@@ -672,9 +672,9 @@ elif page == "💼 Advisory Portfolio (Danışmanlık Portföyü)":
                 df_pos, 
                 use_container_width=True,
                 column_config={
-                    "entry": st.column_config.NumberColumn("Entry Price", format="$%.2f"),
-                    "current": st.column_config.NumberColumn("Current Price", format="$%.2f"),
-                    "pnl": st.column_config.NumberColumn("PnL ($)", format="$%.2f"),
+                    "entry": st.column_config.NumberColumn(Translator.t("Entry Price"), format="$%.2f"),
+                    "current": st.column_config.NumberColumn(Translator.t("Current Price"), format="$%.2f"),
+                    "pnl": st.column_config.NumberColumn(Translator.t("PnL"), format="$%.2f"),
                     "pnl_pct": st.column_config.NumberColumn("PnL (%)", format="%.2f%%"),
                 }
             )
@@ -710,9 +710,9 @@ elif page == "🧪 Backtest Lab (Geçmiş Test Laboratuvarı)":
             if "error" in res: st.error(res['error'])
             else:
                 c1, c2, c3 = st.columns(3)
-                c1.metric("ROI", f"{res['roi']:.2f}%")
-                c2.metric("Win Rate", f"{res['win_rate']:.1f}%")
-                c3.metric("Total Trades", res['total_trades'])
+                c1.metric(Translator.t("ROI"), f"{res['roi']:.2f}%")
+                c2.metric(Translator.t("Win Rate"), f"{res['win_rate']:.1f}%")
+                c3.metric(Translator.t("Total Trades"), res['total_trades'])
                 if res['trades']: 
                     df = pd.DataFrame(res['trades'])
                     st.line_chart(df[df['action']=='SELL'].set_index('time')['balance'])

@@ -57,6 +57,7 @@ class Translator:
         
         # Dashboard Metrics (Dashboard Metrikleri)
         "Price": "Fiyat",
+        "Confidence": "Güven",
         "Kelly Risk (%)": "Kelly Riski (Pozisyon Büyüklüğü)",
         "Fractal Score": "Fraktal Skoru (Zaman Dilimi Uyumu)",
         "Hurst Exp": "Hurst Üssü (Trend Gücü)",
@@ -68,13 +69,30 @@ class Translator:
         "On-Chain": "Zincir Üstü (Blockchain Analizi)",
         "Strategy": "Strateji",
         
-        # Genel
+        # Portfolio & Trading (Portföy & İşlemler)
+        "Total Equity": "Toplam Sermaye",
+        "Cash Balance": "Nakit Bakiye",
+        "Entry Price": "Giriş Fiyatı",
+        "Current Price": "Güncel Fiyat",
+        "Unrealized P&L": "Gerçekleşmemiş Kar/Zarar",
+        "Side": "Yön",
+        "Size": "Miktar",
+        
+        # Backtest & Performance (Geçmiş Test & Performans)
         "ROI": "Yatırım Getirisi",
-        "PnL": "Kar/Zarar",
         "Win Rate": "Kazanma Oranı",
-        "Confidence": "Yapay Zeka Güveni",
-        "Consensus": "Ortak Karar",
-        "Agreement": "Uyum"
+        "Total Trades": "Toplam İşlem",
+        
+        # Visual Cortex
+        "Visual Score": "Görsel Skor",
+        "Visual Trend": "Görsel Trend",
+        "Consensus Score": "Uzlaşma Skoru",
+        "Consensus Trend": "Uzlaşma Trendi",
+        "Agreement": "Uyum",
+        
+        # General
+        "PnL": "Kar/Zarar",
+        "Consensus": "Ortak Karar"
     }
     
     @staticmethod
