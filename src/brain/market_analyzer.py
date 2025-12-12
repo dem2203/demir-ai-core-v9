@@ -33,6 +33,7 @@ from src.brain.technical_analyzer import TechnicalAnalyzer  # PHASE 9: Advanced 
 from src.brain.vision_analyst import VisionAnalyst  # PHASE 12: Visual Cortex
 from src.brain.sentiment_analyzer import SentimentAnalyzer  # PHASE 13: Sentiment
 from src.data_ingestion.macro_connector import MacroConnector  # PHASE 17: Macro IQ
+from src.brain.mtf_transformer import MultiTimeframeTransformer  # Multi-TF Analysis
 
 # PHASE 6: Reinforcement Learning Agent (Pekiştirmeli Öğrenme Ajanı)
 from src.brain.rl_agent.ppo_agent import RLAgent
