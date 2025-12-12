@@ -8,6 +8,7 @@ from src.config.settings import Config
 from src.execution.paper_trader import PaperTrader
 from src.core.risk_manager import RiskManager # Yeni
 from src.utils.translator import Translator  # Turkish explanations (Türkçe açıklamalar)
+from src.brain.turkish_narrative import TurkishNarrativeEngine  # AI Reasoning (AI Yorumları)
 
 # --- Sayfa Ayarları ---
 st.set_page_config(
@@ -55,6 +56,7 @@ st.caption("v23.0 | Zero-Mock | On-Chain Intel | Liquidation Hunter | Wyckoff | 
 # --- Yan Menü ---
 page = st.sidebar.radio("System Modules (Sistem Modülleri)", [
     "📡 Live Market Intelligence (Canlı Piyasa İstihbaratı)", 
+    "🧠 AI Reasoning (AI Yorumları)",  # NEW: Detailed Turkish analysis
     "🧠 Neural Brain Monitor (Sinir Ağı İzleme)",
     "📈 Live Trading Chart (Canlı İşlem Grafiği)",
     "💼 Advisory Portfolio (Danışmanlık Portföyü)", 
@@ -316,7 +318,39 @@ if page == "📡 Live Market Intelligence (Canlı Piyasa İstihbaratı)":
 
 
 # ==========================================
-# 2. NEURAL BRAIN MONITOR (Visual Intelligence)
+# 2. AI REASONING (Turkish Narrative Analysis)
+# ==========================================
+elif page == "🧠 AI Reasoning (AI Yorumları)":
+    st.header("🧠 AI Reasoning - Detaylı Türkçe Analiz")
+    st.caption("Yapay zekanın her kararının detaylı açıklaması")
+    
+    if st.button('🔄 Yenile / Refresh'): st.rerun()
+    
+    data = load_json("dashboard_data.json")
+    
+    if not data:
+        st.warning("📡 Veri bekleniyor... / Waiting for data...")
+        time.sleep(2)
+        st.rerun()
+    else:
+        # Symbol selector
+        symbols = list(data.keys())
+        selected_symbol = st.selectbox("📊 Sembol Seçin / Select Symbol", symbols, index=0)
+        
+        if selected_symbol and selected_symbol in data:
+            st.markdown("---")
+            
+            # Generate narrative report
+            snapshot = data[selected_symbol]
+            report = TurkishNarrativeEngine.generate_full_report(selected_symbol, snapshot)
+            
+            # Display report in markdown
+            st.markdown(report)
+        else:
+            st.info("Sembol seçin / Select a symbol")
+
+# ==========================================
+# 3. NEURAL BRAIN MONITOR (Visual Intelligence)
 # ==========================================
 elif page == "🧠 Neural Brain Monitor (Sinir Ağı İzleme)":
     st.header("🧠 Neural Brain Monitor")
