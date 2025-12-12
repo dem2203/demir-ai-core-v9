@@ -501,10 +501,12 @@ class MarketAnalyzer:
         ai_confidence = 50.0
         reason = f"Regime: {current_regime}"
         
-        if self.rl_agent:
+        # Use coin-specific RL agent (v2 models - 200K timesteps trained!)
+        rl_agent = self.get_rl_agent_for_symbol(symbol)
+        if rl_agent and rl_agent.model:
             try:
                 # RL agent predicts using the unified state vector
-                action, _ = self.rl_agent.predict(state_vector, deterministic=True)
+                action, _ = rl_agent.model.predict(state_vector, deterministic=True)
                 rl_action = int(action)
                 
                 # Decode action: 0=SELL, 1=HOLD, 2=BUY
@@ -638,11 +640,12 @@ class MarketAnalyzer:
         ai_confidence = 50.0
         reason_parts = []
         
-        # 1. RL AGENT (TRUE AI) - ÖNCELİKLİ
-        if self.rl_agent:
+        # 1. RL AGENT (TRUE AI) - ÖNCELİKLİ - Using v2 models (200K trained)
+        rl_agent = self.get_rl_agent_for_symbol(symbol)
+        if rl_agent and rl_agent.model:
             try:
                 # RL agent predicts using the unified state vector
-                action, _ = self.rl_agent.predict(state_vector, deterministic=True)
+                action, _ = rl_agent.model.predict(state_vector, deterministic=True)
                 rl_action = int(action)
                 
                 if rl_action == 2:
