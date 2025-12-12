@@ -3,6 +3,7 @@ import os
 import io
 import json
 import base64
+import time
 from typing import Dict, Optional, List
 import google.generativeai as genai
 from openai import OpenAI
@@ -13,6 +14,11 @@ import pandas as pd
 from src.config.settings import Config
 
 logger = logging.getLogger("VISION_ANALYST")
+
+# Rate limiting cache to prevent API quota exhaustion
+# Key: symbol, Value: (timestamp, cached_result)
+VISION_CACHE = {}
+CACHE_TTL_SECONDS = 300  # 5 dakika - Her 5 dk'da bir API çağrısı yap
 
 class VisionAnalyst:
     """
@@ -71,7 +77,24 @@ class VisionAnalyst:
         """
         Generate chart image and analyze it using DUAL AI Vision (Gemini + GPT-4o).
         Returns combined consensus analysis.
+        
+        RATE LIMITED: Results are cached for 5 minutes to prevent API quota exhaustion.
+        (API kotasinin dolmamasi icin sonuclar 5 dakika cache'lenir)
         """
+        global VISION_CACHE
+        
+        # 0. CHECK CACHE FIRST (Rate Limiting)
+        current_time = time.time()
+        if symbol in VISION_CACHE:
+            cached_time, cached_result = VISION_CACHE[symbol]
+            age_seconds = current_time - cached_time
+            if age_seconds < CACHE_TTL_SECONDS:
+                remaining = int(CACHE_TTL_SECONDS - age_seconds)
+                logger.debug(f"👁️ Vision Cache HIT for {symbol} (expires in {remaining}s)")
+                cached_result['from_cache'] = True
+                cached_result['cache_remaining_seconds'] = remaining
+                return cached_result
+        
         if (not self.gemini_active and not self.openai_active) or df.empty:
             return self._empty_analysis("No Vision APIs active or empty DataFrame")
             
@@ -109,12 +132,19 @@ class VisionAnalyst:
                 _, result = analyses[0]
                 result['dual_vision'] = False
                 result['agreement'] = 'N/A'
-                # Append other errors to reasoning if one failed and other succeeded?
-                # Maybe useful but let's keep it clean for now.
+                result['from_cache'] = False
+                # SAVE TO CACHE
+                VISION_CACHE[symbol] = (time.time(), result.copy())
+                logger.info(f"👁️ Vision result cached for {symbol} (TTL: {CACHE_TTL_SECONDS}s)")
                 return result
             else:
                 # Dual Vision: Compare and Combine
-                return self._combine_analyses(analyses)
+                combined = self._combine_analyses(analyses)
+                combined['from_cache'] = False
+                # SAVE TO CACHE
+                VISION_CACHE[symbol] = (time.time(), combined.copy())
+                logger.info(f"👁️ Dual Vision result cached for {symbol} (TTL: {CACHE_TTL_SECONDS}s)")
+                return combined
             
         except Exception as e:
             logger.error(f"Visual Analysis failed for {symbol}: {e}")
