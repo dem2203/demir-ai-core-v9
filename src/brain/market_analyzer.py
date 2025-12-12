@@ -87,9 +87,9 @@ class MarketAnalyzer:
         # PHASE 13: Sentiment Analysis
         self.sentiment = SentimentAnalyzer()
         
-        # PHASE 6: RL Agent (Self-Learning Trader)
+        # PHASE 6: RL Agent (Self-Learning Trader) - NOW WITH TRAINED MODEL!
         self.rl_agent_phase6 = RLAgent()
-        self.rl_agent_phase6.load("ppo_trader_v1")  # Load if exists (optional)
+        self.rl_agent_phase6.load("ppo_btc_v1")  # Trained on 50K timesteps BTC 1H data
         
         self.regime_classifier = RegimeClassifier()
         

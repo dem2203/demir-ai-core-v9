@@ -17,7 +17,6 @@ import argparse
 
 from src.brain.rl_agent.trading_env import TradingEnv
 from src.brain.rl_agent.ppo_agent import RLAgent
-from src.data_ingestion.connectors.binance_connector import BinanceConnector
 from src.brain.feature_engineering import FeatureEngineer
 
 logging.basicConfig(level=logging.INFO)
@@ -31,21 +30,71 @@ class RLTrainer:
     
     def __init__(self, symbol: str = "BTC/USDT"):
         self.symbol = symbol
-        self.connector = BinanceConnector()
+        # Use public API - no authentication needed for OHLCV
+        # (Public API kullan - OHLCV için auth gerekmez)
+        self.exchange = None
+        
+    async def _get_exchange(self):
+        """Create public exchange connection (no API key needed)"""
+        if not self.exchange:
+            import ccxt.async_support as ccxt
+            self.exchange = ccxt.binance({
+                'enableRateLimit': True,
+                'options': {'defaultType': 'spot'}
+            })
+        return self.exchange
         
     async def prepare_training_data(self, num_candles: int = 10000) -> np.ndarray:
         """
-        Fetch and prepare historical data for training
-        (Eğitim için tarihsel veriyi çek ve hazırla)
+        Fetch and prepare historical data for training using PUBLIC API
+        (Public API kullanarak eğitim için tarihsel veriyi çek)
+        
+        No API key required!
         
         Returns:
-            data: (N, 28) array - Each row is a timestep with 28 features
+            data: (N, 25) array - Each row is a timestep with 25 features
         """
-        logger.info(f"📥 Fetching {num_candles} candles for {self.symbol}...")
+        logger.info(f"📥 Fetching {num_candles} candles for {self.symbol} (PUBLIC API)...")
         
-        # Fetch raw OHLCV (Ham OHLCV verisi çek)
-        raw_data = await self.connector.fetch_candles(self.symbol, limit=num_candles)
-        await self.connector.close()
+        exchange = await self._get_exchange()
+        
+        try:
+            # Fetch OHLCV using public API (timeframe: 1h)
+            ohlcv = await exchange.fetch_ohlcv(
+                self.symbol.replace('/', ''), 
+                timeframe='1h', 
+                limit=min(num_candles, 1000)  # Binance limit
+            )
+            
+            if len(ohlcv) < 500:
+                logger.warning(f"Only fetched {len(ohlcv)} candles, fetching more...")
+                # Fetch more in batches if needed
+                since = ohlcv[0][0] - (1000 * 60 * 60 * 1000)  # 1000 hours earlier
+                more = await exchange.fetch_ohlcv(
+                    self.symbol.replace('/', ''), 
+                    timeframe='1h',
+                    since=since,
+                    limit=1000
+                )
+                ohlcv = more + ohlcv
+            
+            logger.info(f"✅ Fetched {len(ohlcv)} candles")
+            
+            # Convert to list of dicts for FeatureEngineer
+            raw_data = []
+            for candle in ohlcv:
+                raw_data.append({
+                    'timestamp': candle[0],
+                    'open': candle[1],
+                    'high': candle[2],
+                    'low': candle[3],
+                    'close': candle[4],
+                    'volume': candle[5],
+                    'symbol': self.symbol
+                })
+        finally:
+            await exchange.close()
+            self.exchange = None
         
         if not raw_data or len(raw_data) < 100:
             raise ValueError("Insufficient data fetched!")
@@ -55,29 +104,25 @@ class RLTrainer:
         df = await asyncio.to_thread(FeatureEngineer.process_data, raw_data)
         
         # Select features for RL environment (RL ortamı için özellikleri seç)
-        # Columns: price features (20) + macro (5) + position (3, will be added by env)
-        # For now, use first 25 columns (20 price + 5 macro placeholders)
-        # Real implementation should integrate MacroConnector
+        # Use actual columns from FeatureEngineer.process_data()
         
-        feature_cols = [
-            'close', 'volume', 'rsi', 'macd', 'bb_percent', 'atr',
-            'adx', 'obv', 'stoch_rsi', 'ema_20', 'sma_50', 
-            'returns_1h', 'returns_4h', 'returns_1d',
-            'volume_sma_ratio', 'price_sma_ratio', 'momentum',
-            'bollinger_width', 'macd_signal', 'rsi_ma'
-        ]
+        # Numeric columns that exist in processed DataFrame
+        available_numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
         
-        # Pad with zeros for macro (will be replaced with real macro later)
-        macro_placeholder = np.zeros((len(df), 5))
+        # Remove unwanted columns
+        exclude_cols = ['timestamp', 'symbol']
+        feature_cols = [c for c in available_numeric_cols if c not in exclude_cols]
         
-        # Extract price features (Fiyat özelliklerini çıkar)
-        price_features = df[feature_cols].values[:, :20]  # First 20
+        # Limit to first 25 features for consistency
+        feature_cols = feature_cols[:25]
         
-        # Combine (Birleştir)
-        data = np.concatenate([price_features, macro_placeholder], axis=1)
+        logger.info(f"📊 Using {len(feature_cols)} features: {feature_cols[:10]}...")
+        
+        # Extract features (NaN'ları 0 yap)
+        data = df[feature_cols].fillna(0).values.astype(np.float32)
         
         logger.info(f"✅ Prepared {data.shape[0]} timesteps with {data.shape[1]} features")
-        return data.astype(np.float32)
+        return data
     
     async def train(
         self, 
