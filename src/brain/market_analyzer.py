@@ -503,10 +503,11 @@ class MarketAnalyzer:
         
         # Use coin-specific RL agent (v2 models - 200K timesteps trained!)
         rl_agent = self.get_rl_agent_for_symbol(symbol)
-        if rl_agent and rl_agent.model:
+        if rl_agent and rl_agent.is_trained:
             try:
                 # RL agent predicts using the unified state vector
-                action, _ = rl_agent.model.predict(state_vector, deterministic=True)
+                # Uses RLAgent.predict() wrapper for proper handling
+                action, rl_confidence = rl_agent.predict(state_vector, deterministic=True)
                 rl_action = int(action)
                 
                 # Decode action: 0=SELL, 1=HOLD, 2=BUY
@@ -642,10 +643,10 @@ class MarketAnalyzer:
         
         # 1. RL AGENT (TRUE AI) - ÖNCELİKLİ - Using v2 models (200K trained)
         rl_agent = self.get_rl_agent_for_symbol(symbol)
-        if rl_agent and rl_agent.model:
+        if rl_agent and rl_agent.is_trained:
             try:
-                # RL agent predicts using the unified state vector
-                action, _ = rl_agent.model.predict(state_vector, deterministic=True)
+                # RL agent predicts using wrapper for proper handling
+                action, rl_confidence = rl_agent.predict(state_vector, deterministic=True)
                 rl_action = int(action)
                 
                 if rl_action == 2:
