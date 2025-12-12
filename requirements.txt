@@ -37,7 +37,7 @@ apscheduler
 google-generativeai
 openai
 plotly
-kaleido
+kaleido==0.2.1
 pillow
 
 # --- Phase 13: Sentiment Analysis ---

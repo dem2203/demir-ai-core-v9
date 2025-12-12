@@ -7,6 +7,7 @@ import asyncio
 from src.config.settings import Config
 from src.execution.paper_trader import PaperTrader
 from src.core.risk_manager import RiskManager # Yeni
+from src.utils.translator import Translator  # Turkish explanations (Türkçe açıklamalar)
 
 # --- Sayfa Ayarları ---
 st.set_page_config(
