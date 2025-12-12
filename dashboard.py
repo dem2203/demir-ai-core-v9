@@ -54,15 +54,15 @@ st.title("🦅 DEMIR AI - Institutional Trading Terminal")
 st.caption("v23.0 | Zero-Mock | On-Chain Intel | Liquidation Hunter | Wyckoff | Adaptive AI")
 
 # --- Yan Menü ---
-page = st.sidebar.radio("System Modules (Sistem Modülleri)", [
-    "📡 Live Market Intelligence (Canlı Piyasa İstihbaratı)", 
-    "🧠 AI Reasoning (AI Yorumları)",  # NEW: Detailed Turkish analysis
-    "🧠 Neural Brain Monitor (Sinir Ağı İzleme)",
-    "📈 Live Trading Chart (Canlı İşlem Grafiği)",
-    "💼 Advisory Portfolio (Danışmanlık Portföyü)", 
-    "🧪 Backtest Lab (Geçmiş Test Laboratuvarı)",
-    "⚙️ Strategy Optimizer (Strateji Optimize Edici)",
-    "🔧 Debug (Hata Ayıklama)"
+page = st.sidebar.radio("System Modules", [
+    "📡 Live Market Intelligence", 
+    "🧠 AI Reasoning",
+    "🧠 Neural Brain Monitor",
+    "📈 Live Trading Chart",
+    "💼 Advisory Portfolio", 
+    "🧪 Backtest Lab",
+    "⚙️ Strategy Optimizer",
+    "🔧 Debug"
 ])
 
 def load_json(filename):
@@ -80,7 +80,7 @@ risk_manager = RiskManager()
 # ==========================================
 # 1. CANLI İZLEME (Live Market Intelligence)
 # ==========================================
-if page == "📡 Live Market Intelligence (Canlı Piyasa İstihbaratı)":
+if page == "📡 Live Market Intelligence":
     st.sidebar.markdown("---")
     st.sidebar.info("System Status: **ONLINE**")
     
@@ -320,7 +320,7 @@ if page == "📡 Live Market Intelligence (Canlı Piyasa İstihbaratı)":
 # ==========================================
 # 2. AI REASONING (Turkish Narrative Analysis)
 # ==========================================
-elif page == "🧠 AI Reasoning (AI Yorumları)":
+elif page == "🧠 AI Reasoning":
     st.header("🧠 AI Reasoning - Detaylı Türkçe Analiz")
     st.caption("Yapay zekanın her kararının detaylı açıklaması")
     
@@ -352,7 +352,7 @@ elif page == "🧠 AI Reasoning (AI Yorumları)":
 # ==========================================
 # 3. NEURAL BRAIN MONITOR (Visual Intelligence)
 # ==========================================
-elif page == "🧠 Neural Brain Monitor (Sinir Ağı İzleme)":
+elif page == "🧠 Neural Brain Monitor":
     st.header("🧠 Neural Brain Monitor")
     st.caption("Visualizing the internal state of the Reinforcement Learning Agent.")
     
@@ -405,7 +405,8 @@ elif page == "🧠 Neural Brain Monitor (Sinir Ağı İzleme)":
             dual_vision = visual_data.get('dual_vision', False)
             agreement = visual_data.get('agreement', 'N/A')
             
-            st.markdown("### 👁️ Visual Cortex (Gemini + GPT-4o)")
+            st.markdown(f"### 👁️ Visual Cortex - {main_symbol}")
+            st.caption("(Grafiksel Yapay Zeka Analizi - Chart'a bakarak görsel tahmin yapar)")
             
             if dual_vision:
                 st.success("🔥 DUAL VISION ACTIVE - Cross-validation enabled!")
@@ -435,8 +436,18 @@ elif page == "🧠 Neural Brain Monitor (Sinir Ağı İzleme)":
             if visual_data.get('pattern') and visual_data['pattern'] != 'None':
                 st.info(f"📐 Pattern Detected: **{visual_data['pattern']}**")
             
-            with st.expander("👁️ Visual Analysis Reasoning"):
-                st.caption(visual_data.get('reasoning', 'No visual analysis available.'))
+            with st.expander("👁️ Visual Analysis Reasoning (Görsel Analiz Açıklaması)"):
+                reasoning = visual_data.get('reasoning', '')
+                if '429' in reasoning or 'quota' in reasoning.lower():
+                    st.error("⚠️ **API Limit Aşıldı (Quota Exceeded)**")
+                    st.caption("Google Gemini API günlük ücretsiz limiti dolmuş. Çözümler:")
+                    st.markdown("""
+                    1. **Bekleyin:** Limit 24 saat sonra sıfırlanır
+                    2. **Ücretli Plan:** [Google AI Studio](https://ai.google.dev/pricing)'dan kota artırın
+                    3. **Alternatif:** OpenAI API key ekleyerek GPT-4o'yu aktif edin
+                    """)
+                else:
+                    st.caption(reasoning if reasoning else 'Görsel analiz şu an aktif değil.')
             
             st.markdown("---")
             
@@ -564,7 +575,7 @@ elif page == "🧠 Neural Brain Monitor (Sinir Ağı İzleme)":
 # ==========================================
 # 3. LIVE TRADING CHART (Phase 14)
 # ==========================================
-elif page == "📈 Live Trading Chart (Canlı İşlem Grafiği)":
+elif page == "📈 Live Trading Chart":
     st.title("📈 Live Paper Trading Chart")
     
     # Import chart visualizer
@@ -653,7 +664,7 @@ elif page == "📈 Live Trading Chart (Canlı İşlem Grafiği)":
 # ==========================================
 # 4. ADVISORY PORTFOLIO
 # ==========================================
-elif page == "💼 Advisory Portfolio (Danışmanlık Portföyü)":
+elif page == "💼 Advisory Portfolio":
     st.header("💼 Advisory Portfolio Tracker")
     st.caption("Simulated execution of AI signals. No real funds at risk.")
     
@@ -724,7 +735,7 @@ elif page == "💼 Advisory Portfolio (Danışmanlık Portföyü)":
 # ==========================================
 # 3. BACKTEST LAB
 # ==========================================
-elif page == "🧪 Backtest Lab (Geçmiş Test Laboratuvarı)":
+elif page == "🧪 Backtest Lab":
     st.header("⏳ Historical Simulation")
     c1, c2 = st.columns(2)
     with c1: symbol = st.selectbox("Asset", Config.TARGET_COINS)
@@ -755,7 +766,7 @@ elif page == "🧪 Backtest Lab (Geçmiş Test Laboratuvarı)":
 # ==========================================
 # 4. OPTIMIZER
 # ==========================================
-elif page == "⚙️ Strategy Optimizer (Strateji Optimize Edici)":
+elif page == "⚙️ Strategy Optimizer":
     st.header("🧬 Genetic Strategy Optimizer")
     st.info("Uses genetic algorithms to find optimal parameters for the current market regime.")
     
@@ -782,7 +793,7 @@ elif page == "⚙️ Strategy Optimizer (Strateji Optimize Edici)":
 # ==========================================
 # 5. DEBUG PANEL
 # ==========================================
-elif page == "🔧 Debug (Hata Ayıklama)":
+elif page == "🔧 Debug":
     st.header("🔧 System Debug Panel")
     
     st.subheader("🔑 Environment Check")
