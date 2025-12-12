@@ -40,10 +40,11 @@ class VisionAnalyst:
                 genai.configure(api_key=self.google_key)
                 # List of models to try in order of preference (Speed > Quality for this use case)
                 self.gemini_models_list = [
+                    "gemini-2.0-flash-exp",  # Newest experimental model with vision
                     "gemini-1.5-flash", 
                     "gemini-1.5-flash-latest",
                     "gemini-1.5-pro",
-                    "gemini-pro-vision"
+                    "gemini-pro-vision"  # Deprecated, kept as final fallback
                 ]
                 self.gemini_active = True
                 logger.info("👁️ Gemini Vision: ACTIVE (Fallback Mode Ready)")
