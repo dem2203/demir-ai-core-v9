@@ -18,7 +18,7 @@ logger = logging.getLogger("VISION_ANALYST")
 # Rate limiting cache to prevent API quota exhaustion
 # Key: symbol, Value: (timestamp, cached_result)
 VISION_CACHE = {}
-CACHE_TTL_SECONDS = 300  # 5 dakika - Her 5 dk'da bir API çağrısı yap
+CACHE_TTL_SECONDS = 1200  # 20 dakika - API quota korumak için artırıldı
 
 class VisionAnalyst:
     """
