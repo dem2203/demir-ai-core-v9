@@ -54,6 +54,20 @@ class Translator:
         "Engulfing": "Yutan Mum (Dönüş)",
         "Hammer": "Çekiç (Dip Dönüş)",
         
+        
+        # Dashboard Metrics (Dashboard Metrikleri)
+        "Price": "Fiyat",
+        "Kelly Risk (%)": "Kelly Riski (Pozisyon Büyüklüğü)",
+        "Fractal Score": "Fraktal Skoru (Zaman Dilimi Uyumu)",
+        "Hurst Exp": "Hurst Üssü (Trend Gücü)",
+        "Whale Support": "Balina Desteği (Büyük Alım Emri)",
+        "Whale Resistance": "Balina Direnci (Büyük Satım Emri)",
+        "OB Imbalance": "Emir Dengesi (Alıcı/Satıcı Farkı)",
+        "Wyckoff": "Wyckoff Fazı (Akümülasyon/Dağıtım)",
+        "Bias": "Eğilim (Yön)",
+        "On-Chain": "Zincir Üstü (Blockchain Analizi)",
+        "Strategy": "Strateji",
+        
         # Genel
         "ROI": "Yatırım Getirisi",
         "PnL": "Kar/Zarar",
