@@ -35,6 +35,7 @@ from src.brain.vision_analyst import VisionAnalyst  # PHASE 12: Visual Cortex
 from src.brain.sentiment_analyzer import SentimentAnalyzer  # PHASE 13: Sentiment
 from src.data_ingestion.macro_connector import MacroConnector  # PHASE 17: Macro IQ
 from src.brain.mtf_transformer import MultiTimeframeTransformer  # Multi-TF Analysis
+from src.brain.early_warning import EarlyWarningSystem  # Proactive Alerts
 
 # PHASE 6: Reinforcement Learning Agent (Pekiştirmeli Öğrenme Ajanı)
 from src.brain.rl_agent.ppo_agent import RLAgent
@@ -784,6 +785,26 @@ class MarketAnalyzer:
             "timestamp": pd.Timestamp.now().isoformat(),
 
         }
+        
+        # ======================================
+        # PROACTIVE EARLY WARNING SYSTEM
+        # Detects patterns, whale activity, breakouts BEFORE they complete
+        # ======================================
+        try:
+            early_warnings = EarlyWarningSystem.analyze_for_early_warnings(
+                symbol, 
+                snapshot,
+                visual_analysis
+            )
+            snapshot['early_warnings'] = early_warnings
+            if early_warnings:
+                logger.info(f"⚡ {len(early_warnings)} Early Warnings for {symbol}")
+                for w in early_warnings[:2]:  # Log top 2
+                    logger.info(f"   → [{w.get('priority')}] {w.get('title')}")
+        except Exception as e:
+            logger.error(f"Early Warning generation failed: {e}")
+            snapshot['early_warnings'] = []
+        
         self._save_to_dashboard(snapshot)
 
         if ai_decision == "NEUTRAL": return None

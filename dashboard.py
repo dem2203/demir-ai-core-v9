@@ -129,6 +129,28 @@ if page == "📡 Live Market Intelligence":
         
         c4.metric("🧠 AI Signal", dec, f"{conf:.1f}% Conf.", delta_color=delta_color)
 
+        # ======================================
+        # EARLY WARNINGS SECTION (Proactive Alerts)
+        # ======================================
+        early_warnings = main_info.get('early_warnings', [])
+        if early_warnings:
+            st.markdown("---")
+            st.markdown("### ⚡ Early Warnings (Erken Uyarılar)")
+            st.caption("_(Hareket OLMADAN ÖNCE tespit edilen fırsatlar ve riskler)_")
+            
+            for w in early_warnings[:4]:  # Max 4 warnings
+                priority = w.get('priority', 'LOW')
+                priority_emoji = {
+                    'CRITICAL': '🔴',
+                    'HIGH': '🟠',
+                    'MEDIUM': '🟡',
+                    'LOW': '⚪'
+                }.get(priority, '⚪')
+                
+                with st.expander(f"{priority_emoji} {w.get('title', 'Warning')}", expanded=(priority in ['CRITICAL', 'HIGH'])):
+                    st.write(w.get('message', ''))
+                    st.info(f"➡️ **Tavsiye:** {w.get('action', '')}")
+        
         st.markdown("---")
         
         # Detaylı Tablo

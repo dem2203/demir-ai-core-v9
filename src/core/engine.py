@@ -193,6 +193,16 @@ class BotEngine:
         # --- BEYİN KATMANI (Brain Layer) ---
         signal, snapshot = await self.analyzer.analyze_market(symbol, ticker_data)
         
+        # --- PROAKTİF ERKEN UYARI (Early Warning) ---
+        # Send early warnings to Telegram BEFORE signal is generated
+        if snapshot and snapshot.get('early_warnings'):
+            warnings = snapshot['early_warnings']
+            # Only send if there are HIGH or CRITICAL priority warnings
+            priority_warnings = [w for w in warnings if w.get('priority') in ['HIGH', 'CRITICAL']]
+            if priority_warnings:
+                visual_data = snapshot.get('visual_analysis', {})
+                await self.notifier.send_early_warning(symbol, priority_warnings, visual_data)
+        
         if not signal:
             return
 
