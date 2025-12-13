@@ -74,23 +74,84 @@ class NotificationManager:
             side_icon = "🟢 LONG 🚀" if signal['side'] == "BUY" else "🔴 SHORT 🔻"
             conf = signal['confidence']
             
-            # Formatted for optimal readability on mobile
+            # Get enhanced data from snapshot
+            smart_sltp = snapshot.get('smart_sltp', {}) if snapshot else {}
+            mtf = snapshot.get('mtf', {}) if snapshot else {}
+            smc = snapshot.get('smc', {}) if snapshot else {}
+            
+            # Entry and levels
+            entry = signal['entry_price']
+            sl = smart_sltp.get('stop_loss', signal['sl_price'])
+            tp1 = smart_sltp.get('take_profit_1', signal['tp_price'])
+            tp2 = smart_sltp.get('take_profit_2', 0)
+            tp3 = smart_sltp.get('take_profit_3', 0)
+            
+            # Risk/Reward ratios
+            rr1 = smart_sltp.get('risk_reward_1', 0)
+            rr2 = smart_sltp.get('risk_reward_2', 0)
+            rr3 = smart_sltp.get('risk_reward_3', 0)
+            risk_pct = smart_sltp.get('risk_pct', 0)
+            
+            # Setup quality
+            quality = smart_sltp.get('quality', signal.get('quality', 'UNKNOWN'))
+            quality_emoji = "✅" if quality == "EXCELLENT" else "👍" if quality == "GOOD" else "⚠️"
+            
+            # MTF Confluence
+            mtf_score = mtf.get('confluence_score', 0)
+            mtf_type = mtf.get('confluence_type', 'N/A')
+            trends = mtf.get('trends', {})
+            
+            # SMC Bias
+            smc_bias = smc.get('smc_bias', 'N/A')
+            
+            # Build message
             message = (
                 f"{side_icon} **{signal['symbol']}**\n"
-                f"━━━━━━━━━━━━━━\n"
-                f"🧠 **Decision:** {signal.get('quality', 'STRONG')} ({conf:.1f}%)\n"
-                f"📉 **Reason:** {signal.get('reason', 'AI Model Decision')}\n"
-                f"━━━━━━━━━━━━━━\n"
-                f"🚪 **ENTRY:** ${signal['entry_price']:.4f}\n"
-                f"🎯 **TP:** ${signal['tp_price']:.4f}\n"
-                f"🛡️ **SL:** ${signal['sl_price']:.4f}\n"
-                f"💰 **Size:** {signal.get('kelly_size', 'N/A')}%\n"
-                f"━━━━━━━━━━━━━━\n"
-                f"⚠️ _Trade at your own risk. AI Beta v9.0_"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"{quality_emoji} **Setup Quality:** {quality}\n"
+                f"🧠 **Confidence:** {conf:.1f}%\n"
+                f"📉 **Reason:** {signal.get('reason', 'AI Model')[:50]}\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+            )
+            
+            # MTF Section
+            if mtf_score > 0:
+                trend_1h = trends.get('1h', {}).get('trend', '?')
+                trend_4h = trends.get('4h', {}).get('trend', '?')
+                trend_1d = trends.get('1d', {}).get('trend', '?')
+                t1_e = "🟢" if trend_1h == "BULLISH" else "🔴" if trend_1h == "BEARISH" else "⚪"
+                t4_e = "🟢" if trend_4h == "BULLISH" else "🔴" if trend_4h == "BEARISH" else "⚪"
+                td_e = "🟢" if trend_1d == "BULLISH" else "🔴" if trend_1d == "BEARISH" else "⚪"
+                message += (
+                    f"📊 **MTF Confluence:** {mtf_score}% ({mtf_type})\n"
+                    f"   {t1_e}1H {t4_e}4H {td_e}1D\n"
+                )
+            
+            # SMC Section
+            if smc_bias != 'N/A':
+                bias_e = "🟢" if smc_bias == "BULLISH" else "🔴" if smc_bias == "BEARISH" else "⚪"
+                message += f"🎯 **SMC Bias:** {bias_e} {smc_bias}\n"
+            
+            message += "━━━━━━━━━━━━━━━━━━\n"
+            
+            # Entry/SL/TP Section with R:R
+            message += f"🚪 **ENTRY:** ${entry:,.2f}\n"
+            message += f"🛡️ **STOP LOSS:** ${sl:,.2f} ({risk_pct:.1f}% risk)\n"
+            message += f"━━━ TARGETS ━━━\n"
+            message += f"🎯 **TP1:** ${tp1:,.2f} (R:R {rr1})\n"
+            if tp2 > 0:
+                message += f"🎯 **TP2:** ${tp2:,.2f} (R:R {rr2})\n"
+            if tp3 > 0:
+                message += f"🎯 **TP3:** ${tp3:,.2f} (R:R {rr3})\n"
+            
+            message += (
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"💰 **Position Size:** {signal.get('kelly_size', 'N/A')}%\n"
+                f"⚠️ _DYOR - AI Advisory Only v23_"
             )
             
             await self.send_message_raw(message)
-            logger.info(f"✅ STRONG Signal sent: {signal['symbol']}")
+            logger.info(f"✅ Enhanced Signal sent: {signal['symbol']}")
             
         except Exception as e:
             logger.error(f"Telegram Error: {e}")
