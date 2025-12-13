@@ -93,8 +93,8 @@ class MarketAnalyzer:
         self.rl_model_map = {
             'BTC/USDT': 'ppo_btc_v4',  # 5 years data, 500K steps, Sharpe 0.13
             'ETH/USDT': 'ppo_eth_v4',  # 5 years data, v4 complete
-            'LTC/USDT': 'ppo_ltc_v3',  # 2 years data
-            'SOL/USDT': 'ppo_sol_v3'   # NEW - v5 pending
+            'LTC/USDT': 'ppo_ltc_v4',  # 5 years data, Sharpe 0.07
+            'SOL/USDT': 'ppo_sol_v4'   # 5 years data, v4 complete
         }
         
         self.regime_classifier = RegimeClassifier()
