@@ -37,6 +37,12 @@ from src.data_ingestion.macro_connector import MacroConnector  # PHASE 17: Macro
 from src.brain.mtf_transformer import MultiTimeframeTransformer  # Multi-TF Analysis
 from src.brain.early_warning import EarlyWarningSystem  # Proactive Alerts
 
+# PHASE 23: Advanced Signal Features
+from src.brain.smc_analyzer import SMCAnalyzer  # Smart Money Concepts
+from src.brain.mtf_analyzer import MTFAnalyzer  # Multi-Timeframe Confluence
+from src.brain.volume_profile import VolumeProfileAnalyzer  # Volume Profile
+from src.brain.smart_sltp import SmartSLTPCalculator  # Intelligent SL/TP
+
 # PHASE 6: Reinforcement Learning Agent (Pekiştirmeli Öğrenme Ajanı)
 from src.brain.rl_agent.ppo_agent import RLAgent
 
@@ -86,6 +92,12 @@ class MarketAnalyzer:
         
         # PHASE 13: Sentiment Analysis
         self.sentiment = SentimentAnalyzer()
+        
+        # PHASE 23: Advanced Signal Features
+        self.smc_analyzer = SMCAnalyzer()
+        self.mtf_analyzer = MTFAnalyzer()
+        self.volume_profile = VolumeProfileAnalyzer()
+        self.smart_sltp = SmartSLTPCalculator()
         
         # PHASE 6: RL Agent (Self-Learning Trader) - v3: 2 YEARS DATA + 500K TIMESTEPS!
         # Multi-coin support: each coin has its own trained model
