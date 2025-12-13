@@ -18,6 +18,10 @@ from src.execution.hedge_manager import HedgeManager
 from src.brain.anomaly_detector import AnomalyDetector
 from src.utils.alert_manager import AlertManager
 
+# PHASE 22: Market Correlation & Derivatives
+from src.data_ingestion.correlation_connector import CorrelationConnector
+from src.data_ingestion.derivatives_connector import DerivativesConnector
+
 # PHASE 11: Advanced Risk & Performance
 from src.core.risk_shield import RiskShield
 from src.core.performance_tracker import PerformanceTracker
@@ -74,6 +78,12 @@ class BotEngine:
         self.cycle_count = 0  # For periodic performance tracking
         self.last_heartbeat_time = datetime.now() # Phase 21: Heartbeat
         self.latest_prices = {} # For Heartbeat
+        
+        # 9. PHASE 22: Market Correlation & Derivatives
+        self.correlation_connector = CorrelationConnector()
+        self.derivatives_connector = DerivativesConnector()
+        self.market_correlations = {}  # Cross-asset data
+        self.derivatives_data = {}     # OI, L/S ratio, etc.
         
         logger.info("✅ All Sub-systems Initialized Successfully.")
 
@@ -166,6 +176,21 @@ class BotEngine:
         
         self.latest_prices = current_prices
         self.paper_trader.get_portfolio_status(current_prices)
+        
+        # ADIM 2.5: Correlation & Derivatives Data (PHASE 22)
+        try:
+            self.market_correlations = self.correlation_connector.fetch_all()
+            logger.info(f"📊 Correlations: BTC.D={self.market_correlations.get('btc_dominance', 0)}%, Gold=${self.market_correlations.get('gold', 0)}")
+        except Exception as e:
+            logger.warning(f"Correlation fetch failed: {e}")
+        
+        try:
+            # Fetch derivatives for first symbol
+            first_symbol = list(current_prices.keys())[0].replace('/', '') if current_prices else 'BTCUSDT'
+            self.derivatives_data = self.derivatives_connector.fetch_all_derivatives(first_symbol)
+            logger.info(f"📊 Derivatives: OI={self.derivatives_data.get('open_interest', 0):.0f}, L/S={self.derivatives_data.get('long_short_ratio', 1):.2f}")
+        except Exception as e:
+            logger.warning(f"Derivatives fetch failed: {e}")
         
         # ADIM 3: Her Coin İçin Analiz Yap (Paralel İşlem)
         tasks = []

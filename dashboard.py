@@ -151,7 +151,41 @@ if page == "📡 Live Market Intelligence":
                     st.write(w.get('message', ''))
                     st.info(f"➡️ **Tavsiye:** {w.get('action', '')}")
         
+        # ======================================
+        # MARKET CORRELATIONS SECTION (PHASE 22)
+        # ======================================
         st.markdown("---")
+        st.markdown("### 🌐 Market Correlations & Derivatives")
+        
+        cor_col1, cor_col2, cor_col3, cor_col4, cor_col5 = st.columns(5)
+        
+        # Correlation Data (from JSON if available)
+        corr_data = main_info.get('correlations', {})
+        deriv_data = main_info.get('derivatives', {})
+        
+        # Gold
+        gold = corr_data.get('gold', 0)
+        gold_chg = corr_data.get('gold_change', 0)
+        cor_col1.metric("🥇 Gold", f"${gold:,.0f}" if gold else "N/A", f"{gold_chg:+.1f}%" if gold else None)
+        
+        # Nasdaq 
+        nasdaq = corr_data.get('nasdaq', 0)
+        nasdaq_chg = corr_data.get('nasdaq_change', 0)
+        cor_col2.metric("📈 Nasdaq", f"{nasdaq:,.0f}" if nasdaq else "N/A", f"{nasdaq_chg:+.1f}%" if nasdaq else None)
+        
+        # BTC Dominance
+        btc_d = corr_data.get('btc_dominance', 0)
+        cor_col3.metric("₿ BTC.D", f"{btc_d:.1f}%" if btc_d else "N/A")
+        
+        # Open Interest
+        oi = deriv_data.get('open_interest', 0)
+        cor_col4.metric("📊 Open Interest", f"{oi:,.0f}" if oi else "N/A")
+        
+        # Long/Short Ratio
+        ls_ratio = deriv_data.get('long_short_ratio', 0)
+        ls_color = "normal" if ls_ratio > 1 else "inverse" if ls_ratio < 1 else "off"
+        cor_col5.metric("📊 L/S Ratio", f"{ls_ratio:.2f}" if ls_ratio else "N/A", delta_color=ls_color)
+        
         
         # Detaylı Tablo
         st.markdown("### 📊 Market Analysis Board")
