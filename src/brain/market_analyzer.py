@@ -91,7 +91,7 @@ class MarketAnalyzer:
         # Multi-coin support: each coin has its own trained model
         self.rl_agents = {}  # Symbol -> RLAgent
         self.rl_model_map = {
-            'BTC/USDT': 'ppo_btc_v3',  # 2 years data, 500K steps, Sharpe 0.18
+            'BTC/USDT': 'ppo_btc_v4',  # 5 years data, 500K steps, Sharpe 0.13
             'ETH/USDT': 'ppo_eth_v3',  # 2 years data, 500K steps, Sharpe 0.10
             'LTC/USDT': 'ppo_ltc_v3'   # 2 years data, 500K steps, Sharpe 0.09
         }
