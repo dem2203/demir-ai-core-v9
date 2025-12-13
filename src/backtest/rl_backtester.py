@@ -39,9 +39,9 @@ class RLBacktester:
         return self.exchange
     
     def _get_rl_model_path(self, symbol: str) -> str:
-        """Get RL model path for symbol."""
+        """Get RL model path for symbol - v4 models."""
         clean_sym = symbol.replace("/", "").replace("USDT", "").lower()
-        model_name = f"ppo_{clean_sym}_v2"
+        model_name = f"ppo_{clean_sym}_v4"  # Updated to v4
         return os.path.join(self.RL_STORAGE, model_name)
     
     async def fetch_historical_data(self, symbol: str, days: int = 30) -> pd.DataFrame:
@@ -275,7 +275,7 @@ async def main():
     all_results = []
     
     if args.all:
-        symbols = ["BTC/USDT", "ETH/USDT", "LTC/USDT"]
+        symbols = ["BTC/USDT", "ETH/USDT", "LTC/USDT", "SOL/USDT"]  # All 4 coins
         for symbol in symbols:
             result = await backtester.run_backtest(symbol, args.days)
             all_results.append(result)

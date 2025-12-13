@@ -1,5 +1,5 @@
 # 🦅 DEMIR AI - Institutional Trading Terminal
-**Version 21.0 | Phase 21: Telegram Intelligence**
+**Version 23.0 | Phase 23: Smart Money Concepts**
 
 ![Status](https://img.shields.io/badge/Status-OPERATIONAL-green)
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
@@ -7,58 +7,74 @@
 ![Railway](https://img.shields.io/badge/Deployed%20on-Railway-violet)
 
 ## 🏗️ System Overview
-Demir AI is an autonomous institutional-grade trading system powered by a **Hybrid Intelligence** architecture. It combines quantitative finance (LSTM, RL) with generative AI (GPT-4o, Gemini) to dominate the market.
+Demir AI is an autonomous institutional-grade trading system powered by a **Hybrid Intelligence** architecture. It combines quantitative finance (LSTM, RL) with generative AI (GPT-4o, Gemini) and **Smart Money Concepts (SMC)** to dominate the market.
 
-### 🧠 AI Superpowers
-1.  **Dual Vision Cortex (Active):**
-    *   Uses **Google Gemini 1.5** + **OpenAI GPT-4o** to "see" charts like a human trader.
-    *   Cross-validates technical patterns (Head & Shoulders, Flags) between models.
-    *   Generates a consensus "Visual Score" (0-100).
-2.  **Liquidation Hunter:**
-    *   Maps "Magnet Levels" where high leverage traders are likely to get liquidated.
-    *   Analyzes Open Interest (OI) flows and Funding Rate extremes to bet against the crowd.
-3.  **Neural Brain:**
-    *   **LSTM:** Predicts next-candle price close with high probability.
-    *   **RL Agent (PPO):** Learns optimal portfolio allocation through millions of simulated steps.
-4.  **Macro Engine:**
-    *   Ingests real-time **DXY** (Dollar Strength) and **VIX** (Fear Index) to adjust risk exposure.
+### 🧠 AI Superpowers (v23)
+1.  **Smart Money Concepts (NEW!):**
+    *   Detects **Order Blocks** - institutional entry zones
+    *   Identifies **Fair Value Gaps (FVG)** - price imbalances
+    *   Maps **Liquidity Zones** - where stops accumulate
+2.  **Multi-Timeframe Confluence:**
+    *   Analyzes 1H, 4H, 1D trends simultaneously
+    *   Confluence scoring (0-100%)
+    *   Entry quality assessment
+3.  **Volume Profile:**
+    *   VPOC (Volume Point of Control)
+    *   HVN/LVN zones (High/Low Volume Nodes)
+    *   Price magnet detection
+4.  **Smart SL/TP:**
+    *   SMC-based stop losses (below Order Blocks)
+    *   Multi-target take profits (TP1, TP2, TP3)
+    *   R:R ratios calculated automatically
+5.  **RL Agent v4 (5 Years, 500K Steps):**
+    *   BTC: Sharpe 0.13, +10.7% ROI (30d backtest)
+    *   ETH, LTC, SOL: All trained on 5 years of data
+6.  **Dual Vision Cortex:**
+    *   Uses **Google Gemini 1.5** + **OpenAI GPT-4o** to "see" charts.
+7.  **Liquidation Hunter:**
+    *   Maps "Magnet Levels" where high leverage traders get liquidated.
 
 ## 🚀 Deployment
 This project is automatically deployed to **Railway** on every push to `main`.
 
 ### Dashboard Features
-The system exposes a state-of-the-art Streamlit dashboard:
 *   **📡 Live Market Intelligence:**
-    *   Real-time price & AI signals.
-    *   "Whale Wall" detection (Order Book Imbalance).
-    *   Kelly Criterion risk sizing.
+    *   Real-time SMC analysis (Order Blocks, FVG)
+    *   MTF Confluence display (1H/4H/1D)
+    *   Volume Profile (VPOC, VAH, VAL)
+    *   Smart Entry/Exit levels with R:R
 *   **🧠 Neural Brain Monitor:**
-    *   Visualizes the RL Agent's "Attention Map" (what it's focusing on).
-    *   Shows Dual Vision analysis results & charts.
+    *   RL Agent v4 decision visualization
+    *   Dual Vision analysis results
 *   **💼 Advisory Portfolio:**
-    *   Paper trading simulation with PnL tracking.
+    *   Paper trading with advanced risk sizing
 *   **🧪 Backtest Lab:**
-    *   Run historical simulations on any asset.
+    *   Test v4 models on historical data
 
 ## 📂 Project Structure
 ```
 src/
-├── brain/          # The Cortex
+├── brain/              # The Cortex
+│   ├── smc_analyzer.py     # Smart Money Concepts (NEW)
+│   ├── mtf_analyzer.py     # Multi-Timeframe Confluence (NEW)
+│   ├── volume_profile.py   # Volume Profile Analysis (NEW)
+│   ├── smart_sltp.py       # Intelligent SL/TP (NEW)
 │   ├── vision_analyst.py   # GPT-4o + Gemini Vision
-│   ├── liquidation_hunter.py # Anti-Crowd Logic
-│   └── rl_trainer.py       # PPO Reinforcement Learning
-├── core/           # The Engine
+│   └── rl_agent/           # PPO v4 Models
+├── core/               # The Engine
 │   ├── engine.py           # Main Orchestrator
 │   └── risk_shield.py      # Capital Protection
-├── data_ingestion/ # The Senses (Binance, Macro)
-└── ui/             # The Face (Streamlit Dashboard)
+└── data_ingestion/     # The Senses (Binance, Macro)
 ```
 
 ## 📜 Recent Updates
-- **Phase 21 (Current):**
-    - **Smart Telegram:** Anti-Spam deduplication & Strict Filters (>85%).
-    - **Heartbeat:** Hourly system integrity checks.
-    - **Optimization:** Deduplicated signal broadcasting.
+- **Phase 23 (Current):**
+    - **SMC Analyzer:** Order Blocks, Fair Value Gaps, Liquidity Zones
+    - **MTF Confluence:** 1H/4H/1D trend alignment scoring
+    - **Volume Profile:** VPOC, VAH, VAL, HVN/LVN detection
+    - **Smart SL/TP:** Multi-target TP with R:R ratios
+    - **v4 Models:** All 4 coins (BTC/ETH/LTC/SOL) trained on 5 years
+    - **Enhanced Telegram:** R:R ratios, MTF confluence in signals
 
 ---
 *Created by Demir AI Team. Proprietary Software.*
