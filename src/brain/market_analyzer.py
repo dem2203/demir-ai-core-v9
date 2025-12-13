@@ -92,8 +92,9 @@ class MarketAnalyzer:
         self.rl_agents = {}  # Symbol -> RLAgent
         self.rl_model_map = {
             'BTC/USDT': 'ppo_btc_v4',  # 5 years data, 500K steps, Sharpe 0.13
-            'ETH/USDT': 'ppo_eth_v3',  # 2 years data, 500K steps, Sharpe 0.10
-            'LTC/USDT': 'ppo_ltc_v3'   # 2 years data, 500K steps, Sharpe 0.09
+            'ETH/USDT': 'ppo_eth_v4',  # 5 years data, v4 complete
+            'LTC/USDT': 'ppo_ltc_v3',  # 2 years data
+            'SOL/USDT': 'ppo_sol_v3'   # NEW - v5 pending
         }
         
         self.regime_classifier = RegimeClassifier()

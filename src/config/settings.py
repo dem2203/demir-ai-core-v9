@@ -8,7 +8,7 @@ class Config:
     
     # --- İZLENECEK COINLER (Merkezi Liste) ---
     # Buraya istediğin coini ekleyebilirsin.
-    TARGET_COINS = ["BTC/USDT", "ETH/USDT", "LTC/USDT"] 
+    TARGET_COINS = ["BTC/USDT", "ETH/USDT", "LTC/USDT", "SOL/USDT"]
     
     # --- System Settings ---
     VERSION = os.getenv("VERSION", "11.0")
