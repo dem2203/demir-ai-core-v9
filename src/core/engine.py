@@ -22,6 +22,9 @@ from src.utils.alert_manager import AlertManager
 from src.data_ingestion.correlation_connector import CorrelationConnector
 from src.data_ingestion.derivatives_connector import DerivativesConnector
 
+# PHASE 30: Money Flow Analysis
+from src.data_ingestion.money_flow_analyzer import MoneyFlowAnalyzer
+
 # PHASE 11: Advanced Risk & Performance
 from src.core.risk_shield import RiskShield
 from src.core.performance_tracker import PerformanceTracker
@@ -86,6 +89,9 @@ class BotEngine:
         self.market_correlations = {}  # Cross-asset data
         self.derivatives_data = {}     # OI, L/S ratio, etc.
         
+        # 10. PHASE 30: Money Flow Analysis (Mikabot-style)
+        self.money_flow_analyzer = MoneyFlowAnalyzer()
+        
         logger.info("✅ All Sub-systems Initialized Successfully.")
 
     async def start(self):
@@ -131,6 +137,15 @@ class BotEngine:
                 # Phase 21: Hourly Heartbeat
                 if (datetime.now() - self.last_heartbeat_time).total_seconds() > 3600:
                     await self.notifier.send_heartbeat(self.latest_prices)
+                    
+                    # Phase 30: Money Flow Report (Mikabot-style)
+                    try:
+                        money_flow_data = await self.money_flow_analyzer.get_market_money_flow()
+                        await self.notifier.send_money_flow_report(money_flow_data)
+                        logger.info("📊 Money Flow report sent to Telegram.")
+                    except Exception as mf_err:
+                        logger.error(f"Money Flow report failed: {mf_err}")
+                    
                     self.last_heartbeat_time = datetime.now()
                     logger.info("💓 Heartbeat sent to Telegram.")
                     

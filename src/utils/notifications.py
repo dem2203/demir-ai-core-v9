@@ -240,6 +240,63 @@ class NotificationManager:
         except Exception as e:
             logger.error(f"Heartbeat failed: {e}")
     
+    async def send_money_flow_report(self, money_flow_data: dict):
+        """
+        Mikabot tarzı para akışı raporu gönderir.
+        (Sends Mikabot-style money flow report to Telegram)
+        """
+        if not self.telegram_token or not self.telegram_chat_id:
+            return
+        
+        try:
+            # Header
+            msg = "📊 **Marketteki Nakit Akışı Raporu**\n"
+            msg += f"Kısa Vadeli Alım Gücü: **{money_flow_data.get('buying_power', '0X')}**\n"
+            msg += f"Marketteki Hacim Payı: %{money_flow_data.get('market_buyer_pct', 50):.1f}\n"
+            msg += "━━━━━━━━━━━━━━━━━━━━\n"
+            
+            # Timeframe analysis
+            market_flow = money_flow_data.get('market_flow', {})
+            for tf in ['15m', '1h', '4h', '12h', '1d']:
+                pct = market_flow.get(tf, 50)
+                arrow = "🔺" if pct >= 50 else "🔻"
+                msg += f"{tf}=> %{pct:.1f} {arrow}\n"
+            
+            msg += "━━━━━━━━━━━━━━━━━━━━\n"
+            
+            # Top inflow coins
+            msg += "**En Çok Nakit Girişi Olanlar:**\n"
+            msg += "_(🔺: alım baskısı, 🔻: satış baskısı)_\n\n"
+            
+            for symbol, pct in money_flow_data.get('top_inflow', [])[:5]:
+                clean_symbol = symbol.replace('USDT', '')
+                
+                # Momentum arrows
+                if pct >= 60:
+                    arrows = "🔺🔺🔺"
+                elif pct >= 55:
+                    arrows = "🔺🔺"
+                elif pct >= 50:
+                    arrows = "🔺"
+                elif pct >= 45:
+                    arrows = "🔻"
+                elif pct >= 40:
+                    arrows = "🔻🔻"
+                else:
+                    arrows = "🔻🔻🔻"
+                
+                msg += f"🔹 **{clean_symbol}** Nakit: %{pct:.1f} {arrows}\n"
+            
+            msg += "━━━━━━━━━━━━━━━━━━━━\n"
+            msg += f"_Güncelleme: {datetime.now().strftime('%H:%M')}_"
+            
+            await self.send_message_raw(msg)
+            logger.info("📊 Money Flow report sent to Telegram")
+            
+        except Exception as e:
+            logger.error(f"Money flow report failed: {e}")
+    
+    
     async def send_early_warning(self, symbol: str, warnings: list, visual_prediction: dict = None):
         """
         PROAKTIF ERKEN UYARI MESAJI (Proactive Early Warning)
