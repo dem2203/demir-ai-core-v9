@@ -100,20 +100,38 @@ def render_coin_section(symbol: str, coin_data: dict, expanded: bool = False):
         m3.metric("📊 Regime", coin_data.get('regime', 'N/A'))
         m4.metric("📈 Fractal", f"{coin_data.get('fractal_score', 0):.0f}%")
         
-        # SMC Section
+        # SMC Section - Enhanced with price details
         st.markdown("#### 🎯 Smart Money Concepts (Akıllı Para Konseptleri)")
+        st.caption("_Büyük oyuncuların (bankalar, hedge fund'lar) hareket ettikleri bölgeler_")
         smc = coin_data.get('smc', {})
         smc_signal = smc.get('smc_signal', {})
         
         s1, s2, s3, s4 = st.columns(4)
         smc_bias = smc.get('smc_bias', 'N/A')
         bias_emoji = "🟢" if smc_bias == "BULLISH" else "🔴" if smc_bias == "BEARISH" else "⚪"
-        # BULLISH=Yükseliş, BEARISH=Düşüş
         bias_tr = "YÜKSELİŞ" if smc_bias == "BULLISH" else "DÜŞÜŞ" if smc_bias == "BEARISH" else "NÖTR"
-        s1.metric("SMC Bias (Yön)", f"{bias_emoji} {bias_tr}")
-        s2.metric("Order Blocks (Emir Blokları)", f"{len(smc.get('order_blocks', []))} aktif")
-        s3.metric("FVGs (Boşluklar)", f"{len(smc.get('fvgs', []))} doldurulmamış")
-        s4.metric("Strength (Güç)", f"{smc_signal.get('strength', 0)}%")
+        bias_explain = "Alım bölgesi" if smc_bias == "BULLISH" else "Satış bölgesi" if smc_bias == "BEARISH" else "Belirsiz"
+        s1.metric("SMC Yön", f"{bias_emoji} {bias_tr}", bias_explain)
+        
+        # Order Blocks with price levels
+        obs = smc.get('order_blocks', [])
+        if obs:
+            ob_prices = ", ".join([f"${ob.get('price', 0):,.0f}" for ob in obs[:3]])
+            s2.metric("Emir Blokları", f"{len(obs)} aktif", ob_prices if ob_prices else None)
+        else:
+            s2.metric("Emir Blokları", "0", "Destek/direnç bölgesi yok")
+        
+        # FVGs with price ranges
+        fvgs = smc.get('fvgs', [])
+        if fvgs:
+            fvg_ranges = ", ".join([f"${fvg.get('low', 0):,.0f}-${fvg.get('high', 0):,.0f}" for fvg in fvgs[:2]])
+            s3.metric("Boşluklar (FVG)", f"{len(fvgs)} adet", fvg_ranges if fvg_ranges else None)
+        else:
+            s3.metric("Boşluklar (FVG)", "0", "Fiyat boşluğu yok")
+        
+        strength = smc_signal.get('strength', 0)
+        strength_text = "Çok güçlü sinyal" if strength >= 70 else "Orta sinyal" if strength >= 40 else "Zayıf sinyal"
+        s4.metric("Güç", f"{strength}%", strength_text)
         
         # MTF Section
         st.markdown("#### 📊 Multi-Timeframe Confluence (Çoklu Zaman Dilimi Uyumu)")
@@ -132,19 +150,51 @@ def render_coin_section(symbol: str, coin_data: dict, expanded: bool = False):
         entry_qual = mtf.get('entry_quality', {})
         t5.metric("Quality (Kalite)", entry_qual.get('rating', 'N/A'))
         
-        # Volume Profile Section
+        # Volume Profile Section - Enhanced with explanations
         st.markdown("#### 📈 Volume Profile (Hacim Profili)")
+        st.caption("_İşlem hacminin en yoğun olduğu fiyat bölgeleri - Fiyat bu seviyelere çekilme eğilimindedir_")
         vp = coin_data.get('volume_profile', {})
+        current_price = price  # Mevcut fiyat
         
         v1, v2, v3, v4 = st.columns(4)
-        v1.metric("VPOC (En Çok İşlem)", f"${vp.get('vpoc', 0):,.0f}")
-        v2.metric("VAH (Üst Değer)", f"${vp.get('vah', 0):,.0f}")
-        v3.metric("VAL (Alt Değer)", f"${vp.get('val', 0):,.0f}")
         
+        # VPOC - Volume Point of Control
+        vpoc = vp.get('vpoc', 0)
+        vpoc_diff = ((current_price - vpoc) / vpoc * 100) if vpoc > 0 else 0
+        vpoc_text = f"Fiyat {abs(vpoc_diff):.1f}% {'üstünde' if vpoc_diff > 0 else 'altında'}"
+        v1.metric("VPOC (Mıknatıs Fiyat)", f"${vpoc:,.0f}", vpoc_text)
+        
+        # VAH - Value Area High
+        vah = vp.get('vah', 0)
+        v2.metric("VAH (Pahalı Bölge)", f"${vah:,.0f}", "Bu üstü = satış baskısı")
+        
+        # VAL - Value Area Low
+        val = vp.get('val', 0)
+        v3.metric("VAL (Ucuz Bölge)", f"${val:,.0f}", "Bu altı = alım fırsatı")
+        
+        # Position with detailed explanation
         pos = vp.get('price_position', 'N/A')
-        pos_emoji = "🟢" if "ABOVE" in pos else "🔴" if "BELOW" in pos else "⚪"
-        pos_tr = "ÜSTTE" if "ABOVE" in pos else "ALTTA" if "BELOW" in pos else "ARADA"
-        v4.metric("Position (Konum)", f"{pos_emoji} {pos_tr}")
+        if "ABOVE_VAH" in pos:
+            pos_emoji = "🔴"
+            pos_tr = "PAHALIDA"
+            pos_explain = "Satış baskısı olabilir"
+        elif "BELOW_VAL" in pos:
+            pos_emoji = "🟢"
+            pos_tr = "UCUZDA"
+            pos_explain = "Alım fırsatı olabilir"
+        elif "ABOVE" in pos:
+            pos_emoji = "🟡"
+            pos_tr = "ÜSTTE"
+            pos_explain = "Değer bölgesi üstünde"
+        elif "BELOW" in pos:
+            pos_emoji = "🟡"
+            pos_tr = "ALTTA"
+            pos_explain = "Değer bölgesi altında"
+        else:
+            pos_emoji = "⚪"
+            pos_tr = "DEĞER BÖLGESİNDE"
+            pos_explain = "Normal işlem bölgesi"
+        v4.metric("Konum", f"{pos_emoji} {pos_tr}", pos_explain)
         
         # Smart SL/TP Section
         sltp = coin_data.get('smart_sltp', {})
