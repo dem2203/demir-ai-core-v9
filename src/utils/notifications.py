@@ -5,7 +5,7 @@ import json
 import os
 from datetime import datetime, timedelta
 from src.config.settings import Config
-from src.core.signal_filter import SignalFilter
+from src.core.signal_filter import SignalQualityFilter
 
 logger = logging.getLogger("NOTIFICATION_MANAGER")
 
