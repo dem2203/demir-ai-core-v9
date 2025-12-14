@@ -103,10 +103,10 @@ class MarketAnalyzer:
         # Multi-coin support: each coin has its own trained model
         self.rl_agents = {}  # Symbol -> RLAgent
         self.rl_model_map = {
-            'BTC/USDT': 'ppo_btc_v4',  # 5 years data, 500K steps, Sharpe 0.13
-            'ETH/USDT': 'ppo_eth_v4',  # 5 years data, v4 complete
-            'LTC/USDT': 'ppo_ltc_v4',  # 5 years data, Sharpe 0.07
-            'SOL/USDT': 'ppo_sol_v4'   # 5 years data, v4 complete
+            'BTC/USDT': 'ppo_btc_v5',  # v5: 5 years, 500K steps, Sharpe 0.13
+            'ETH/USDT': 'ppo_eth_v5',  # v5: 5 years, 500K steps, Sharpe 0.13
+            'LTC/USDT': 'ppo_ltc_v5',  # v5: 5 years, 500K steps, Sharpe 0.07
+            'SOL/USDT': 'ppo_sol_v5'   # v5: 5 years, 500K steps, Sharpe 0.22 (BEST!)
         }
         
         self.regime_classifier = RegimeClassifier()
