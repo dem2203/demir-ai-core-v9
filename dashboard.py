@@ -78,6 +78,103 @@ def load_json(filename):
 risk_manager = RiskManager()
 
 # ==========================================
+# HELPER: Per-Coin Collapsible Section
+# ==========================================
+def render_coin_section(symbol: str, coin_data: dict, expanded: bool = False):
+    """Renders a collapsible section for a single coin with all features."""
+    
+    price = coin_data.get('price', 0)
+    dec = coin_data.get('ai_decision', 'NEUTRAL')
+    conf = coin_data.get('ai_confidence', 0)
+    
+    # Signal emoji
+    signal_emoji = "🟢" if dec == "BUY" else "🔴" if dec == "SELL" else "⚪"
+    
+    # Expander with signal info in title
+    with st.expander(f"{signal_emoji} **{symbol}** | ${price:,.2f} | {dec} ({conf:.0f}%)", expanded=expanded):
+        
+        # Row 1: Basic metrics
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("💰 Price", f"${price:,.2f}")
+        m2.metric("🎯 Signal", dec, f"{conf:.0f}%")
+        m3.metric("📊 Regime", coin_data.get('regime', 'N/A'))
+        m4.metric("📈 Fractal", f"{coin_data.get('fractal_score', 0):.0f}%")
+        
+        # SMC Section
+        st.markdown("#### 🎯 Smart Money Concepts")
+        smc = coin_data.get('smc', {})
+        smc_signal = smc.get('smc_signal', {})
+        
+        s1, s2, s3, s4 = st.columns(4)
+        smc_bias = smc.get('smc_bias', 'N/A')
+        bias_emoji = "🟢" if smc_bias == "BULLISH" else "🔴" if smc_bias == "BEARISH" else "⚪"
+        s1.metric("SMC Bias", f"{bias_emoji} {smc_bias}")
+        s2.metric("Order Blocks", f"{len(smc.get('order_blocks', []))} active")
+        s3.metric("FVGs", f"{len(smc.get('fvgs', []))} unfilled")
+        s4.metric("Strength", f"{smc_signal.get('strength', 0)}%")
+        
+        # MTF Section
+        st.markdown("#### 📊 Multi-Timeframe Confluence")
+        mtf = coin_data.get('mtf', {})
+        trends = mtf.get('trends', {})
+        
+        t1, t2, t3, t4, t5 = st.columns(5)
+        
+        for col, (tf, label) in zip([t1, t2, t3], [('1h', '1H'), ('4h', '4H'), ('1d', '1D')]):
+            trend = trends.get(tf, {}).get('trend', 'N/A')
+            emoji = "🟢" if trend == "BULLISH" else "🔴" if trend == "BEARISH" else "⚪"
+            col.metric(f"{label} Trend", f"{emoji} {trend[:4] if len(trend) > 4 else trend}")
+        
+        t4.metric("Confluence", f"{mtf.get('confluence_score', 0)}%")
+        entry_qual = mtf.get('entry_quality', {})
+        t5.metric("Quality", entry_qual.get('rating', 'N/A'))
+        
+        # Volume Profile Section
+        st.markdown("#### 📈 Volume Profile")
+        vp = coin_data.get('volume_profile', {})
+        
+        v1, v2, v3, v4 = st.columns(4)
+        v1.metric("VPOC", f"${vp.get('vpoc', 0):,.0f}")
+        v2.metric("VAH", f"${vp.get('vah', 0):,.0f}")
+        v3.metric("VAL", f"${vp.get('val', 0):,.0f}")
+        
+        pos = vp.get('price_position', 'N/A')
+        pos_emoji = "🟢" if "ABOVE" in pos else "🔴" if "BELOW" in pos else "⚪"
+        v4.metric("Position", f"{pos_emoji} {pos.replace('_', ' ')[:10]}")
+        
+        # Smart SL/TP Section
+        sltp = coin_data.get('smart_sltp', {})
+        if sltp.get('valid', False) or sltp.get('stop_loss', 0) > 0:
+            st.markdown("#### 🎯 Entry / Exit Levels")
+            
+            direction = sltp.get('direction', dec)
+            dir_emoji = "🟢 LONG" if direction in ["LONG", "BUY"] else "🔴 SHORT" if direction in ["SHORT", "SELL"] else "⚪"
+            
+            e1, e2, e3, e4, e5 = st.columns(5)
+            e1.metric("Direction", dir_emoji)
+            e2.metric("Stop Loss", f"${sltp.get('stop_loss', 0):,.0f}", f"-{sltp.get('risk_pct', 0):.1f}%")
+            e3.metric("TP1", f"${sltp.get('take_profit_1', 0):,.0f}", f"R:R {sltp.get('risk_reward_1', 0)}")
+            e4.metric("TP2", f"${sltp.get('take_profit_2', 0):,.0f}", f"R:R {sltp.get('risk_reward_2', 0)}")
+            e5.metric("TP3", f"${sltp.get('take_profit_3', 0):,.0f}", f"R:R {sltp.get('risk_reward_3', 0)}")
+            
+            # Quality indicator
+            quality = sltp.get('quality', 'UNKNOWN')
+            if quality == "EXCELLENT":
+                st.success(f"✅ **{quality}** - High probability setup!")
+            elif quality == "GOOD":
+                st.info(f"👍 **{quality}** - Decent setup")
+            elif quality == "FAIR":
+                st.warning(f"⚠️ **{quality}** - Caution advised")
+        
+        # Technical summary
+        st.markdown("#### 📐 Technical Summary")
+        tech1, tech2, tech3, tech4 = st.columns(4)
+        tech1.metric("Tech Bias", coin_data.get('tech_bias', 'N/A'))
+        tech2.metric("Pattern", coin_data.get('pattern_bias', 'N/A'))
+        tech3.metric("On-Chain", coin_data.get('onchain_signal', 'N/A'))
+        tech4.metric("Wyckoff", coin_data.get('wyckoff_phase', 'N/A'))
+
+# ==========================================
 # 1. CANLI İZLEME (Live Market Intelligence)
 # ==========================================
 if page == "📡 Live Market Intelligence":
@@ -128,6 +225,18 @@ if page == "📡 Live Market Intelligence":
         elif dec == "SELL": delta_color = "inverse"
         
         c4.metric("🧠 AI Signal", dec, f"{conf:.1f}% Conf.", delta_color=delta_color)
+
+        # ======================================
+        # PER-COIN COLLAPSIBLE SECTIONS (PHASE 25)
+        # ======================================
+        st.markdown("---")
+        st.markdown("### 🎯 Coin-by-Coin Analysis")
+        st.caption("_Click to expand each coin for full SMC, MTF, Volume Profile, and SL/TP details_")
+        
+        # Render each coin with collapsible section
+        for i, (symbol, coin_data) in enumerate(data.items()):
+            # First coin expanded by default
+            render_coin_section(symbol, coin_data, expanded=(i == 0))
 
         # ======================================
         # EARLY WARNINGS SECTION (Proactive Alerts)
