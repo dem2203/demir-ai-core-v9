@@ -68,16 +68,18 @@ class VisionAnalyst:
         else:
             logger.warning("⚠️ GOOGLE_API_KEY not found. Gemini disabled.")
             
-        # Initialize OpenAI
-        if self.openai_key:
-            try:
-                self.openai_client = OpenAI(api_key=self.openai_key)
-                self.openai_active = True
-                logger.info("👁️ OpenAI (GPT-4o) Vision: ACTIVE")
-            except Exception as e:
-                logger.error(f"OpenAI initialization failed: {e}")
-        else:
-            logger.warning("⚠️ OPENAI_API_KEY not found. GPT-4o disabled.")
+        # Initialize OpenAI - DISABLED to save costs (using Gemini only)
+        # if self.openai_key:
+        #     try:
+        #         self.openai_client = OpenAI(api_key=self.openai_key)
+        #         self.openai_active = True
+        #         logger.info("👁️ OpenAI (GPT-4o) Vision: ACTIVE")
+        #     except Exception as e:
+        #         logger.error(f"OpenAI initialization failed: {e}")
+        # else:
+        #     logger.warning("⚠️ OPENAI_API_KEY not found. GPT-4o disabled.")
+        self.openai_active = False  # OpenAI disabled - using Gemini only
+        logger.info("👁️ OpenAI Vision: DISABLED (Gemini Only Mode)")
             
         if not self.gemini_active and not self.openai_active:
             logger.warning("⚠️ NO VISION APIs AVAILABLE. Visual Cortex disabled.")
