@@ -49,7 +49,7 @@ class NotificationManager:
         self.telegram_token = Config.TELEGRAM_TOKEN
         self.telegram_chat_id = Config.TELEGRAM_CHAT_ID
         self.telegram_url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage" if self.telegram_token else None
-        self.signal_filter = SignalFilter(quality_threshold=70)
+        self.signal_filter = SignalQualityFilter(min_confidence=70.0)
         self.rejected_log_path = "rejected_signals.json"
         self.dedup_cache = DedupCache(cooldown_minutes=60) # Phase 21: Dedup
 
