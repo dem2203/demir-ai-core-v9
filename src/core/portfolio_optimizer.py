@@ -285,3 +285,243 @@ class PortfolioOptimizer:
             "diversification_score": round(div_score, 2),
             "total_positions": len(positions)
         }
+    
+    # === Phase 29.4 Enhancements ===
+    
+    def calculate_efficient_frontier(
+        self,
+        price_data: Dict[str, pd.DataFrame],
+        num_portfolios: int = 1000,
+        risk_free_rate: float = 0.04
+    ) -> Dict:
+        """
+        Calculate Efficient Frontier using Monte Carlo simulation.
+        
+        Args:
+            price_data: Dict of {symbol: OHLCV DataFrame}
+            num_portfolios: Number of random portfolios to simulate
+            risk_free_rate: Risk-free rate for Sharpe calculation
+        
+        Returns:
+            {
+                'optimal_weights': {...},
+                'optimal_sharpe': 0.85,
+                'optimal_return': 0.15,
+                'optimal_volatility': 0.12,
+                'frontier_points': [...]
+            }
+        """
+        try:
+            # Calculate returns
+            returns_df = pd.DataFrame()
+            for symbol, df in price_data.items():
+                if len(df) >= 30:
+                    returns_df[symbol] = df['close'].pct_change().dropna()
+            
+            if returns_df.empty or len(returns_df.columns) < 2:
+                logger.warning("Need at least 2 symbols for efficient frontier")
+                return {}
+            
+            # Annualized returns and covariance
+            mean_returns = returns_df.mean() * 252  # 252 trading days
+            cov_matrix = returns_df.cov() * 252
+            
+            num_assets = len(returns_df.columns)
+            results = np.zeros((4, num_portfolios))  # return, volatility, sharpe, weights
+            all_weights = []
+            
+            # Monte Carlo simulation
+            for i in range(num_portfolios):
+                # Random weights
+                weights = np.random.random(num_assets)
+                weights /= np.sum(weights)
+                all_weights.append(weights)
+                
+                # Portfolio return
+                portfolio_return = np.sum(weights * mean_returns)
+                
+                # Portfolio volatility
+                portfolio_volatility = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+                
+                # Sharpe ratio
+                sharpe_ratio = (portfolio_return - risk_free_rate) / portfolio_volatility
+                
+                results[0, i] = portfolio_return
+                results[1, i] = portfolio_volatility
+                results[2, i] = sharpe_ratio
+            
+            # Find optimal portfolio (max Sharpe)
+            optimal_idx = results[2].argmax()
+            optimal_weights = all_weights[optimal_idx]
+            
+            # Create weights dict
+            symbols = returns_df.columns.tolist()
+            weights_dict = {sym: round(w, 3) for sym, w in zip(symbols, optimal_weights)}
+            
+            # Find min volatility portfolio
+            min_vol_idx = results[1].argmin()
+            
+            frontier_points = []
+            for i in range(0, num_portfolios, num_portfolios // 20):  # Sample 20 points
+                frontier_points.append({
+                    'return': round(results[0, i] * 100, 2),
+                    'volatility': round(results[1, i] * 100, 2),
+                    'sharpe': round(results[2, i], 2)
+                })
+            
+            logger.info(f"📈 Efficient Frontier: Optimal Sharpe = {results[2, optimal_idx]:.2f}")
+            logger.info(f"   Weights: {weights_dict}")
+            
+            return {
+                'optimal_weights': weights_dict,
+                'optimal_sharpe': round(results[2, optimal_idx], 3),
+                'optimal_return': round(results[0, optimal_idx] * 100, 2),
+                'optimal_volatility': round(results[1, optimal_idx] * 100, 2),
+                'min_volatility_return': round(results[0, min_vol_idx] * 100, 2),
+                'min_volatility': round(results[1, min_vol_idx] * 100, 2),
+                'frontier_points': frontier_points
+            }
+            
+        except Exception as e:
+            logger.error(f"Efficient frontier calculation failed: {e}")
+            return {}
+    
+    def integrate_with_kelly(
+        self,
+        optimal_weights: Dict[str, float],
+        kelly_sizes: Dict[str, float],
+        max_position_pct: float = 25.0
+    ) -> Dict[str, float]:
+        """
+        Combine MPT optimal weights with Kelly criterion sizing.
+        
+        Formula: Final Size = min(Kelly * Weight, MaxPosition)
+        
+        Args:
+            optimal_weights: MPT weights {symbol: weight}
+            kelly_sizes: Kelly-based position sizes {symbol: pct}
+            max_position_pct: Maximum position size per asset
+        
+        Returns:
+            Final position sizes {symbol: pct}
+        """
+        final_sizes = {}
+        
+        for symbol in optimal_weights:
+            mpt_weight = optimal_weights.get(symbol, 0)
+            kelly_size = kelly_sizes.get(symbol, 10)  # Default 10%
+            
+            # Combine: Kelly * MPT weight
+            combined_size = kelly_size * mpt_weight
+            
+            # Apply max limit
+            final_size = min(combined_size, max_position_pct)
+            
+            final_sizes[symbol] = round(final_size, 2)
+        
+        logger.info(f"💼 Kelly-MPT Combined Sizes: {final_sizes}")
+        return final_sizes
+    
+    def get_allocation_summary_for_telegram(
+        self,
+        allocation: Dict[str, float],
+        analytics: Dict = None
+    ) -> str:
+        """
+        Format portfolio allocation for Telegram message.
+        """
+        lines = ["💼 **PORTFOLIO ALLOCATION**"]
+        
+        for symbol, weight in allocation.items():
+            # Create bar visualization
+            bar_len = int(weight * 10)  # 100% = 10 chars
+            bar = "█" * bar_len + "░" * (10 - bar_len)
+            short_sym = symbol.replace('/USDT', '').replace('/USD', '')
+            lines.append(f"   {short_sym}: {bar} {weight*100:.1f}%")
+        
+        if analytics:
+            div_score = analytics.get('diversification_score', 0)
+            corr_risk = analytics.get('correlation_risk', 'N/A')
+            
+            lines.append(f"━━━━━━━━━━━━━━")
+            lines.append(f"📊 Diversification: {div_score*100:.0f}%")
+            lines.append(f"⚠️ Correlation Risk: {corr_risk}")
+        
+        return "\n".join(lines)
+    
+    def get_optimal_allocation(
+        self,
+        price_data: Dict[str, pd.DataFrame],
+        kelly_sizes: Dict[str, float] = None,
+        risk_budget: float = 1.0
+    ) -> Dict:
+        """
+        Get optimal portfolio allocation combining all methods.
+        
+        This is the main entry point for Phase 29.4.
+        
+        Returns:
+            {
+                'allocation': {...},
+                'efficient_frontier': {...},
+                'analytics': {...},
+                'telegram_summary': '...'
+            }
+        """
+        # Calculate correlation matrix
+        corr_matrix = self.calculate_correlation_matrix(price_data, period=30)
+        
+        # Calculate efficient frontier
+        ef_result = self.calculate_efficient_frontier(price_data)
+        
+        if ef_result and 'optimal_weights' in ef_result:
+            allocation = ef_result['optimal_weights']
+        else:
+            # Fallback: equal weight
+            symbols = list(price_data.keys())
+            allocation = {s: 1.0/len(symbols) for s in symbols}
+        
+        # Integrate with Kelly if provided
+        if kelly_sizes:
+            allocation = self.integrate_with_kelly(allocation, kelly_sizes)
+        
+        # Calculate analytics
+        positions = {s: {'value': w * 100} for s, w in allocation.items()}
+        analytics = self.get_portfolio_analytics(positions, corr_matrix)
+        
+        # Format for Telegram
+        telegram_summary = self.get_allocation_summary_for_telegram(allocation, analytics)
+        
+        return {
+            'allocation': allocation,
+            'efficient_frontier': ef_result,
+            'analytics': analytics,
+            'correlation_matrix': corr_matrix.to_dict() if not corr_matrix.empty else {},
+            'telegram_summary': telegram_summary
+        }
+
+
+# Quick test
+if __name__ == "__main__":
+    import ccxt
+    
+    print("Testing Portfolio Optimizer...")
+    
+    # Fetch real data
+    exchange = ccxt.binance()
+    
+    price_data = {}
+    for symbol in ['BTC/USDT', 'ETH/USDT', 'SOL/USDT']:
+        ohlcv = exchange.fetch_ohlcv(symbol, '1d', limit=60)
+        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        price_data[symbol] = df
+    
+    optimizer = PortfolioOptimizer()
+    
+    # Test optimal allocation
+    result = optimizer.get_optimal_allocation(price_data)
+    
+    print(f"\nAllocation: {result['allocation']}")
+    print(f"\nEfficient Frontier: {result.get('efficient_frontier', {})}")
+    print(f"\nAnalytics: {result['analytics']}")
+    print(f"\nTelegram Summary:\n{result['telegram_summary']}")

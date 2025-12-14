@@ -6,6 +6,7 @@ import os
 from datetime import datetime, timedelta
 from src.config.settings import Config
 from src.core.signal_filter import SignalQualityFilter
+from src.utils.notification_priority import get_notification_priority, NotificationPriority
 
 logger = logging.getLogger("NOTIFICATION_MANAGER")
 
@@ -52,17 +53,22 @@ class NotificationManager:
         self.signal_filter = SignalQualityFilter(min_confidence=70.0)
         self.rejected_log_path = "rejected_signals.json"
         self.dedup_cache = DedupCache(cooldown_minutes=60) # Phase 21: Dedup
+        self.priority_calculator = get_notification_priority()  # Phase 29: Smart urgency
 
     async def send_signal(self, signal: dict, snapshot: dict = None):
         """
-        Sends signal to Telegram (Strictly for STRONG signals).
+        Sends ENHANCED signal to Telegram (Phase 29).
+        
+        New features:
+        - Urgency level (CRITICAL/HIGH/MEDIUM/LOW)
+        - Volume Profile zones (POC, VAH, VAL)
+        - Cross-exchange price comparison
         """
         if not self.telegram_token or not self.telegram_chat_id:
             return
             
         # 1. STRICT FILTER: Only STRONG signals
         if signal.get('quality') != 'STRONG':
-            # Log silent rejection
             return
         
         # 2. DEDUP CHECK
@@ -70,19 +76,30 @@ class NotificationManager:
         if self.dedup_cache.is_duplicate(signal['symbol'], signal['side'], price):
             return
         
+        # 3. CALCULATE URGENCY (Phase 29)
+        urgency_data = self.priority_calculator.calculate_urgency(signal, snapshot)
+        
+        # 4. Check urgency-based cooldown
+        if not urgency_data.get('can_send', True):
+            logger.debug(f"Signal blocked by urgency cooldown: {signal['symbol']}")
+            return
+        
         try:
             side_icon = "🟢 LONG 🚀" if signal['side'] == "BUY" else "🔴 SHORT 🔻"
             conf = signal['confidence']
             
             # Get enhanced data from snapshot
-            smart_sltp = snapshot.get('smart_sltp', {}) if snapshot else {}
-            mtf = snapshot.get('mtf', {}) if snapshot else {}
-            smc = snapshot.get('smc', {}) if snapshot else {}
+            snapshot = snapshot or {}
+            smart_sltp = snapshot.get('smart_sltp', {})
+            mtf = snapshot.get('mtf', {})
+            smc = snapshot.get('smc', {})
+            volume_profile = snapshot.get('volume_profile', {})
+            cross_exchange = snapshot.get('cross_exchange', {})
             
             # Entry and levels
             entry = signal['entry_price']
-            sl = smart_sltp.get('stop_loss', signal['sl_price'])
-            tp1 = smart_sltp.get('take_profit_1', signal['tp_price'])
+            sl = smart_sltp.get('stop_loss', signal.get('sl_price', 0))
+            tp1 = smart_sltp.get('take_profit_1', signal.get('tp_price', 0))
             tp2 = smart_sltp.get('take_profit_2', 0)
             tp3 = smart_sltp.get('take_profit_3', 0)
             
@@ -96,62 +113,106 @@ class NotificationManager:
             quality = smart_sltp.get('quality', signal.get('quality', 'UNKNOWN'))
             quality_emoji = "✅" if quality == "EXCELLENT" else "👍" if quality == "GOOD" else "⚠️"
             
+            # === BUILD ENHANCED MESSAGE ===
+            
+            # Header with Urgency
+            urgency = urgency_data['urgency']
+            urgency_emoji = urgency_data['emoji']
+            urgency_score = urgency_data['score']
+            action_window = urgency_data['action_window']
+            
+            message = f"{side_icon} **{signal['symbol']}**\n"
+            message += f"━━━━━━━━━━━━━━━━━━\n"
+            
+            # Urgency Banner (Phase 29)
+            if urgency == 'CRITICAL':
+                message += f"{urgency_emoji} **URGENCY: CRITICAL** {urgency_emoji}\n"
+                message += f"⚡ ACT NOW | Score: {urgency_score}/100\n"
+                message += f"⏱️ Window: {action_window}\n"
+            elif urgency == 'HIGH':
+                message += f"{urgency_emoji} **URGENCY: HIGH** | Score: {urgency_score}/100\n"
+                message += f"⏱️ Window: {action_window}\n"
+            else:
+                message += f"{urgency_emoji} Urgency: {urgency} | Score: {urgency_score}/100\n"
+            
+            message += f"━━━━━━━━━━━━━━━━━━\n"
+            
+            # Quality and Confidence
+            message += f"{quality_emoji} **Setup:** {quality}\n"
+            message += f"🧠 **Confidence:** {conf:.1f}%\n"
+            message += f"📉 **Reason:** {signal.get('reason', 'AI Model')[:50]}\n"
+            
             # MTF Confluence
             mtf_score = mtf.get('confluence_score', 0)
-            mtf_type = mtf.get('confluence_type', 'N/A')
-            trends = mtf.get('trends', {})
-            
-            # SMC Bias
-            smc_bias = smc.get('smc_bias', 'N/A')
-            
-            # Build message
-            message = (
-                f"{side_icon} **{signal['symbol']}**\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"{quality_emoji} **Setup Quality:** {quality}\n"
-                f"🧠 **Confidence:** {conf:.1f}%\n"
-                f"📉 **Reason:** {signal.get('reason', 'AI Model')[:50]}\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-            )
-            
-            # MTF Section
             if mtf_score > 0:
+                mtf_type = mtf.get('confluence_type', 'N/A')
+                trends = mtf.get('trends', {})
                 trend_1h = trends.get('1h', {}).get('trend', '?')
                 trend_4h = trends.get('4h', {}).get('trend', '?')
                 trend_1d = trends.get('1d', {}).get('trend', '?')
                 t1_e = "🟢" if trend_1h == "BULLISH" else "🔴" if trend_1h == "BEARISH" else "⚪"
                 t4_e = "🟢" if trend_4h == "BULLISH" else "🔴" if trend_4h == "BEARISH" else "⚪"
                 td_e = "🟢" if trend_1d == "BULLISH" else "🔴" if trend_1d == "BEARISH" else "⚪"
-                message += (
-                    f"📊 **MTF Confluence:** {mtf_score}% ({mtf_type})\n"
-                    f"   {t1_e}1H {t4_e}4H {td_e}1D\n"
-                )
+                message += f"📊 **MTF:** {mtf_score}% ({mtf_type})\n"
+                message += f"   {t1_e}1H {t4_e}4H {td_e}1D\n"
             
-            # SMC Section
+            # SMC Bias
+            smc_bias = smc.get('smc_bias', 'N/A')
             if smc_bias != 'N/A':
                 bias_e = "🟢" if smc_bias == "BULLISH" else "🔴" if smc_bias == "BEARISH" else "⚪"
-                message += f"🎯 **SMC Bias:** {bias_e} {smc_bias}\n"
+                message += f"🎯 **SMC:** {bias_e} {smc_bias}\n"
             
-            message += "━━━━━━━━━━━━━━━━━━\n"
+            # === VOLUME PROFILE SECTION (Phase 29.1) ===
+            vpoc = volume_profile.get('vpoc', 0)
+            vah = volume_profile.get('vah', 0)
+            val = volume_profile.get('val', 0)
+            vp_position = volume_profile.get('price_position', '')
             
-            # Entry/SL/TP Section with R:R
+            if vpoc > 0:
+                message += f"━━━ VOLUME PROFILE ━━━\n"
+                message += f"📊 **POC:** ${vpoc:,.0f}\n"
+                message += f"   VAH: ${vah:,.0f} | VAL: ${val:,.0f}\n"
+                
+                if vp_position:
+                    pos_emoji = "🔼" if "ABOVE" in vp_position else "🔽" if "BELOW" in vp_position else "↔️"
+                    message += f"   {pos_emoji} Price: {vp_position.replace('_', ' ')}\n"
+            
+            # === CROSS-EXCHANGE SECTION (Phase 29.3) ===
+            if cross_exchange and cross_exchange.get('exchanges_online', 0) > 1:
+                message += f"━━━ CROSS-EXCHANGE ━━━\n"
+                for ex in ['binance', 'bybit', 'coinbase']:
+                    if ex in cross_exchange and cross_exchange[ex].get('price', 0) > 0:
+                        ex_data = cross_exchange[ex]
+                        ex_price = ex_data['price']
+                        deviation = ex_data.get('deviation', 0)
+                        dev_str = f"+{deviation:.2f}%" if deviation > 0 else f"{deviation:.2f}%"
+                        dev_emoji = "🟢" if deviation > 0 else "🔴" if deviation < 0 else "⚪"
+                        message += f"   {dev_emoji} {ex.capitalize()}: ${ex_price:,.0f} ({dev_str})\n"
+                
+                max_div = cross_exchange.get('max_divergence', 0)
+                if max_div >= 0.1:
+                    message += f"   ⚡ **Divergence: {max_div:.2f}%**\n"
+            
+            message += f"━━━━━━━━━━━━━━━━━━\n"
+            
+            # Entry/SL/TP Section
             message += f"🚪 **ENTRY:** ${entry:,.2f}\n"
-            message += f"🛡️ **STOP LOSS:** ${sl:,.2f} ({risk_pct:.1f}% risk)\n"
+            if sl > 0:
+                message += f"🛡️ **STOP:** ${sl:,.2f} ({risk_pct:.1f}% risk)\n"
             message += f"━━━ TARGETS ━━━\n"
-            message += f"🎯 **TP1:** ${tp1:,.2f} (R:R {rr1})\n"
+            if tp1 > 0:
+                message += f"🎯 **TP1:** ${tp1:,.2f} (R:R {rr1})\n"
             if tp2 > 0:
                 message += f"🎯 **TP2:** ${tp2:,.2f} (R:R {rr2})\n"
             if tp3 > 0:
                 message += f"🎯 **TP3:** ${tp3:,.2f} (R:R {rr3})\n"
             
-            message += (
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"💰 **Position Size:** {signal.get('kelly_size', 'N/A')}%\n"
-                f"⚠️ _DYOR - AI Advisory Only v23_"
-            )
+            message += f"━━━━━━━━━━━━━━━━━━\n"
+            message += f"💰 **Size:** {signal.get('kelly_size', 'N/A')}%\n"
+            message += f"⚠️ _DYOR - AI Advisory Only v29_"
             
             await self.send_message_raw(message)
-            logger.info(f"✅ Enhanced Signal sent: {signal['symbol']}")
+            logger.info(f"✅ Phase 29 Enhanced Signal sent: {signal['symbol']} [Urgency: {urgency}]")
             
         except Exception as e:
             logger.error(f"Telegram Error: {e}")

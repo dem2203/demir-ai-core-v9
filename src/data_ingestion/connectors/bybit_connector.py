@@ -67,6 +67,75 @@ class BybitConnector:
         except Exception as e:
             logger.warning(f"Bybit Funding Rate Error ({symbol}): {e}")
             return 0.0
+    
+    # === Phase 29.3 Enhancements ===
+    
+    async def fetch_orderbook(self, symbol: str, limit: int = 25) -> Optional[Dict]:
+        """Fetch order book depth (Phase 29.3)"""
+        if not self.exchange: await self.connect()
+        if not self.exchange: return None
+        
+        try:
+            orderbook = await self.exchange.fetch_order_book(symbol, limit=limit)
+            
+            # Calculate bid/ask volumes
+            bid_volume = sum([price * amount for price, amount in orderbook['bids'][:limit]])
+            ask_volume = sum([price * amount for price, amount in orderbook['asks'][:limit]])
+            
+            return {
+                'bids': orderbook['bids'][:limit],
+                'asks': orderbook['asks'][:limit],
+                'bid_volume_usd': bid_volume,
+                'ask_volume_usd': ask_volume,
+                'imbalance': (bid_volume - ask_volume) / (bid_volume + ask_volume) if (bid_volume + ask_volume) > 0 else 0,
+                'source': 'bybit'
+            }
+        except Exception as e:
+            logger.error(f"Bybit Orderbook Error ({symbol}): {e}")
+            return None
+    
+    async def fetch_recent_trades(self, symbol: str, limit: int = 50) -> Optional[List[Dict]]:
+        """Fetch recent trades (Phase 29.3)"""
+        if not self.exchange: await self.connect()
+        if not self.exchange: return None
+        
+        try:
+            trades = await self.exchange.fetch_trades(symbol, limit=limit)
+            
+            formatted_trades = []
+            for trade in trades:
+                formatted_trades.append({
+                    'timestamp': trade['timestamp'],
+                    'price': float(trade['price']),
+                    'amount': float(trade['amount']),
+                    'side': trade['side'],
+                    'value_usd': float(trade['price']) * float(trade['amount']),
+                    'source': 'bybit'
+                })
+            
+            return formatted_trades
+        except Exception as e:
+            logger.error(f"Bybit Trades Error ({symbol}): {e}")
+            return None
+    
+    async def fetch_open_interest(self, symbol: str) -> Optional[Dict]:
+        """Fetch open interest (Phase 29.3)"""
+        if not self.exchange: await self.connect()
+        if not self.exchange: return None
+        
+        try:
+            # Bybit open interest endpoint
+            oi = await self.exchange.fetch_open_interest(symbol)
+            
+            return {
+                'open_interest': float(oi['openInterest']) if oi else 0,
+                'open_interest_value': float(oi.get('openInterestValue', 0)),
+                'symbol': symbol,
+                'source': 'bybit'
+            }
+        except Exception as e:
+            logger.debug(f"Bybit OI Error ({symbol}): {e}")
+            return None
 
     async def close(self):
         if self.exchange: await self.exchange.close()

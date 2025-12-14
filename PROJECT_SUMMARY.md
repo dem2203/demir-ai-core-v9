@@ -75,6 +75,7 @@ self.rl_model_map = {
 | 26 | Dashboard cleanup + backtest | ✅ |
 | 27 | v6 Macro Features + Signal Filter | ✅ |
 | 28 | Ensemble + Kelly + Auto-Retrain | ✅ |
+| 29 | Signal Enhancement + Multi-Exchange + Portfolio | ✅ |
 
 ---
 
