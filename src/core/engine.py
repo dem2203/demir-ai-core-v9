@@ -3,7 +3,7 @@ import logging
 import os
 import json
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # --- MODÜL İMPORTLARI ---
 from src.config.settings import Config
@@ -76,7 +76,8 @@ class BotEngine:
         self.performance_tracker = PerformanceTracker()
         self.exit_strategy = ExitStrategy()
         self.cycle_count = 0  # For periodic performance tracking
-        self.last_heartbeat_time = datetime.now() # Phase 21: Heartbeat
+        # Phase 21: Heartbeat - Set to 1 hour ago so first heartbeat sends immediately
+        self.last_heartbeat_time = datetime.now() - timedelta(hours=1)
         self.latest_prices = {} # For Heartbeat
         
         # 9. PHASE 22: Market Correlation & Derivatives
