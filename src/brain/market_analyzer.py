@@ -46,6 +46,9 @@ from src.brain.smart_sltp import SmartSLTPCalculator  # Intelligent SL/TP
 # PHASE 6: Reinforcement Learning Agent (Pekiştirmeli Öğrenme Ajanı)
 from src.brain.rl_agent.ppo_agent import RLAgent
 
+# PHASE 27: Signal Quality Filter
+from src.core.signal_filter import SignalQualityFilter
+
 logger = logging.getLogger("MARKET_ANALYZER_PRO")
 
 class MarketAnalyzer:
@@ -98,6 +101,13 @@ class MarketAnalyzer:
         self.mtf_analyzer = MTFAnalyzer()
         self.volume_profile = VolumeProfileAnalyzer()
         self.smart_sltp = SmartSLTPCalculator()
+        
+        # PHASE 27: Signal Quality Filter
+        self.signal_filter = SignalQualityFilter(
+            min_confidence=60.0,
+            min_mtf_confluence=50.0,
+            min_risk_reward=1.5
+        )
         
         # PHASE 6: RL Agent (Self-Learning Trader) - v3: 2 YEARS DATA + 500K TIMESTEPS!
         # Multi-coin support: each coin has its own trained model

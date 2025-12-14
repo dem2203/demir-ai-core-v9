@@ -96,6 +96,43 @@ class MacroConnector:
         result["macro_score"] = score
         result["timestamp"] = datetime.now().isoformat()
         
+        # v6 MACRO FEATURES: Cross-market correlations
+        try:
+            import ccxt
+            exchange = ccxt.binance()
+            
+            # ETH/BTC Ratio
+            eth_btc = exchange.fetch_ticker('ETH/BTC')
+            result['eth_btc_ratio'] = float(eth_btc['last']) if eth_btc else 0.0
+            
+            # Get BTC price for Gold/BTC
+            btc_usdt = exchange.fetch_ticker('BTC/USDT')
+            btc_price = float(btc_usdt['last']) if btc_usdt else 100000
+            
+            # Gold/BTC Ratio (Gold price from yfinance)
+            try:
+                gold = yf.Ticker("GC=F")
+                gold_price = gold.fast_info.get('last_price', 2000)
+                result['gold_btc_ratio'] = gold_price / btc_price if btc_price > 0 else 0.0
+            except:
+                result['gold_btc_ratio'] = 0.02  # fallback
+                
+            # S&P500/BTC correlation proxy
+            try:
+                spy = yf.Ticker("SPY")
+                spy_price = spy.fast_info.get('last_price', 500)
+                result['sp500_btc_ratio'] = spy_price / (btc_price / 1000) if btc_price > 0 else 0.0
+            except:
+                result['sp500_btc_ratio'] = 5.0  # fallback
+                
+            logger.info(f"📈 v6 Ratios: ETH/BTC={result.get('eth_btc_ratio', 0):.4f} | Gold/BTC={result.get('gold_btc_ratio', 0):.4f}")
+            
+        except Exception as e:
+            logger.warning(f"Could not fetch v6 ratios: {e}")
+            result['eth_btc_ratio'] = 0.0
+            result['gold_btc_ratio'] = 0.0
+            result['sp500_btc_ratio'] = 0.0
+        
         # Log summary
         rate_str = f"{rate}%" if result.get("interest_rate") else "N/A"
         dxy_str = f"{result.get('dxy', 0):.2f}" if result.get('dxy') else "N/A"

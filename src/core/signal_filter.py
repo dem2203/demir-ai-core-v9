@@ -1,119 +1,167 @@
+"""
+Signal Quality Filter Module
+Eliminates low-quality trading signals based on multiple criteria
+"""
 import logging
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 logger = logging.getLogger("SIGNAL_FILTER")
 
-class SignalFilter:
-    """
-    PRECISION FILTER - Signal Quality Control
-    
-    Calculates a 0-100 quality score for each signal.
-    Only signals with score >= threshold are sent to Telegram.
-    """
-    
-    def __init__(self, quality_threshold: int = 70):
-        self.quality_threshold = quality_threshold
-        logger.info(f"🎯 Precision Filter initialized (threshold={quality_threshold})")
-    
-    def calculate_signal_quality(self, signal_data: Dict, snapshot: Dict) -> int:
-        """
-        Calculate composite quality score (0-100).
-        
-        Scoring Breakdown:
-        - HTF Trend Alignment: 0-20 points
-        - Pattern Confirmation: 0-15 points
-        - Whale Wall Support: 0-15 points
-        - Confluence Quality: 0-20 points
-        - RL Agent Confidence: 0-30 points
-        """
-        score = 0
-        details = []
-        
-        # 1. HTF Trend Alignment (+20)
-        brain_state = snapshot.get('brain_state', {})
-        htf_direction = brain_state.get('htf_direction', 0)  # -1, 0, or 1
-        
-        # Check if signal aligns with HTF trend
-        if signal_data['side'] == 'BUY' and htf_direction > 0:
-            score += 20
-            details.append("✅ HTF Bullish (+20)")
-        elif signal_data['side'] == 'SELL' and htf_direction < 0:
-            score += 20
-            details.append("✅ HTF Bearish (+20)")
-        else:
-            details.append("⚠️ HTF Not Aligned (0)")
-        
-        # 2. Pattern Confirmation (+15)
-        pattern = signal_data.get('pattern', 'None')
-        if pattern and pattern != 'None':
-            score += 15
-            details.append(f"✅ Pattern: {pattern} (+15)")
-        else:
-            details.append("⚠️ No Pattern (0)")
-        
-        # 3. Whale Wall Support (+15)
-        whale_support = snapshot.get('whale_support', 0)
-        whale_resistance = snapshot.get('whale_resistance', 0)
-        
-        if (signal_data['side'] == 'BUY' and whale_support > 0) or \
-           (signal_data['side'] == 'SELL' and whale_resistance > 0):
-            score += 15
-            details.append(f"✅ Whale Wall ({signal_data['side']}) (+15)")
-        else:
-            details.append("⚠️ No Whale Wall (0)")
-        
-        # 4. Confluence Quality (+20)
-        quality = signal_data.get('quality', 'WEAK')
-        if quality == 'STRONG':
-            score += 20
-            details.append("✅ Strong Confluence (+20)")
-        elif quality == 'MODERATE':
-            score += 10
-            details.append("⚡ Moderate Confluence (+10)")
-        else:
-            details.append("⚠️ Weak/Conflicting (0)")
-        
-        # 5. RL Agent Confidence (+30)
-        confidence = signal_data.get('confidence', 50)
-        confidence_score = int(min(30, confidence * 0.3))
-        score += confidence_score
-        details.append(f"🤖 RL Confidence: {confidence:.0f}% (+{confidence_score})")
-        
-        logger.info(f"📊 Signal Quality Score: {score}/100 | {' | '.join(details)}")
-        return score
-    
-    def should_send_signal(self, signal_data: Dict, snapshot: Dict) -> Tuple[bool, int, str]:
-        """
-        Determine if signal meets quality threshold.
-        
-        STRICT FILTERING (Phase 21 - REVISED):
-        - PASS if Confidence > 85%
-        - PASS if Quality Score > 80 (Strong Confluence)
-        """
-        score = self.calculate_signal_quality(signal_data, snapshot)
-        confidence = signal_data.get('confidence', 0)
-        
-        # 1. Hybrid Check
-        is_high_confidence = confidence > 85
-        is_strong_confluence = score > 80
-        
-        if is_high_confidence:
-            return True, score, "High Confidence AI"
-            
-        if is_strong_confluence:
-            return True, score, f"Strong Confluence (Score: {score})"
-            
-        # Reject if neither
-        reason = f"⛔ WEAK SIGNAL (Conf: {confidence:.1f}%, Score: {score})"
-        logger.info(f"🔇 SIGNAL MUTED: {signal_data['symbol']} | {reason}")
-        return False, score, reason
 
-        # 2. Quality Score Check
-        if score >= self.quality_threshold:
-            reason = f"✅ PREMIUM SIGNAL (Quality: {score}/100)"
-            logger.info(f"🟢 SIGNAL APPROVED: {signal_data['symbol']} {signal_data['side']} | Score: {score}")
-            return True, score, reason
+class SignalQualityFilter:
+    """
+    Filters trading signals based on multiple quality criteria:
+    1. Confidence threshold
+    2. Multi-timeframe alignment
+    3. SMC confirmation
+    4. Volume confirmation
+    5. Risk/Reward minimum
+    """
+    
+    def __init__(
+        self,
+        min_confidence: float = 60.0,
+        min_mtf_confluence: float = 50.0,
+        min_risk_reward: float = 1.5,
+        require_smc_alignment: bool = True,
+        require_volume_confirm: bool = True
+    ):
+        self.min_confidence = min_confidence
+        self.min_mtf_confluence = min_mtf_confluence
+        self.min_risk_reward = min_risk_reward
+        self.require_smc_alignment = require_smc_alignment
+        self.require_volume_confirm = require_volume_confirm
+        
+        # Quality scoring weights
+        self.weights = {
+            'confidence': 0.25,
+            'mtf_confluence': 0.20,
+            'smc_alignment': 0.20,
+            'risk_reward': 0.15,
+            'volume': 0.10,
+            'technical': 0.10
+        }
+    
+    def filter_signal(
+        self, 
+        signal: Dict, 
+        snapshot: Optional[Dict] = None
+    ) -> Tuple[bool, float, str]:
+        """
+        Filter a trading signal based on quality criteria.
+        
+        Returns:
+            (should_trade, quality_score, reason)
+        """
+        if not signal or not snapshot:
+            return False, 0.0, "Missing signal or snapshot data"
+        
+        quality_score = 0.0
+        reasons = []
+        
+        # 1. Confidence Check
+        confidence = signal.get('ai_confidence', 0)
+        if confidence >= self.min_confidence:
+            quality_score += self.weights['confidence'] * min(confidence / 100, 1.0)
         else:
-            reason = f"⛔ LOW QUALITY (Score: {score}/100 < {self.quality_threshold})"
-            logger.warning(f"🔴 SIGNAL REJECTED: {signal_data['symbol']} {signal_data['side']} | Score: {score}")
-            return False, score, reason
+            reasons.append(f"Low confidence: {confidence:.1f}% < {self.min_confidence}%")
+        
+        # 2. MTF Confluence Check
+        mtf = snapshot.get('mtf', {})
+        mtf_score = mtf.get('confluence_score', 0)
+        if mtf_score >= self.min_mtf_confluence:
+            quality_score += self.weights['mtf_confluence'] * (mtf_score / 100)
+        else:
+            reasons.append(f"Low MTF confluence: {mtf_score}% < {self.min_mtf_confluence}%")
+        
+        # 3. SMC Alignment Check
+        smc = snapshot.get('smc', {})
+        smc_bias = smc.get('smc_bias', 'NEUTRAL')
+        signal_direction = signal.get('ai_decision', 'NEUTRAL')
+        
+        smc_aligned = (
+            (signal_direction == 'BUY' and smc_bias == 'BULLISH') or
+            (signal_direction == 'SELL' and smc_bias == 'BEARISH') or
+            not self.require_smc_alignment
+        )
+        
+        if smc_aligned:
+            quality_score += self.weights['smc_alignment']
+        else:
+            reasons.append(f"SMC misalignment: Signal={signal_direction}, SMC={smc_bias}")
+        
+        # 4. Risk/Reward Check
+        sltp = snapshot.get('smart_sltp', {})
+        rr1 = sltp.get('risk_reward_1', '0')
+        
+        # Parse R:R string like "1:2.5"
+        try:
+            if isinstance(rr1, str) and ':' in rr1:
+                parts = rr1.split(':')
+                rr_value = float(parts[1]) / float(parts[0])
+            else:
+                rr_value = float(rr1) if rr1 else 0
+        except:
+            rr_value = 0
+        
+        if rr_value >= self.min_risk_reward:
+            quality_score += self.weights['risk_reward'] * min(rr_value / 3, 1.0)
+        else:
+            reasons.append(f"Low R:R: {rr_value:.2f} < {self.min_risk_reward}")
+        
+        # 5. Volume Confirmation
+        vp = snapshot.get('volume_profile', {})
+        price_position = vp.get('price_position', 'UNKNOWN')
+        
+        volume_confirms = (
+            (signal_direction == 'BUY' and 'BELOW' in price_position) or
+            (signal_direction == 'SELL' and 'ABOVE' in price_position) or
+            not self.require_volume_confirm
+        )
+        
+        if volume_confirms:
+            quality_score += self.weights['volume']
+        else:
+            reasons.append(f"Volume not confirming: {price_position}")
+        
+        # 6. Technical Alignment
+        tech_bias = snapshot.get('tech_bias', 'NEUTRAL')
+        tech_aligned = (
+            (signal_direction == 'BUY' and tech_bias == 'BULLISH') or
+            (signal_direction == 'SELL' and tech_bias == 'BEARISH')
+        )
+        
+        if tech_aligned:
+            quality_score += self.weights['technical']
+        
+        # Final decision
+        quality_score = min(quality_score * 100, 100)  # Convert to percentage
+        
+        # Minimum threshold for trading
+        min_quality_threshold = 60.0
+        should_trade = quality_score >= min_quality_threshold and len(reasons) <= 2
+        
+        # Generate summary reason
+        if should_trade:
+            reason = f"PASS: Quality {quality_score:.1f}%"
+        else:
+            reason = f"REJECT ({quality_score:.1f}%): " + "; ".join(reasons[:3])
+        
+        logger.info(f"🎯 Signal Filter: {signal_direction} => {reason}")
+        
+        return should_trade, quality_score, reason
+    
+    def get_quality_grade(self, score: float) -> str:
+        """Convert quality score to letter grade."""
+        if score >= 90:
+            return "A+"
+        elif score >= 80:
+            return "A"
+        elif score >= 70:
+            return "B"
+        elif score >= 60:
+            return "C"
+        elif score >= 50:
+            return "D"
+        else:
+            return "F"
