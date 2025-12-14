@@ -52,6 +52,7 @@ from src.core.signal_filter import SignalQualityFilter
 # PHASE 28: Medium-Term AI Improvements
 from src.brain.ensemble_model import EnsembleModel
 from src.core.position_sizer import PositionSizer
+from src.core.risk_manager import RiskManager  # Required for smart_levels calculation
 
 logger = logging.getLogger("MARKET_ANALYZER_PRO")
 
@@ -138,6 +139,9 @@ class MarketAnalyzer:
         }
         
         self.regime_classifier = RegimeClassifier()
+        
+        # Risk Manager (required for smart_levels calculation)
+        self.risk_manager = RiskManager()
         
         # Başlangıç Yüklemeleri
         self.load_rl_agent()
