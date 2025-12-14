@@ -101,20 +101,22 @@ def render_coin_section(symbol: str, coin_data: dict, expanded: bool = False):
         m4.metric("📈 Fractal", f"{coin_data.get('fractal_score', 0):.0f}%")
         
         # SMC Section
-        st.markdown("#### 🎯 Smart Money Concepts")
+        st.markdown("#### 🎯 Smart Money Concepts (Akıllı Para Konseptleri)")
         smc = coin_data.get('smc', {})
         smc_signal = smc.get('smc_signal', {})
         
         s1, s2, s3, s4 = st.columns(4)
         smc_bias = smc.get('smc_bias', 'N/A')
         bias_emoji = "🟢" if smc_bias == "BULLISH" else "🔴" if smc_bias == "BEARISH" else "⚪"
-        s1.metric("SMC Bias", f"{bias_emoji} {smc_bias}")
-        s2.metric("Order Blocks", f"{len(smc.get('order_blocks', []))} active")
-        s3.metric("FVGs", f"{len(smc.get('fvgs', []))} unfilled")
-        s4.metric("Strength", f"{smc_signal.get('strength', 0)}%")
+        # BULLISH=Yükseliş, BEARISH=Düşüş
+        bias_tr = "YÜKSELİŞ" if smc_bias == "BULLISH" else "DÜŞÜŞ" if smc_bias == "BEARISH" else "NÖTR"
+        s1.metric("SMC Bias (Yön)", f"{bias_emoji} {bias_tr}")
+        s2.metric("Order Blocks (Emir Blokları)", f"{len(smc.get('order_blocks', []))} aktif")
+        s3.metric("FVGs (Boşluklar)", f"{len(smc.get('fvgs', []))} doldurulmamış")
+        s4.metric("Strength (Güç)", f"{smc_signal.get('strength', 0)}%")
         
         # MTF Section
-        st.markdown("#### 📊 Multi-Timeframe Confluence")
+        st.markdown("#### 📊 Multi-Timeframe Confluence (Çoklu Zaman Dilimi Uyumu)")
         mtf = coin_data.get('mtf', {})
         trends = mtf.get('trends', {})
         
@@ -123,24 +125,26 @@ def render_coin_section(symbol: str, coin_data: dict, expanded: bool = False):
         for col, (tf, label) in zip([t1, t2, t3], [('1h', '1H'), ('4h', '4H'), ('1d', '1D')]):
             trend = trends.get(tf, {}).get('trend', 'N/A')
             emoji = "🟢" if trend == "BULLISH" else "🔴" if trend == "BEARISH" else "⚪"
-            col.metric(f"{label} Trend", f"{emoji} {trend[:4] if len(trend) > 4 else trend}")
+            trend_tr = "YÜKSELİŞ" if trend == "BULLISH" else "DÜŞÜŞ" if trend == "BEARISH" else "NÖTR"
+            col.metric(f"{label} Trend (Yön)", f"{emoji} {trend_tr[:4]}")
         
-        t4.metric("Confluence", f"{mtf.get('confluence_score', 0)}%")
+        t4.metric("Confluence (Uyum)", f"{mtf.get('confluence_score', 0)}%")
         entry_qual = mtf.get('entry_quality', {})
-        t5.metric("Quality", entry_qual.get('rating', 'N/A'))
+        t5.metric("Quality (Kalite)", entry_qual.get('rating', 'N/A'))
         
         # Volume Profile Section
-        st.markdown("#### 📈 Volume Profile")
+        st.markdown("#### 📈 Volume Profile (Hacim Profili)")
         vp = coin_data.get('volume_profile', {})
         
         v1, v2, v3, v4 = st.columns(4)
-        v1.metric("VPOC", f"${vp.get('vpoc', 0):,.0f}")
-        v2.metric("VAH", f"${vp.get('vah', 0):,.0f}")
-        v3.metric("VAL", f"${vp.get('val', 0):,.0f}")
+        v1.metric("VPOC (En Çok İşlem)", f"${vp.get('vpoc', 0):,.0f}")
+        v2.metric("VAH (Üst Değer)", f"${vp.get('vah', 0):,.0f}")
+        v3.metric("VAL (Alt Değer)", f"${vp.get('val', 0):,.0f}")
         
         pos = vp.get('price_position', 'N/A')
         pos_emoji = "🟢" if "ABOVE" in pos else "🔴" if "BELOW" in pos else "⚪"
-        v4.metric("Position", f"{pos_emoji} {pos.replace('_', ' ')[:10]}")
+        pos_tr = "ÜSTTE" if "ABOVE" in pos else "ALTTA" if "BELOW" in pos else "ARADA"
+        v4.metric("Position (Konum)", f"{pos_emoji} {pos_tr}")
         
         # Smart SL/TP Section
         sltp = coin_data.get('smart_sltp', {})
