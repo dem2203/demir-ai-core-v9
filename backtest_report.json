@@ -1,0 +1,46 @@
+{
+  "results": [
+    {
+      "symbol": "BTC/USDT",
+      "roi": 9.238137798883526,
+      "win_rate": 54.54545454545454,
+      "wins": 6,
+      "losses": 5,
+      "trades": 11,
+      "sharpe": 4.630294823238927,
+      "final_balance": 10923.813779888353
+    },
+    {
+      "symbol": "ETH/USDT",
+      "roi": -4.7694036351885005,
+      "win_rate": 40.0,
+      "wins": 6,
+      "losses": 9,
+      "trades": 15,
+      "sharpe": -1.592268308103863,
+      "final_balance": 9523.05963648115
+    },
+    {
+      "symbol": "LTC/USDT",
+      "roi": -6.907548592191742,
+      "win_rate": 41.17647058823529,
+      "wins": 7,
+      "losses": 10,
+      "trades": 17,
+      "sharpe": -2.331260610833138,
+      "final_balance": 9309.245140780826
+    },
+    {
+      "symbol": "SOL/USDT",
+      "roi": 6.097885629702633,
+      "win_rate": 42.857142857142854,
+      "wins": 9,
+      "losses": 12,
+      "trades": 21,
+      "sharpe": 1.219918245766573,
+      "final_balance": 10609.788562970263
+    }
+  ],
+  "avg_roi": 0.9147678003014792,
+  "avg_sharpe": 0.48167103751712464
+}
