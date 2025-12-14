@@ -49,6 +49,10 @@ from src.brain.rl_agent.ppo_agent import RLAgent
 # PHASE 27: Signal Quality Filter
 from src.core.signal_filter import SignalQualityFilter
 
+# PHASE 28: Medium-Term AI Improvements
+from src.brain.ensemble_model import EnsembleModel
+from src.core.position_sizer import PositionSizer
+
 logger = logging.getLogger("MARKET_ANALYZER_PRO")
 
 class MarketAnalyzer:
@@ -107,6 +111,20 @@ class MarketAnalyzer:
             min_confidence=60.0,
             min_mtf_confluence=50.0,
             min_risk_reward=1.5
+        )
+        
+        # PHASE 28: Ensemble Model (RL + LSTM Voting)
+        self.ensemble_model = EnsembleModel(
+            rl_base_weight=0.55,
+            lstm_base_weight=0.45,
+            enable_dynamic_weights=True
+        )
+        
+        # PHASE 28: Risk-Adjusted Position Sizing
+        self.position_sizer = PositionSizer(
+            max_position_percent=25.0,
+            kelly_fraction=0.25,
+            max_risk_per_trade=2.0
         )
         
         # PHASE 6: RL Agent (Self-Learning Trader) - v3: 2 YEARS DATA + 500K TIMESTEPS!
