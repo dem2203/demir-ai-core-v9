@@ -20,6 +20,15 @@ logger = logging.getLogger("VISION_ANALYST")
 VISION_CACHE = {}
 CACHE_TTL_SECONDS = 1200  # 20 dakika - API quota korumak için artırıldı
 
+# PHASE 29 FIX: Track API quota status
+API_COOLDOWN = {
+    'gemini_quota_exceeded': False,
+    'openai_quota_exceeded': False,
+    'gemini_cooldown_until': 0,
+    'openai_cooldown_until': 0
+}
+QUOTA_COOLDOWN_SECONDS = 3600  # 1 hour cooldown after quota exceeded
+
 class VisionAnalyst:
     """
     DUAL VISION CORTEX - Multi-Model AI Vision Analysis
@@ -110,18 +119,40 @@ class VisionAnalyst:
             errors = []
             
             if self.gemini_active:
-                gemini_result, gemini_error = self._query_gemini(img_bytes)
-                if gemini_result:
-                    analyses.append(("Gemini", gemini_result))
-                elif gemini_error:
-                    errors.append(f"Gemini Error: {gemini_error}")
+                # Check cooldown
+                current_time = time.time()
+                if API_COOLDOWN['gemini_quota_exceeded'] and current_time < API_COOLDOWN['gemini_cooldown_until']:
+                    remaining = int(API_COOLDOWN['gemini_cooldown_until'] - current_time)
+                    errors.append(f"Gemini in cooldown ({remaining}s remaining)")
+                else:
+                    gemini_result, gemini_error = self._query_gemini(img_bytes)
+                    if gemini_result:
+                        analyses.append(("Gemini", gemini_result))
+                    elif gemini_error:
+                        errors.append(f"Gemini Error: {gemini_error}")
+                        # Check if quota exceeded
+                        if "429" in str(gemini_error) or "quota" in str(gemini_error).lower():
+                            API_COOLDOWN['gemini_quota_exceeded'] = True
+                            API_COOLDOWN['gemini_cooldown_until'] = time.time() + QUOTA_COOLDOWN_SECONDS
+                            logger.warning(f"⚠️ Gemini quota exceeded. Cooldown for {QUOTA_COOLDOWN_SECONDS}s")
                     
             if self.openai_active:
-                openai_result, openai_error = self._query_openai(img_bytes)
-                if openai_result:
-                    analyses.append(("GPT-4o", openai_result))
-                elif openai_error:
-                    errors.append(f"GPT-4o Error: {openai_error}")
+                # Check cooldown
+                current_time = time.time()
+                if API_COOLDOWN['openai_quota_exceeded'] and current_time < API_COOLDOWN['openai_cooldown_until']:
+                    remaining = int(API_COOLDOWN['openai_cooldown_until'] - current_time)
+                    errors.append(f"OpenAI in cooldown ({remaining}s remaining)")
+                else:
+                    openai_result, openai_error = self._query_openai(img_bytes)
+                    if openai_result:
+                        analyses.append(("GPT-4o", openai_result))
+                    elif openai_error:
+                        errors.append(f"GPT-4o Error: {openai_error}")
+                        # Check if quota exceeded
+                        if "429" in str(openai_error) or "quota" in str(openai_error).lower():
+                            API_COOLDOWN['openai_quota_exceeded'] = True
+                            API_COOLDOWN['openai_cooldown_until'] = time.time() + QUOTA_COOLDOWN_SECONDS
+                            logger.warning(f"⚠️ OpenAI quota exceeded. Cooldown for {QUOTA_COOLDOWN_SECONDS}s")
             
             # 3. Combine Results
             if len(analyses) == 0:

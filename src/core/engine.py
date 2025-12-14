@@ -117,6 +117,7 @@ class BotEngine:
         Sonsuz Yaşam Döngüsü.
         """
         error_count = 0
+        last_error = ""
         
         while self.is_running:
             start_time = datetime.now()
@@ -132,16 +133,31 @@ class BotEngine:
                     self.last_heartbeat_time = datetime.now()
                     logger.info("💓 Heartbeat sent to Telegram.")
                     
-                error_count = 0 
+                error_count = 0  # Reset on success
                 
             except Exception as e:
                 error_count += 1
-                logger.error(f"⚠️ CYCLE ERROR ({error_count}): {str(e)}")
+                last_error = str(e)[:200]  # Truncate long errors
+                logger.error(f"⚠️ CYCLE ERROR ({error_count}): {last_error}")
+                
+                # Import traceback for detailed error info
+                import traceback
+                tb = traceback.format_exc()
+                logger.error(f"Traceback: {tb[:500]}")
                 
                 if error_count > 5:
                     logger.critical("🚨 Too many consecutive errors! Pausing for 5 minutes.")
-                    await self.notifier.send_message_raw("⚠️ **SİSTEM UYARISI:** Üst üste hata alındı. 5dk soğuma moduna geçiliyor.")
+                    # IMPROVED: Send actual error to Telegram for debugging
+                    error_msg = (
+                        f"⚠️ **SİSTEM UYARISI**\n"
+                        f"━━━━━━━━━━━━━━\n"
+                        f"Üst üste {error_count} hata alındı.\n"
+                        f"5dk soğuma moduna geçiliyor.\n\n"
+                        f"**Son Hata:**\n`{last_error}`"
+                    )
+                    await self.notifier.send_message_raw(error_msg)
                     await asyncio.sleep(300)
+                    error_count = 0  # Reset after cooling
                 else:
                     await asyncio.sleep(5) 
             
