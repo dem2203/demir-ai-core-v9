@@ -232,7 +232,14 @@ class BotEngine:
         symbol = ticker_data[0]['symbol']
         
         # --- BEYİN KATMANI (Brain Layer) ---
-        signal, snapshot = await self.analyzer.analyze_market(symbol, ticker_data)
+        result = await self.analyzer.analyze_market(symbol, ticker_data)
+        
+        # FIX: Handle case where analyze_market returns None
+        if result is None:
+            logger.warning(f"analyze_market returned None for {symbol}")
+            return
+        
+        signal, snapshot = result
         
         # --- PROAKTİF ERKEN UYARI (Early Warning) ---
         # Send early warnings to Telegram BEFORE signal is generated

@@ -305,7 +305,8 @@ class MarketAnalyzer:
         # 1. MULTI-TIMEFRAME VERİ ÇEK
         mtf_data = await self.fetch_multi_timeframe_data(symbol)
         if not mtf_data or '1h' not in mtf_data:
-            return None  # Cannot analyze without 1h data
+            logger.warning(f"No 1h data available for {symbol}, skipping analysis")
+            return None, None  # FIX: Return tuple instead of bare None
             
         df_1h = mtf_data['1h']  # Ana analiz 1H üzerinden döner
         last_row = df_1h.iloc[-1]
