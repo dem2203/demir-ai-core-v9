@@ -411,43 +411,6 @@ class MarketAnalyzer:
             adaptive_strategy = 'WAIT'
             risk_multiplier = 1.0
 
-        # --- PHASE 23: ADVANCED SIGNAL FEATURES ---
-        # 8.5 SMART MONEY CONCEPTS (Order Blocks, FVG, Liquidity)
-        try:
-            smc_data = self.smc_analyzer.analyze(df)
-            smc_signal = smc_data.get('smc_signal', {})
-            smc_bias = smc_data.get('smc_bias', 'NEUTRAL')
-            logger.info(f"🎯 SMC: {smc_signal.get('direction', 'N/A')} | Bias: {smc_bias} | OBs: {len(smc_data.get('order_blocks', []))}")
-        except Exception as e:
-            logger.warning(f"SMC analysis failed: {e}")
-            smc_data = {'smc_signal': {'direction': 'NEUTRAL'}, 'smc_bias': 'NEUTRAL', 'order_blocks': [], 'fvgs': []}
-            smc_signal = smc_data['smc_signal']
-            smc_bias = 'NEUTRAL'
-        
-        # 8.6 MULTI-TIMEFRAME CONFLUENCE (1H/4H/1D)
-        try:
-            mtf_analysis = self.mtf_analyzer.analyze(symbol)
-            mtf_confluence = mtf_analysis.get('confluence_score', 0)
-            mtf_type = mtf_analysis.get('confluence_type', 'N/A')
-            logger.info(f"📊 MTF: {mtf_type} | Score: {mtf_confluence}%")
-        except Exception as e:
-            logger.warning(f"MTF analysis failed: {e}")
-            mtf_analysis = {'confluence_score': 0, 'confluence_type': 'N/A', 'trends': {}, 'entry_quality': {}}
-            mtf_confluence = 0
-            mtf_type = 'N/A'
-        
-        # 8.7 VOLUME PROFILE (VPOC, HVN, LVN)
-        try:
-            vp_data = self.volume_profile.analyze(df)
-            vpoc = vp_data.get('vpoc', 0)
-            price_position = vp_data.get('price_position', 'UNKNOWN')
-            logger.info(f"📈 Volume Profile: VPOC=${vpoc:,.0f} | Position: {price_position}")
-        except Exception as e:
-            logger.warning(f"Volume Profile analysis failed: {e}")
-            vp_data = {'vpoc': 0, 'vah': 0, 'val': 0, 'price_position': 'UNKNOWN', 'hvn_zones': [], 'lvn_zones': []}
-            vpoc = 0
-            price_position = 'UNKNOWN'
-
         # --- PHASE 9: ADVANCED TECHNICAL ANALYSIS ---
         try:
             tech_analysis = self.technical_analyzer.get_full_analysis(df)
@@ -796,6 +759,53 @@ class MarketAnalyzer:
         except Exception:
             macro_data = {}
 
+        # ======================================
+        # PHASE 23: ADVANCED SIGNAL FEATURES
+        # SMC, MTF Confluence, Volume Profile, Smart SL/TP
+        # ======================================
+        try:
+            # SMC Analysis (Order Blocks, FVG, Liquidity)
+            smc_data = self.smc_analyzer.analyze(df)
+            logger.info(f"🎯 SMC: {smc_data.get('smc_bias', 'N/A')} | OBs: {len(smc_data.get('order_blocks', []))} | FVGs: {len(smc_data.get('fvgs', []))}")
+        except Exception as e:
+            logger.warning(f"SMC analysis failed: {e}")
+            smc_data = {}
+        
+        try:
+            # MTF Confluence (1H/4H/1D)
+            mtf_confluence = self.mtf_analyzer.analyze(symbol)
+            logger.info(f"📊 MTF: {mtf_confluence.get('confluence_type', 'N/A')} ({mtf_confluence.get('confluence_score', 0)}%)")
+        except Exception as e:
+            logger.warning(f"MTF analysis failed: {e}")
+            mtf_confluence = {}
+        
+        try:
+            # Volume Profile (VPOC, HVN, LVN)
+            vp_data = self.volume_profile.analyze(df)
+            logger.info(f"📈 VP: VPOC=${vp_data.get('vpoc', 0):,.0f} | Position: {vp_data.get('price_position', 'N/A')}")
+        except Exception as e:
+            logger.warning(f"Volume Profile analysis failed: {e}")
+            vp_data = {}
+        
+        try:
+            # Smart SL/TP (based on SMC + MTF + VP)
+            price = float(last_row['close'])
+            atr = float(last_row.get('atr', price * 0.02))
+            direction = 'LONG' if ai_decision == 'BUY' else 'SHORT' if ai_decision == 'SELL' else 'NONE'
+            
+            smart_sltp = self.smart_sltp.calculate(
+                direction=direction,
+                entry_price=price,
+                smc_data=smc_data,
+                mtf_data=mtf_confluence,
+                vp_data=vp_data,
+                atr=atr
+            )
+            logger.info(f"🎯 SL/TP: SL=${smart_sltp.get('stop_loss', 0):,.0f} | TP1=${smart_sltp.get('take_profit_1', 0):,.0f} | Quality: {smart_sltp.get('quality', 'N/A')}")
+        except Exception as e:
+            logger.warning(f"Smart SL/TP calculation failed: {e}")
+            smart_sltp = {}
+
         snapshot = {
             "symbol": symbol,
             "price": float(last_row['close']),
@@ -861,30 +871,11 @@ class MarketAnalyzer:
             "timestamp": pd.Timestamp.now().isoformat(),
             # PHASE 23: Advanced Signal Features
             "smc": smc_data,
-            "mtf": mtf_analysis,
+            "mtf": mtf_confluence,
             "volume_profile": vp_data,
+            "smart_sltp": smart_sltp,
+
         }
-        
-        # Calculate Smart SL/TP using Phase 23 data
-        try:
-            price = float(last_row['close'])
-            atr = float(last_row.get('atr', price * 0.02))
-            direction = 'LONG' if ai_decision == 'BUY' else 'SHORT' if ai_decision == 'SELL' else 'NONE'
-            
-            smart_sltp_data = self.smart_sltp.calculate(
-                direction=direction,
-                entry_price=price,
-                smc_data=smc_data,
-                mtf_data=mtf_analysis,
-                vp_data=vp_data,
-                atr=atr
-            )
-            snapshot['smart_sltp'] = smart_sltp_data
-            if smart_sltp_data.get('valid'):
-                logger.info(f"🎯 Smart SL/TP: SL=${smart_sltp_data['stop_loss']:,.0f} TP1=${smart_sltp_data['take_profit_1']:,.0f} R:R={smart_sltp_data['risk_reward_1']}")
-        except Exception as e:
-            logger.warning(f"Smart SL/TP calculation failed: {e}")
-            snapshot['smart_sltp'] = {'valid': False}
         
         # ======================================
         # PROACTIVE EARLY WARNING SYSTEM
