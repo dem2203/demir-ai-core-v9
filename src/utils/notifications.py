@@ -53,6 +53,9 @@ class NotificationManager:
         self.signal_filter = SignalQualityFilter(min_confidence=70.0)
         self.rejected_log_path = "rejected_signals.json"
         self.dedup_cache = DedupCache(cooldown_minutes=60) # Phase 21: Dedup
+        
+        # Phase 30 Fix: Early warning deduplication (4 hour cooldown for same symbol+direction)
+        self.early_warning_cache = {}  # {symbol_direction: last_sent_time}
         self.priority_calculator = get_notification_priority()  # Phase 29: Smart urgency
 
     async def send_signal(self, signal: dict, snapshot: dict = None):
@@ -311,6 +314,22 @@ class NotificationManager:
         
         if not warnings:
             return
+        
+        # Phase 30 Fix: Check if we already sent this warning recently (4 hour cooldown)
+        # Create a key from symbol + first warning title/type
+        first_warning = warnings[0] if warnings else {}
+        warning_key = f"{symbol}_{first_warning.get('title', 'unknown')}"
+        
+        now = datetime.now()
+        if warning_key in self.early_warning_cache:
+            last_sent = self.early_warning_cache[warning_key]
+            hours_since = (now - last_sent).total_seconds() / 3600
+            if hours_since < 4:  # 4 hour cooldown
+                logger.debug(f"Early warning skipped (sent {hours_since:.1f}h ago): {warning_key}")
+                return
+        
+        # Update cache
+        self.early_warning_cache[warning_key] = now
         
         try:
             # Build message
