@@ -122,7 +122,8 @@ def render_coin_section(symbol: str, coin_data: dict, expanded: bool = False):
             obs = smc.get('order_blocks', [])
             st.metric("Emir Blokları", f"{len(obs)} aktif" if obs else "0")
             if obs:
-                ob_prices = ", ".join([f"${ob.get('price', 0):,.0f}" for ob in obs[:3]])
+                # SMC analyzer uses 'top' and 'bottom' for OB ranges
+                ob_prices = ", ".join([f"${ob.get('bottom', 0):,.0f}-${ob.get('top', 0):,.0f}" for ob in obs[:2]])
                 st.caption(f'_"{ob_prices}"_')
             else:
                 st.caption('_"Destek/direnç bölgesi yok"_')
@@ -132,7 +133,8 @@ def render_coin_section(symbol: str, coin_data: dict, expanded: bool = False):
             fvgs = smc.get('fvgs', [])
             st.metric("Boşluklar (FVG)", f"{len(fvgs)} adet" if fvgs else "0")
             if fvgs:
-                fvg_ranges = ", ".join([f"${fvg.get('low', 0):,.0f}-${fvg.get('high', 0):,.0f}" for fvg in fvgs[:2]])
+                # SMC analyzer uses 'bottom' and 'top' for FVG ranges
+                fvg_ranges = ", ".join([f"${fvg.get('bottom', 0):,.0f}-${fvg.get('top', 0):,.0f}" for fvg in fvgs[:2]])
                 st.caption(f'_"{fvg_ranges}"_')
             else:
                 st.caption('_"Fiyat boşluğu yok"_')
