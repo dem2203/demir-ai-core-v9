@@ -156,9 +156,9 @@ class MoneyFlowAnalyzer:
                                     
                                     # Arrow based on buyer %
                                     if buyer_pct >= 50:
-                                        arrows.append('🔺')
+                                        arrows.append('🟢')
                                     else:
-                                        arrows.append('🔻')
+                                        arrows.append('🔴')
                                 else:
                                     tf_buyers[tf] = 50.0
                                     arrows.append('➖')

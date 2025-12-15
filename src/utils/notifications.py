@@ -316,7 +316,7 @@ class NotificationManager:
             tf_flows = money_flow_data.get('timeframe_flows', money_flow_data.get('market_flow', {}))
             for tf in ['15m', '1h', '4h', '12h', '1d']:
                 pct = tf_flows.get(tf, 50)
-                arrow = "🔺" if pct >= 50 else "🔻"
+                arrow = "🟢▲" if pct >= 50 else "🔴▼"
                 msg += f"{tf}=> **%{pct:.1f}** {arrow}\n"
             
             msg += "━━━━━━━━━━━━━━━━━━━━\n"
