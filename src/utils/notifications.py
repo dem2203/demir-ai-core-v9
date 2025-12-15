@@ -56,6 +56,11 @@ class NotificationManager:
         
         # Phase 30 Fix: Early warning deduplication (4 hour cooldown for same symbol+direction)
         self.early_warning_cache = {}  # {symbol_direction: last_sent_time}
+        
+        # Phase 31: Active positions tracking - prevents repeat signals until TP/SL hit
+        # Format: {symbol: {'side': 'BUY', 'entry': price, 'sl': price, 'tp1': price, 'timestamp': datetime}}
+        self.active_positions = {}
+        
         self.priority_calculator = get_notification_priority()  # Phase 29: Smart urgency
 
     async def send_signal(self, signal: dict, snapshot: dict = None):
@@ -78,6 +83,41 @@ class NotificationManager:
         price = signal.get('entry_price', signal.get('price', 0))
         if self.dedup_cache.is_duplicate(signal['symbol'], signal['side'], price):
             return
+        
+        # 2.5 POSITION TRACKING CHECK (Phase 31)
+        # If we already have an active position for this symbol, check if TP/SL was hit
+        symbol = signal['symbol']
+        if symbol in self.active_positions:
+            pos = self.active_positions[symbol]
+            
+            # Check if position expired (24 hour max)
+            hours_since = (datetime.now() - pos['timestamp']).total_seconds() / 3600
+            if hours_since >= 24:
+                logger.info(f"📊 Position expired after 24h: {symbol}")
+                del self.active_positions[symbol]
+            else:
+                # Check if TP1 or SL was hit
+                current_price = price
+                if pos['side'] == 'BUY':  # LONG position
+                    if pos['tp1'] > 0 and current_price >= pos['tp1']:
+                        logger.info(f"🎯 LONG TP1 HIT: {symbol} at ${current_price:,.2f}")
+                        del self.active_positions[symbol]
+                    elif pos['sl'] > 0 and current_price <= pos['sl']:
+                        logger.info(f"🛡️ LONG SL HIT: {symbol} at ${current_price:,.2f}")
+                        del self.active_positions[symbol]
+                    else:
+                        logger.debug(f"⏳ Active LONG position exists for {symbol}, skipping signal")
+                        return
+                else:  # SHORT position
+                    if pos['tp1'] > 0 and current_price <= pos['tp1']:
+                        logger.info(f"🎯 SHORT TP1 HIT: {symbol} at ${current_price:,.2f}")
+                        del self.active_positions[symbol]
+                    elif pos['sl'] > 0 and current_price >= pos['sl']:
+                        logger.info(f"🛡️ SHORT SL HIT: {symbol} at ${current_price:,.2f}")
+                        del self.active_positions[symbol]
+                    else:
+                        logger.debug(f"⏳ Active SHORT position exists for {symbol}, skipping signal")
+                        return
         
         # 3. CALCULATE URGENCY (Phase 29)
         urgency_data = self.priority_calculator.calculate_urgency(signal, snapshot)
@@ -216,6 +256,16 @@ class NotificationManager:
             
             await self.send_message_raw(message)
             logger.info(f"✅ Phase 29 Enhanced Signal sent: {signal['symbol']} [Urgency: {urgency}]")
+            
+            # Phase 31: Register position for tracking
+            self.active_positions[signal['symbol']] = {
+                'side': signal['side'],
+                'entry': entry,
+                'sl': sl,
+                'tp1': tp1,
+                'timestamp': datetime.now()
+            }
+            logger.info(f"📊 Position registered: {signal['symbol']} {signal['side']} Entry=${entry:,.2f} SL=${sl:,.2f} TP1=${tp1:,.2f}")
             
         except Exception as e:
             logger.error(f"Telegram Error: {e}")
