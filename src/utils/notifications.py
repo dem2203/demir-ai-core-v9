@@ -297,50 +297,55 @@ class NotificationManager:
         """
         Mikabot tarzı para akışı raporu gönderir.
         (Sends Mikabot-style money flow report to Telegram)
+        
+        Yeni Format (v2):
+        - Coin başına Flow %, 15m %, Mts değeri
+        - 6 timeframe için oklar (5m, 15m, 1h, 4h, 12h, 1d)
         """
         if not self.telegram_token or not self.telegram_chat_id:
             return
         
         try:
             # Header
-            msg = "📊 **Marketteki Nakit Akışı Raporu**\n"
-            msg += f"Kısa Vadeli Alım Gücü: **{money_flow_data.get('buying_power', '0X')}**\n"
-            msg += f"Marketteki Hacim Payı: %{money_flow_data.get('market_buyer_pct', 50):.1f}\n"
+            msg = "📊 **Marketteki Tüm Coinlere Olan Nakit Girişi Raporu.**\n"
+            msg += f"_Kısa Vadeli Market Alım Gücü:_ **{money_flow_data.get('buying_power', '0X')}**\n"
+            msg += f"_Marketteki Hacim Payı:_ **%{money_flow_data.get('market_buyer_pct', 50):.1f}**\n"
             msg += "━━━━━━━━━━━━━━━━━━━━\n"
             
-            # Timeframe analysis
-            market_flow = money_flow_data.get('market_flow', {})
+            # Timeframe analysis (use new 'timeframe_flows' key)
+            tf_flows = money_flow_data.get('timeframe_flows', money_flow_data.get('market_flow', {}))
             for tf in ['15m', '1h', '4h', '12h', '1d']:
-                pct = market_flow.get(tf, 50)
+                pct = tf_flows.get(tf, 50)
                 arrow = "🔺" if pct >= 50 else "🔻"
-                msg += f"{tf}=> %{pct:.1f} {arrow}\n"
+                msg += f"{tf}=> **%{pct:.1f}** {arrow}\n"
             
             msg += "━━━━━━━━━━━━━━━━━━━━\n"
             
-            # Top inflow coins
-            msg += "**En Çok Nakit Girişi Olanlar:**\n"
-            msg += "_(🔺: alım baskısı, 🔻: satış baskısı)_\n\n"
+            # Coin details (new detailed format)
+            msg += "**En çok nakit girişi olanlar.**\n"
+            msg += "_(Sonunda 🔺 olanlar sağlıklıdır)_\n"
+            msg += "_Nakitin nereye aktığını gösterir._\n\n"
             
-            for symbol, pct in money_flow_data.get('top_inflow', [])[:5]:
-                clean_symbol = symbol.replace('USDT', '')
-                
-                # Momentum arrows
-                if pct >= 60:
-                    arrows = "🔺🔺🔺"
-                elif pct >= 55:
-                    arrows = "🔺🔺"
-                elif pct >= 50:
-                    arrows = "🔺"
-                elif pct >= 45:
-                    arrows = "🔻"
-                elif pct >= 40:
-                    arrows = "🔻🔻"
-                else:
-                    arrows = "🔻🔻🔻"
-                
-                msg += f"🔹 **{clean_symbol}** Nakit: %{pct:.1f} {arrows}\n"
+            # Use new coin_details or fallback to old top_inflow
+            coin_details = money_flow_data.get('coin_details', [])
             
-            msg += "━━━━━━━━━━━━━━━━━━━━\n"
+            if coin_details:
+                for coin in coin_details[:5]:  # Top 5
+                    symbol = coin.get('symbol', '???')
+                    flow_pct = coin.get('flow_pct', 0)
+                    buyer_15m = coin.get('buyer_15m', 50)
+                    mts = coin.get('mts', 0)
+                    arrows = coin.get('arrows', '➖➖➖➖➖➖')
+                    
+                    msg += f"**{symbol}** Nakit: %{flow_pct:.1f} 15m:%{buyer_15m:.0f} Mts:{mts} {arrows}\n"
+            else:
+                # Fallback to old format
+                for symbol, pct in money_flow_data.get('top_inflow', [])[:5]:
+                    clean_symbol = symbol.replace('USDT', '')
+                    arrows = "🔺🔺🔺" if pct >= 55 else "🔺" if pct >= 50 else "🔻"
+                    msg += f"🔹 **{clean_symbol}** Nakit: %{pct:.1f} {arrows}\n"
+            
+            msg += "\n━━━━━━━━━━━━━━━━━━━━\n"
             msg += f"_Güncelleme: {datetime.now().strftime('%H:%M')}_"
             
             await self.send_message_raw(msg)

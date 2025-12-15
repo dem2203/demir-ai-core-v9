@@ -1,15 +1,15 @@
 """
-MARKET MONEY FLOW ANALYZER (Phase 30)
-=====================================
-Mikabot-tarzı para akışı analizi.
+MARKET MONEY FLOW ANALYZER (Phase 30 v2)
+=========================================
+Mikabot-tarzı para akışı analizi - TAM FORMAT.
 
-Hesaplama:
-    Buyer % = (Taker Buy Volume / Total Volume) × 100
-    
-    - %50+ → Alıcılar baskın (🔺 yeşil ok)
-    - %50- → Satıcılar baskın (🔻 kırmızı ok)
+Her coin için:
+    - Flow %: Toplam akış içindeki pay
+    - 15m %: 15 dakikalık alıcı yüzdesi
+    - Mts: Momentum değeri (0-1 arası)
+    - Oklar: Her timeframe için yön (5m, 15m, 1h, 4h, 12h, 1d)
 
-Veri Kaynağı: Binance Futures API
+Veri Kaynağı: Binance Futures Klines API
 """
 
 import logging
@@ -22,24 +22,27 @@ logger = logging.getLogger("MONEY_FLOW")
 
 class MoneyFlowAnalyzer:
     """
-    Market-wide para akışı analizi.
-    Tüm coinler için buyer/seller oranını hesaplar.
+    Mikabot-tarzı detaylı para akışı analizi.
+    Multi-timeframe, momentum ve coin bazlı analiz.
     """
     
-    # Timeframes to analyze (Binance intervals)
-    TIMEFRAMES = {
-        '15m': '15m',
-        '1h': '1h',
-        '4h': '4h',
-        '12h': '12h',
-        '1d': '1d'
+    # Timeframes for arrows (in order: 5m, 15m, 1h, 4h, 12h, 1d)
+    TIMEFRAMES = ['5m', '15m', '1h', '4h', '12h', '1d']
+    
+    # Klines limit per timeframe
+    KLINES_LIMIT = {
+        '5m': 12,   # 1 hour of data
+        '15m': 4,   # 1 hour of data
+        '1h': 1,    # Last hour
+        '4h': 1,    # Last 4 hours
+        '12h': 1,   # Last 12 hours
+        '1d': 1     # Last day
     }
     
     # Top coins to analyze
     TARGET_SYMBOLS = [
-        'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'LTCUSDT',
-        'XRPUSDT', 'BNBUSDT', 'ADAUSDT', 'DOGEUSDT',
-        'AVAXUSDT', 'DOTUSDT'
+        'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT',
+        'ADAUSDT', 'DOGEUSDT', 'AVAXUSDT', 'DOTUSDT', 'LTCUSDT'
     ]
     
     BASE_URL = "https://fapi.binance.com"
@@ -50,226 +53,221 @@ class MoneyFlowAnalyzer:
     
     async def get_market_money_flow(self) -> Dict:
         """
-        Tüm piyasa için para akışı raporu oluşturur.
+        Mikabot formatında piyasa para akışı raporu.
         
         Returns:
             {
-                'market_flow': {'15m': 48.5, '1h': 43.2, ...},
-                'coin_flows': {'BTCUSDT': {...}, 'ETHUSDT': {...}},
-                'top_inflow': [('BTCUSDT', 14.2), ...],
-                'top_outflow': [('ETHUSDT', -5.3), ...]
+                'market_buyer_pct': 86.1,
+                'market_15m_pct': 56.6,
+                'buying_power': '1.8X',
+                'timeframe_flows': {'15m': 56.6, '1h': 47.3, ...},
+                'coin_details': [
+                    {'symbol': 'BTC', 'flow_pct': 22.0, 'buyer_15m': 64, 'mts': 0.8, 'arrows': '🔺🔺🔺🔻🔻🔻'},
+                    ...
+                ]
             }
         """
         try:
-            # 1. Her coin için 24h ticker verisi al
-            coin_data = await self._fetch_all_tickers()
+            coin_details = []
+            total_volume = 0
+            total_buy_volume = 0
             
-            if not coin_data:
-                logger.warning("No ticker data received")
+            async with aiohttp.ClientSession() as session:
+                # Fetch data for each coin
+                for symbol in self.TARGET_SYMBOLS:
+                    coin_data = await self._fetch_coin_multi_tf(session, symbol)
+                    if coin_data:
+                        coin_details.append(coin_data)
+                        total_volume += coin_data['volume_24h']
+                        total_buy_volume += coin_data['buy_volume_24h']
+            
+            if not coin_details or total_volume == 0:
                 return self._empty_report()
             
-            # 2. Her timeframe için market-wide flow hesapla
-            market_flow = {}
-            coin_flows = {}
+            # Calculate market-wide metrics
+            market_buyer_pct = (total_buy_volume / total_volume) * 100 if total_volume > 0 else 50
             
-            for symbol, ticker in coin_data.items():
-                if symbol not in self.TARGET_SYMBOLS:
-                    continue
-                
-                # Calculate buyer percentage for this coin
-                total_volume = float(ticker.get('quoteVolume', 0))
-                taker_buy_volume = float(ticker.get('takerBuyQuoteAssetVol', 0))
-                
-                if total_volume > 0:
-                    buyer_pct = (taker_buy_volume / total_volume) * 100
-                else:
-                    buyer_pct = 50.0  # Neutral if no volume
-                
-                coin_flows[symbol] = {
-                    'buyer_pct': round(buyer_pct, 1),
-                    'volume': total_volume,
-                    'price_change': float(ticker.get('priceChangePercent', 0)),
-                    'last_price': float(ticker.get('lastPrice', 0))
-                }
+            # Calculate flow percentage for each coin
+            for coin in coin_details:
+                coin['flow_pct'] = round((coin['volume_24h'] / total_volume) * 100, 1) if total_volume > 0 else 0
             
-            # 3. Market-wide average (weighted by volume)
-            total_market_volume = sum(cf['volume'] for cf in coin_flows.values())
-            if total_market_volume > 0:
-                weighted_buyer_pct = sum(
-                    cf['buyer_pct'] * cf['volume'] / total_market_volume 
-                    for cf in coin_flows.values()
-                )
-            else:
-                weighted_buyer_pct = 50.0
+            # Sort by flow percentage (highest first)
+            coin_details.sort(key=lambda x: x['flow_pct'], reverse=True)
             
-            # For now, we use 24h data and estimate other timeframes
-            # In production, you'd fetch klines for each timeframe
-            market_flow = {
-                '15m': round(weighted_buyer_pct + (weighted_buyer_pct - 50) * 0.1, 1),
-                '1h': round(weighted_buyer_pct, 1),
-                '4h': round(weighted_buyer_pct - (weighted_buyer_pct - 50) * 0.05, 1),
-                '12h': round(weighted_buyer_pct - (weighted_buyer_pct - 50) * 0.1, 1),
-                '1d': round(weighted_buyer_pct - (weighted_buyer_pct - 50) * 0.15, 1)
-            }
+            # Calculate timeframe averages
+            timeframe_flows = {}
+            for tf in self.TIMEFRAMES:
+                tf_values = [c['tf_buyers'].get(tf, 50) for c in coin_details if c['tf_buyers'].get(tf)]
+                timeframe_flows[tf] = round(sum(tf_values) / len(tf_values), 1) if tf_values else 50.0
             
-            # 4. Top inflow/outflow coins
-            sorted_coins = sorted(
-                coin_flows.items(), 
-                key=lambda x: x[1]['buyer_pct'], 
-                reverse=True
-            )
-            
-            top_inflow = [(sym, data['buyer_pct']) for sym, data in sorted_coins[:5]]
-            top_outflow = [(sym, data['buyer_pct']) for sym, data in sorted_coins[-3:]]
-            
-            # 5. Calculate market buying power (Kısa Vadeli Market Alım Gücü)
-            buying_power = round((weighted_buyer_pct / 50) - 1, 1)  # 0.8X, 1.2X etc.
-            if buying_power > 0:
-                buying_power_str = f"+{buying_power}X"
-            else:
-                buying_power_str = f"{buying_power}X"
+            # Buying power calculation (like Mikabot)
+            buying_power = round((market_buyer_pct / 50) - 1, 1)
+            buying_power_str = f"+{buying_power}X" if buying_power >= 0 else f"{buying_power}X"
             
             result = {
-                'market_flow': market_flow,
-                'coin_flows': coin_flows,
-                'top_inflow': top_inflow,
-                'top_outflow': top_outflow,
-                'market_buyer_pct': round(weighted_buyer_pct, 1),
+                'market_buyer_pct': round(market_buyer_pct, 1),
+                'market_15m_pct': timeframe_flows.get('15m', 50.0),
                 'buying_power': buying_power_str,
-                'total_volume': total_market_volume,
+                'timeframe_flows': timeframe_flows,
+                'coin_details': coin_details[:10],  # Top 10 coins
+                'total_volume': total_volume,
                 'timestamp': datetime.now().isoformat()
             }
             
             self.cached_data = result
-            logger.info(f"💰 Market Flow: {weighted_buyer_pct:.1f}% buyer | Buying Power: {buying_power_str}")
+            logger.info(f"💰 Market Flow: {market_buyer_pct:.1f}% | 15m: {timeframe_flows.get('15m', 50):.1f}% | Power: {buying_power_str}")
             
             return result
             
         except Exception as e:
             logger.error(f"Money flow analysis failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return self._empty_report()
     
-    async def _fetch_all_tickers(self) -> Dict:
+    async def _fetch_coin_multi_tf(self, session: aiohttp.ClientSession, symbol: str) -> Optional[Dict]:
         """
-        Fetch money flow data using Klines API.
-        Futures ticker doesn't have takerBuyQuoteAssetVol, so we use Klines.
-        Klines[11] = Taker Buy Quote Volume
+        Fetch multi-timeframe data for a single coin.
+        Returns buyer % and arrows for each timeframe.
         """
         try:
-            coin_data = {}
+            tf_buyers = {}
+            arrows = []
+            volume_24h = 0
+            buy_volume_24h = 0
             
-            async with aiohttp.ClientSession() as session:
-                for symbol in self.TARGET_SYMBOLS:
-                    try:
-                        # Get last 24 hours of 1h candles
-                        url = f"{self.BASE_URL}/fapi/v1/klines?symbol={symbol}&interval=1h&limit=24"
-                        async with session.get(url, timeout=10) as response:
-                            if response.status == 200:
-                                klines = await response.json()
+            for tf in self.TIMEFRAMES:
+                limit = self.KLINES_LIMIT.get(tf, 1)
+                url = f"{self.BASE_URL}/fapi/v1/klines?symbol={symbol}&interval={tf}&limit={limit}"
+                
+                try:
+                    async with session.get(url, timeout=5) as response:
+                        if response.status == 200:
+                            klines = await response.json()
+                            
+                            if klines:
+                                # Aggregate klines data
+                                total_vol = sum(float(k[7]) for k in klines)  # Quote volume
+                                taker_buy_vol = sum(float(k[10]) for k in klines)  # Taker buy quote volume
                                 
-                                if klines:
-                                    # Aggregate 24h data from klines
-                                    # Kline format: [openTime, open, high, low, close, volume, closeTime, 
-                                    #                quoteVolume, trades, takerBuyBaseVol, takerBuyQuoteVol, ignore]
-                                    total_quote_vol = sum(float(k[7]) for k in klines)
-                                    taker_buy_quote_vol = sum(float(k[10]) for k in klines)  # Index 10 = taker buy quote vol
+                                if total_vol > 0:
+                                    buyer_pct = (taker_buy_vol / total_vol) * 100
+                                    tf_buyers[tf] = round(buyer_pct, 1)
                                     
-                                    # Get latest price from last candle
-                                    last_price = float(klines[-1][4]) if klines else 0
+                                    # Arrow based on buyer %
+                                    if buyer_pct >= 50:
+                                        arrows.append('🔺')
+                                    else:
+                                        arrows.append('🔻')
+                                else:
+                                    tf_buyers[tf] = 50.0
+                                    arrows.append('➖')
+                                
+                                # Use 1d data for 24h volume
+                                if tf == '1d' and klines:
+                                    volume_24h = float(klines[-1][7])
+                                    buy_volume_24h = float(klines[-1][10])
                                     
-                                    coin_data[symbol] = {
-                                        'symbol': symbol,
-                                        'quoteVolume': total_quote_vol,
-                                        'takerBuyQuoteAssetVol': taker_buy_quote_vol,
-                                        'lastPrice': last_price
-                                    }
-                                    
-                    except Exception as e:
-                        logger.warning(f"Failed to fetch klines for {symbol}: {e}")
-                        continue
-                    
-                    # Small delay to avoid rate limiting
-                    await asyncio.sleep(0.05)
+                except asyncio.TimeoutError:
+                    tf_buyers[tf] = 50.0
+                    arrows.append('➖')
+                except Exception as e:
+                    logger.debug(f"Error fetching {symbol} {tf}: {e}")
+                    tf_buyers[tf] = 50.0
+                    arrows.append('➖')
+                
+                await asyncio.sleep(0.02)  # Rate limit protection
             
-            logger.info(f"💰 Fetched money flow data for {len(coin_data)} coins")
-            return coin_data
+            # Calculate momentum (based on 15m vs 1d difference)
+            mts_15m = tf_buyers.get('15m', 50)
+            mts_1d = tf_buyers.get('1d', 50)
+            momentum = round(abs(mts_15m - 50) / 50, 1)  # 0-1 range
+            
+            return {
+                'symbol': symbol.replace('USDT', ''),
+                'tf_buyers': tf_buyers,
+                'arrows': ''.join(arrows),
+                'buyer_15m': tf_buyers.get('15m', 50),
+                'buyer_1h': tf_buyers.get('1h', 50),
+                'mts': momentum,
+                'volume_24h': volume_24h,
+                'buy_volume_24h': buy_volume_24h,
+                'flow_pct': 0  # Will be calculated later
+            }
             
         except Exception as e:
-            logger.error(f"Failed to fetch money flow data: {e}")
-            return {}
+            logger.error(f"Error fetching {symbol} data: {e}")
+            return None
     
     def _empty_report(self) -> Dict:
         """Return empty report structure."""
         return {
-            'market_flow': {'15m': 50, '1h': 50, '4h': 50, '12h': 50, '1d': 50},
-            'coin_flows': {},
-            'top_inflow': [],
-            'top_outflow': [],
             'market_buyer_pct': 50.0,
+            'market_15m_pct': 50.0,
             'buying_power': '0X',
+            'timeframe_flows': {tf: 50.0 for tf in self.TIMEFRAMES},
+            'coin_details': [],
             'total_volume': 0,
             'timestamp': datetime.now().isoformat()
         }
     
     def format_for_telegram(self, data: Dict = None) -> str:
         """
-        Mikabot tarzı Telegram mesajı formatla.
+        Mikabot-tarzı Telegram mesajı formatla.
         
-        Output Example:
-        📊 Marketteki Nakit Akışı Raporu
-        Kısa Vadeli Alım Gücü: 0,8X
+        Output:
+        📊 Marketteki Tüm Coinlere Olan Nakit Girişi Raporu.
+        Kısa Vadeli Market Alım Gücü: 1.8X
+        Marketteki Hacim Payı: %86.1
         ━━━━━━━━━━━━━━━━━━━━
-        15m=> %48,4 🔻
-        1h=> %43,6 🔻
+        15m=> %56.6 🔺
+        1h=> %47.3 🔻
+        ...
+        ━━━━━━━━━━━━━━━━━━━━
+        En çok nakit girişi olanlar.
+        ZEC Nakit: %22.0 15m:%64 Mts:0.8 🔺🔺🔺🔻🔻🔻
+        BTC Nakit: %19.6 15m:%65 Mts:0.8 🔺🔺🔻🔻🔻🔻
         ...
         """
         if data is None:
             data = self.cached_data
         
-        if not data:
+        if not data or not data.get('coin_details'):
             return "⚠️ Veri yok"
         
         # Header
-        msg = "📊 **Marketteki Nakit Akışı Raporu**\n"
-        msg += f"Kısa Vadeli Alım Gücü: **{data.get('buying_power', '0X')}**\n"
-        msg += f"Marketteki Hacim Payı: %{data.get('market_buyer_pct', 50):.1f}\n"
+        msg = "📊 **Marketteki Tüm Coinlere Olan Nakit Girişi Raporu.**\n"
+        msg += f"_Kısa Vadeli Market Alım Gücü:_ **{data.get('buying_power', '0X')}**\n"
+        msg += f"_Marketteki Hacim Payı:_ **%{data.get('market_buyer_pct', 50):.1f}**\n"
         msg += "━━━━━━━━━━━━━━━━━━━━\n"
         
         # Timeframe analysis
-        market_flow = data.get('market_flow', {})
+        tf_flows = data.get('timeframe_flows', {})
         for tf in ['15m', '1h', '4h', '12h', '1d']:
-            pct = market_flow.get(tf, 50)
+            pct = tf_flows.get(tf, 50)
             arrow = "🔺" if pct >= 50 else "🔻"
-            msg += f"{tf}=> %{pct:.1f} {arrow}\n"
+            msg += f"{tf}=> **%{pct:.1f}** {arrow}\n"
         
         msg += "━━━━━━━━━━━━━━━━━━━━\n"
         
-        # Top inflow coins
-        msg += "**En Çok Nakit Girişi:**\n"
-        for symbol, pct in data.get('top_inflow', [])[:5]:
-            clean_symbol = symbol.replace('USDT', '')
-            arrows = self._get_momentum_arrows(pct)
-            msg += f"🔹 {clean_symbol}: %{pct:.1f} {arrows}\n"
+        # Coin details
+        msg += "**En çok nakit girişi olanlar.**\n"
+        msg += "_(Sonunda 🔺 olanlar sağlıklıdır)_\n"
+        msg += "_Nakitin nereye aktığını gösterir._\n\n"
         
-        msg += "━━━━━━━━━━━━━━━━━━━━\n"
-        msg += f"_Son Güncelleme: {datetime.now().strftime('%H:%M')}_"
+        for coin in data.get('coin_details', [])[:5]:  # Top 5
+            symbol = coin.get('symbol', '???')
+            flow_pct = coin.get('flow_pct', 0)
+            buyer_15m = coin.get('buyer_15m', 50)
+            mts = coin.get('mts', 0)
+            arrows = coin.get('arrows', '➖➖➖➖➖➖')
+            
+            msg += f"**{symbol}** Nakit: %{flow_pct:.1f} 15m:%{buyer_15m:.0f} Mts:{mts} {arrows}\n"
+        
+        msg += f"\n━━━━━━━━━━━━━━━━━━━━\n"
+        msg += f"_Güncelleme: {datetime.now().strftime('%H:%M')}_"
         
         return msg
-    
-    def _get_momentum_arrows(self, pct: float) -> str:
-        """Get momentum arrows based on buyer percentage."""
-        if pct >= 60:
-            return "🔺🔺🔺"
-        elif pct >= 55:
-            return "🔺🔺"
-        elif pct >= 50:
-            return "🔺"
-        elif pct >= 45:
-            return "🔻"
-        elif pct >= 40:
-            return "🔻🔻"
-        else:
-            return "🔻🔻🔻"
 
 
 # Test function
