@@ -150,19 +150,52 @@ class MoneyFlowAnalyzer:
             return self._empty_report()
     
     async def _fetch_all_tickers(self) -> Dict:
-        """Fetch 24h ticker data for all futures symbols."""
+        """
+        Fetch money flow data using Klines API.
+        Futures ticker doesn't have takerBuyQuoteAssetVol, so we use Klines.
+        Klines[11] = Taker Buy Quote Volume
+        """
         try:
+            coin_data = {}
+            
             async with aiohttp.ClientSession() as session:
-                url = f"{self.BASE_URL}/fapi/v1/ticker/24hr"
-                async with session.get(url, timeout=10) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return {item['symbol']: item for item in data}
-                    else:
-                        logger.error(f"Binance API error: {response.status}")
-                        return {}
+                for symbol in self.TARGET_SYMBOLS:
+                    try:
+                        # Get last 24 hours of 1h candles
+                        url = f"{self.BASE_URL}/fapi/v1/klines?symbol={symbol}&interval=1h&limit=24"
+                        async with session.get(url, timeout=10) as response:
+                            if response.status == 200:
+                                klines = await response.json()
+                                
+                                if klines:
+                                    # Aggregate 24h data from klines
+                                    # Kline format: [openTime, open, high, low, close, volume, closeTime, 
+                                    #                quoteVolume, trades, takerBuyBaseVol, takerBuyQuoteVol, ignore]
+                                    total_quote_vol = sum(float(k[7]) for k in klines)
+                                    taker_buy_quote_vol = sum(float(k[10]) for k in klines)  # Index 10 = taker buy quote vol
+                                    
+                                    # Get latest price from last candle
+                                    last_price = float(klines[-1][4]) if klines else 0
+                                    
+                                    coin_data[symbol] = {
+                                        'symbol': symbol,
+                                        'quoteVolume': total_quote_vol,
+                                        'takerBuyQuoteAssetVol': taker_buy_quote_vol,
+                                        'lastPrice': last_price
+                                    }
+                                    
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch klines for {symbol}: {e}")
+                        continue
+                    
+                    # Small delay to avoid rate limiting
+                    await asyncio.sleep(0.05)
+            
+            logger.info(f"💰 Fetched money flow data for {len(coin_data)} coins")
+            return coin_data
+            
         except Exception as e:
-            logger.error(f"Failed to fetch tickers: {e}")
+            logger.error(f"Failed to fetch money flow data: {e}")
             return {}
     
     def _empty_report(self) -> Dict:
