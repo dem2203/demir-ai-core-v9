@@ -60,6 +60,30 @@ class EarlyWarningSystem:
         if mtf_warning:
             warnings.append(mtf_warning)
         
+        # === PHASE 32: DERIVATIVES-BASED EARLY WARNINGS ===
+        
+        # 7. Funding Rate Extreme (Aşırı funding rate)
+        derivatives = snapshot.get('derivatives', {})
+        funding_warning = EarlyWarningSystem._check_funding_rate_extreme(derivatives)
+        if funding_warning:
+            warnings.append(funding_warning)
+        
+        # 8. Long/Short Ratio Extreme (Aşırı L/S oranı)
+        ls_warning = EarlyWarningSystem._check_long_short_extreme(derivatives)
+        if ls_warning:
+            warnings.append(ls_warning)
+        
+        # 9. Open Interest Anomaly (OI anormalliği)
+        oi_warning = EarlyWarningSystem._check_oi_anomaly(derivatives)
+        if oi_warning:
+            warnings.append(oi_warning)
+        
+        # 10. Fear & Greed Extreme (Aşırı korku/açgözlülük)
+        sentiment = snapshot.get('sentiment', {})
+        fg_warning = EarlyWarningSystem._check_fear_greed_extreme(sentiment)
+        if fg_warning:
+            warnings.append(fg_warning)
+        
         # Sort by priority
         priority_order = {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3}
         warnings.sort(key=lambda x: priority_order.get(x.get('priority', 'LOW'), 3))
@@ -267,3 +291,148 @@ class EarlyWarningSystem:
             lines.append("")
         
         return "\n".join(lines)
+    
+    # =====================================================
+    # PHASE 32: DERIVATIVES & SENTIMENT EARLY WARNINGS
+    # =====================================================
+    
+    @staticmethod
+    def _check_funding_rate_extreme(derivatives: Dict) -> Optional[Dict]:
+        """
+        Funding Rate extreme değerdeyse uyar.
+        
+        Extreme Positive (>0.05%) → Çok fazla long → Short squeeze riski
+        Extreme Negative (<-0.03%) → Çok fazla short → Long squeeze riski
+        """
+        funding_rate = derivatives.get('funding_rate', 0)
+        
+        if not funding_rate:
+            return None
+        
+        # Convert to percentage for easier reading
+        fr_pct = funding_rate * 100
+        
+        if fr_pct >= 0.05:  # Very high positive
+            return {
+                'type': 'FUNDING_RATE_EXTREME',
+                'title': '⚠️ FUNDING RATE ÇOK YÜKSEK',
+                'message': f'Funding Rate: %{fr_pct:.3f} - Aşırı long pozisyon birikimi. Likidasyon riski!',
+                'action': 'Long pozisyon açmadan önce düzeltme bekle',
+                'priority': 'HIGH' if fr_pct >= 0.1 else 'MEDIUM',
+                'data': {'funding_rate': fr_pct}
+            }
+        elif fr_pct <= -0.03:  # Very negative
+            return {
+                'type': 'FUNDING_RATE_EXTREME',
+                'title': '⚠️ FUNDING RATE NEGATİF',
+                'message': f'Funding Rate: %{fr_pct:.3f} - Aşırı short pozisyon birikimi. Squeeze riski!',
+                'action': 'Short squeeze ihtimali - dikkatli ol',
+                'priority': 'MEDIUM',
+                'data': {'funding_rate': fr_pct}
+            }
+        
+        return None
+    
+    @staticmethod
+    def _check_long_short_extreme(derivatives: Dict) -> Optional[Dict]:
+        """
+        Long/Short Ratio aşırı değerlerde uyar.
+        
+        > 2.0 → Çok fazla long → Tehlike
+        < 0.5 → Çok fazla short → Squeeze riski
+        """
+        ls_ratio = derivatives.get('long_short_ratio', 1.0)
+        
+        if not ls_ratio or ls_ratio == 1.0:
+            return None
+        
+        if ls_ratio >= 2.0:
+            return {
+                'type': 'LONG_SHORT_EXTREME',
+                'title': '🚨 AŞIRI LONG POZİSYON',
+                'message': f'Long/Short: {ls_ratio:.2f} - Piyasa aşırı bullish. Düzeltme riski!',
+                'action': 'Long pozisyona dikkat, stop tight tut',
+                'priority': 'CRITICAL' if ls_ratio >= 3.0 else 'HIGH',
+                'data': {'ls_ratio': ls_ratio}
+            }
+        elif ls_ratio <= 0.5:
+            return {
+                'type': 'LONG_SHORT_EXTREME',
+                'title': '🔥 AŞIRI SHORT POZİSYON',
+                'message': f'Long/Short: {ls_ratio:.2f} - Piyasa aşırı bearish. Short squeeze potansiyeli!',
+                'action': 'Agresif short riskli, hedge düşün',
+                'priority': 'HIGH',
+                'data': {'ls_ratio': ls_ratio}
+            }
+        
+        return None
+    
+    @staticmethod
+    def _check_oi_anomaly(derivatives: Dict) -> Optional[Dict]:
+        """
+        Open Interest anormal değişimler tespit et.
+        
+        OI急 artış + Fiyat düşüş → Shortlar birikiyor
+        OI急 artış + Fiyat artış → Longlar birikiyor
+        OI急 düşüş → Pozisyon kapanışları / Likidasyon
+        """
+        oi_change_pct = derivatives.get('oi_change_pct', 0)
+        
+        if not oi_change_pct:
+            return None
+        
+        if oi_change_pct >= 10:  # 10%+ OI artışı
+            return {
+                'type': 'OI_ANOMALY',
+                'title': '📈 OI ANİ ARTIŞ',
+                'message': f'Open Interest %{oi_change_pct:.1f} arttı - Yeni pozisyon girişi. Volatilite artabilir!',
+                'action': 'Büyük hareket bekleniyor, pozisyon boyutunu küçült',
+                'priority': 'HIGH' if oi_change_pct >= 20 else 'MEDIUM',
+                'data': {'oi_change': oi_change_pct}
+            }
+        elif oi_change_pct <= -10:  # 10%+ OI düşüşü
+            return {
+                'type': 'OI_ANOMALY',
+                'title': '📉 OI SERT DÜŞÜŞ',
+                'message': f'Open Interest %{abs(oi_change_pct):.1f} düştü - Pozisyon kapanışları veya likidasyon!',
+                'action': 'Fiyat stabilize olana kadar bekle',
+                'priority': 'HIGH',
+                'data': {'oi_change': oi_change_pct}
+            }
+        
+        return None
+    
+    @staticmethod
+    def _check_fear_greed_extreme(sentiment: Dict) -> Optional[Dict]:
+        """
+        Fear & Greed Index extreme değerlerde uyar.
+        
+        0-20: Extreme Fear → Alım fırsatı olabilir
+        80-100: Extreme Greed → Düzeltme riski
+        """
+        fg_index = sentiment.get('fear_greed_index', 50)
+        fg_label = sentiment.get('fear_greed_label', '')
+        
+        if not fg_index or fg_index == 50:
+            return None
+        
+        if fg_index <= 20:
+            return {
+                'type': 'FEAR_GREED_EXTREME',
+                'title': '😱 EXTREME FEAR',
+                'message': f'Fear & Greed: {fg_index}/100 ({fg_label}) - Piyasa panik modunda!',
+                'action': 'Tarihsel olarak alım fırsatı, ama dikkatli ol',
+                'priority': 'HIGH',
+                'data': {'fear_greed': fg_index, 'label': fg_label}
+            }
+        elif fg_index >= 80:
+            return {
+                'type': 'FEAR_GREED_EXTREME',
+                'title': '🤑 EXTREME GREED',
+                'message': f'Fear & Greed: {fg_index}/100 ({fg_label}) - Piyasa aşırı açgözlü!',
+                'action': 'Düzeltme riski yüksek, kar al veya stop sıkılaştır',
+                'priority': 'CRITICAL' if fg_index >= 90 else 'HIGH',
+                'data': {'fear_greed': fg_index, 'label': fg_label}
+            }
+        
+        return None

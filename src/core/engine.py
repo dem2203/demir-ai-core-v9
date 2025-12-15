@@ -25,6 +25,9 @@ from src.data_ingestion.derivatives_connector import DerivativesConnector
 # PHASE 30: Money Flow Analysis
 from src.data_ingestion.money_flow_analyzer import MoneyFlowAnalyzer
 
+# PHASE 32: Predictive Intelligence - Fear & Greed
+from src.data_ingestion.sentiment_analyzer import SentimentAnalyzer
+
 # PHASE 11: Advanced Risk & Performance
 from src.core.risk_shield import RiskShield
 from src.core.performance_tracker import PerformanceTracker
@@ -91,6 +94,9 @@ class BotEngine:
         
         # 10. PHASE 30: Money Flow Analysis (Mikabot-style)
         self.money_flow_analyzer = MoneyFlowAnalyzer()
+        
+        # 11. PHASE 32: Predictive Intelligence - Fear & Greed
+        self.sentiment_analyzer = SentimentAnalyzer()
         
         logger.info("✅ All Sub-systems Initialized Successfully.")
 
@@ -227,6 +233,15 @@ class BotEngine:
         except Exception as e:
             logger.warning(f"Derivatives fetch failed: {e}")
         
+        # PHASE 32: Fetch Fear & Greed Index
+        try:
+            self.sentiment_data = await self.sentiment_analyzer.get_fear_greed()
+            fg_index = self.sentiment_data.get('fear_greed_index', 50)
+            logger.info(f"😰 Fear & Greed: {fg_index} ({self.sentiment_data.get('fear_greed_label', 'Neutral')})")
+        except Exception as e:
+            logger.warning(f"Sentiment fetch failed: {e}")
+            self.sentiment_data = {'fear_greed_index': 50, 'fear_greed_label': 'Neutral'}
+        
         # ADIM 3: Her Coin İçin Analiz Yap (Paralel İşlem)
         tasks = []
         for data in market_data_list:
@@ -259,6 +274,11 @@ class BotEngine:
             return
         
         signal, snapshot = result
+        
+        # PHASE 32: Inject derivatives and sentiment data into snapshot for early_warning
+        if snapshot:
+            snapshot['derivatives'] = getattr(self, 'derivatives_data', {})
+            snapshot['sentiment'] = getattr(self, 'sentiment_data', {})
         
         # --- PROAKTİF ERKEN UYARI (Early Warning) ---
         # Send early warnings to Telegram BEFORE signal is generated
