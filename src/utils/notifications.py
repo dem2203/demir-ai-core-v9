@@ -487,3 +487,108 @@ class NotificationManager:
             logger.info(f"📝 Rejected signal logged: {signal['symbol']} (Score: {quality_score})")
         except Exception as e:
             logger.error(f"Error logging rejected signal: {e}")
+    
+    # ============================================
+    # TELEGRAM COMMAND HANDLER (Phase 31)
+    # ============================================
+    
+    async def check_telegram_commands(self, money_flow_analyzer=None):
+        """
+        Check for incoming Telegram commands.
+        Supported commands:
+        - inout / /inout : Trigger Money Flow report
+        - status / /status : System status
+        """
+        if not self.telegram_token or not self.telegram_chat_id:
+            return
+        
+        try:
+            # Initialize last_update_id if not exists
+            if not hasattr(self, 'last_update_id'):
+                self.last_update_id = 0
+            
+            # Get updates from Telegram
+            url = f"https://api.telegram.org/bot{self.telegram_token}/getUpdates"
+            params = {
+                'offset': self.last_update_id + 1,
+                'timeout': 1,  # Short timeout for non-blocking
+                'allowed_updates': ['message']
+            }
+            
+            response = requests.get(url, params=params, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get('ok') and data.get('result'):
+                    for update in data['result']:
+                        self.last_update_id = update['update_id']
+                        
+                        message = update.get('message', {})
+                        text = message.get('text', '').lower().strip()
+                        chat_id = str(message.get('chat', {}).get('id', ''))
+                        
+                        # Only respond to authorized chat
+                        if chat_id != str(self.telegram_chat_id):
+                            continue
+                        
+                        # Handle commands
+                        if text in ['inout', '/inout', 'moneyflow', '/moneyflow']:
+                            logger.info(f"📩 Telegram command received: {text}")
+                            await self._handle_inout_command(money_flow_analyzer)
+                        
+                        elif text in ['status', '/status', 'durum', '/durum']:
+                            logger.info(f"📩 Telegram command received: {text}")
+                            await self._handle_status_command()
+                        
+                        elif text in ['help', '/help', 'yardim', '/yardim']:
+                            await self._handle_help_command()
+                            
+        except requests.exceptions.Timeout:
+            pass  # Normal, non-blocking check
+        except Exception as e:
+            logger.debug(f"Telegram command check error: {e}")
+    
+    async def _handle_inout_command(self, money_flow_analyzer):
+        """Handle inout command - send Money Flow report"""
+        if money_flow_analyzer is None:
+            await self.send_message_raw("⚠️ Money Flow Analyzer not available")
+            return
+        
+        try:
+            await self.send_message_raw("⏳ Nakit akışı hesaplanıyor...")
+            
+            # Get fresh money flow data
+            money_flow_data = await money_flow_analyzer.get_market_money_flow()
+            await self.send_money_flow_report(money_flow_data)
+            
+        except Exception as e:
+            await self.send_message_raw(f"❌ Hata: {e}")
+            logger.error(f"Money flow command error: {e}")
+    
+    async def _handle_status_command(self):
+        """Handle status command"""
+        from datetime import datetime
+        
+        msg = "📊 **DEMIR AI DURUM**\n"
+        msg += f"━━━━━━━━━━━━━━━━━━━━\n"
+        msg += f"⏰ Zaman: {datetime.now().strftime('%H:%M:%S')}\n"
+        msg += f"🟢 Sistem: AKTIF\n"
+        msg += f"📈 Aktif Pozisyon: {len(self.active_positions)}\n"
+        msg += f"━━━━━━━━━━━━━━━━━━━━\n"
+        msg += f"_/inout - Para akışı raporu_\n"
+        msg += f"_/help - Komut listesi_"
+        
+        await self.send_message_raw(msg)
+    
+    async def _handle_help_command(self):
+        """Handle help command"""
+        msg = "📋 **KOMUT LİSTESİ**\n"
+        msg += f"━━━━━━━━━━━━━━━━━━━━\n"
+        msg += f"📊 `/inout` - Nakit akışı raporu\n"
+        msg += f"📈 `/status` - Sistem durumu\n"
+        msg += f"❓ `/help` - Bu yardım mesajı\n"
+        msg += f"━━━━━━━━━━━━━━━━━━━━\n"
+        msg += f"_Mikabot-tarzı para akışı analizi_"
+        
+        await self.send_message_raw(msg)

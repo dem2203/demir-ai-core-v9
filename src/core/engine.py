@@ -134,6 +134,9 @@ class BotEngine:
                 # Ana İşlem Bloğu
                 await self.process_market_cycle()
                 
+                # Phase 31: Check Telegram Commands (inout, status, help)
+                await self.notifier.check_telegram_commands(self.money_flow_analyzer)
+                
                 # Phase 21: Hourly Heartbeat
                 if (datetime.now() - self.last_heartbeat_time).total_seconds() > 3600:
                     await self.notifier.send_heartbeat(self.latest_prices)
