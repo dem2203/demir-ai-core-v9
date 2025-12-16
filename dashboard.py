@@ -713,22 +713,134 @@ if page == "📡 Live Market Intelligence":
                 }
             )
 
-        # AI Reasoning Summary (Simplified - details in coin sections above)
-        st.markdown("### 🤖 AI Reasoning Summary")
-        st.caption("_Detaylı analiz için yukarıdaki coin bölümlerini açın_")
+        # AI Reasoning Summary - Detaylı Türkçe Analiz
+        st.markdown("### 🤖 AI Karar Özeti")
+        st.caption("_Her coin için detaylı analiz, Entry/SL/TP ve karar gerekçesi_")
         
-        # Simple 2-column summary
-        summary_left, summary_right = st.columns(2)
-        
-        for i, (symbol, info) in enumerate(data.items()):
-            col = summary_left if i % 2 == 0 else summary_right
-            with col:
-                dec = info.get('ai_decision', 'NEUTRAL')
-                conf = info.get('ai_confidence', 0)
-                reason = info.get('reason', 'N/A')[:100]  # Truncate
+        for symbol, info in data.items():
+            dec = info.get('ai_decision', 'NEUTRAL')
+            conf = info.get('ai_confidence', 0)
+            price = info.get('price', 0)
+            
+            # Signal styling
+            if dec == "BUY":
+                signal_emoji = "🟢"
+                signal_tr = "ALIŞ"
+                bg_color = "#1a4731"
+            elif dec == "SELL":
+                signal_emoji = "🔴"
+                signal_tr = "SATIŞ"
+                bg_color = "#4a1a1a"
+            else:
+                signal_emoji = "⚪"
+                signal_tr = "BEKLE"
+                bg_color = "#2d2d2d"
+            
+            with st.expander(f"{signal_emoji} **{symbol}**: {signal_tr} ({conf:.0f}%) - ${price:,.2f}", expanded=False):
                 
-                signal_emoji = "🟢" if dec == "BUY" else "🔴" if dec == "SELL" else "⚪"
-                st.info(f"{signal_emoji} **{symbol}**: {dec} ({conf:.0f}%)\n\n_{reason}..._")
+                # === KARAR GEREKÇESİ ===
+                st.markdown("#### 📋 Karar Gerekçesi")
+                
+                # Collect all reasoning factors
+                reasons = []
+                
+                # 1. SMC Analysis
+                smc = info.get('smc', {})
+                if smc:
+                    smc_bias = smc.get('bias', 'N/A')
+                    smc_strength = smc.get('strength', 0)
+                    if smc_bias == 'BULLISH':
+                        reasons.append(f"✅ **SMC**: Yükseliş eğilimi tespit edildi (Güç: %{smc_strength:.0f})")
+                    elif smc_bias == 'BEARISH':
+                        reasons.append(f"❌ **SMC**: Düşüş eğilimi tespit edildi (Güç: %{smc_strength:.0f})")
+                    else:
+                        reasons.append(f"↔️ **SMC**: Kararsız piyasa")
+                
+                # 2. MTF Confluence
+                mtf = info.get('mtf', {})
+                if mtf:
+                    confluence = mtf.get('confluence_score', 0)
+                    trend_1h = mtf.get('trend_1h', 'N/A')
+                    trend_4h = mtf.get('trend_4h', 'N/A')
+                    if confluence > 70:
+                        reasons.append(f"✅ **MTF**: Tüm zaman dilimleri uyumlu (%{confluence:.0f}) - 1h:{trend_1h}, 4h:{trend_4h}")
+                    elif confluence > 50:
+                        reasons.append(f"🟡 **MTF**: Kısmi uyum (%{confluence:.0f})")
+                    else:
+                        reasons.append(f"❌ **MTF**: Zaman dilimleri çelişkili (%{confluence:.0f})")
+                
+                # 3. Wyckoff Phase
+                wyckoff = info.get('wyckoff_phase', '')
+                if wyckoff:
+                    wyckoff_tr = {
+                        'ACCUMULATION': '📈 BİRİKİM - Akıllı para alım yapıyor',
+                        'MARKUP': '🚀 YÜKSELİŞ - Ralli başladı',
+                        'DISTRIBUTION': '📉 DAĞITIM - Akıllı para satıyor',
+                        'MARKDOWN': '💀 DÜŞÜŞ - Satış rallisi'
+                    }.get(wyckoff, wyckoff)
+                    reasons.append(f"📊 **Wyckoff**: {wyckoff_tr}")
+                
+                # 4. On-Chain
+                onchain = info.get('onchain_signal', '')
+                if onchain and 'BUY' in onchain:
+                    reasons.append("🐋 **On-Chain**: Balinalar alım yapıyor")
+                elif onchain and 'SELL' in onchain:
+                    reasons.append("🐋 **On-Chain**: Balinalar satış yapıyor")
+                
+                # 5. Regime
+                regime = info.get('regime', 'UNKNOWN')
+                regime_tr = {
+                    'TRENDING_BULL': '📈 Güçlü Yükseliş Trendi',
+                    'TRENDING_BEAR': '📉 Güçlü Düşüş Trendi',
+                    'RANGING': '↔️ Yatay Piyasa',
+                    'VOLATILE': '⚡ Yüksek Volatilite'
+                }.get(regime, regime)
+                reasons.append(f"🌍 **Piyasa Durumu**: {regime_tr}")
+                
+                for reason in reasons:
+                    st.markdown(f"• {reason}")
+                
+                # === ENTRY / SL / TP ===
+                st.markdown("---")
+                st.markdown("#### 🎯 İşlem Seviyeleri")
+                
+                sltp = info.get('smart_sltp', {})
+                if sltp and dec != 'NEUTRAL':
+                    direction = sltp.get('direction', 'NONE')
+                    sl = sltp.get('stop_loss', 0)
+                    tp1 = sltp.get('take_profit_1', 0)
+                    tp2 = sltp.get('take_profit_2', 0)
+                    tp3 = sltp.get('take_profit_3', 0)
+                    quality = sltp.get('quality', 'N/A')
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("📍 Giriş (Entry)", f"${price:,.2f}")
+                    with col2:
+                        sl_pct = ((price - sl) / price * 100) if sl and price else 0
+                        st.metric("🛑 Zarar Kes (SL)", f"${sl:,.2f}" if sl else "N/A", f"{sl_pct:+.1f}%" if sl else None, delta_color="inverse")
+                    with col3:
+                        tp1_pct = ((tp1 - price) / price * 100) if tp1 and price else 0
+                        st.metric("🎯 Hedef 1 (TP1)", f"${tp1:,.2f}" if tp1 else "N/A", f"{tp1_pct:+.1f}%" if tp1 else None)
+                    
+                    if tp2 or tp3:
+                        col4, col5, col6 = st.columns(3)
+                        with col4:
+                            st.metric("🎯 Hedef 2 (TP2)", f"${tp2:,.2f}" if tp2 else "N/A")
+                        with col5:
+                            st.metric("🎯 Hedef 3 (TP3)", f"${tp3:,.2f}" if tp3 else "N/A")
+                        with col6:
+                            quality_emoji = "🟢" if quality == "HIGH" else "🟡" if quality == "MEDIUM" else "🔴"
+                            st.metric("📊 Sinyal Kalitesi", f"{quality_emoji} {quality}")
+                    
+                    # Risk/Reward calculation
+                    if sl and tp1 and price:
+                        risk = abs(price - sl)
+                        reward = abs(tp1 - price)
+                        rr_ratio = reward / risk if risk > 0 else 0
+                        st.caption(f"_Risk/Ödül Oranı: 1:{rr_ratio:.1f}_")
+                else:
+                    st.info("⏸️ BEKLE sinyali - şu an işlem önerilmiyor. Fırsat oluştuğunda Entry/SL/TP hesaplanacak.")
 
 
 # ==========================================

@@ -73,6 +73,12 @@ class MarketIntelligence:
         findings = []
         price = data.get('price', 0)
         
+        # Get smart SL/TP for entry levels
+        sltp = data.get('smart_sltp', {})
+        sl = sltp.get('stop_loss', 0)
+        tp1 = sltp.get('take_profit_1', 0)
+        tp2 = sltp.get('take_profit_2', 0)
+        
         # 1. RSI Analizi
         brain_state = data.get('brain_state', {})
         # RSI approximation from tech_attention
@@ -91,7 +97,10 @@ class MarketIntelligence:
                     'title': f'🟢 {symbol} Güçlü Bullish SMC',
                     'detail': f'Bias: {bias}, Güç: {strength}%',
                     'action': f'Long pozisyon düşünülebilir',
-                    'price': price
+                    'price': price,
+                    'entry': price,
+                    'sl': sl,
+                    'tp': tp1
                 })
             elif bias == 'BEARISH' and strength > 70:
                 findings.append({
@@ -101,7 +110,10 @@ class MarketIntelligence:
                     'title': f'🔴 {symbol} Güçlü Bearish SMC',
                     'detail': f'Bias: {bias}, Güç: {strength}%',
                     'action': f'Short veya bekle',
-                    'price': price
+                    'price': price,
+                    'entry': price,
+                    'sl': sl,
+                    'tp': tp1
                 })
             
             # Order Block yakınlığı
@@ -117,9 +129,12 @@ class MarketIntelligence:
                             'type': 'OPPORTUNITY',
                             'category': 'ORDER_BLOCK',
                             'title': f'🎯 {symbol} Order Block Yakın!',
-                            'detail': f'{ob_type} OB ${ob_price:,.0f} (%.{distance_pct:.1f} uzakta)',
+                            'detail': f'{ob_type} OB ${ob_price:,.0f} (%{distance_pct:.1f} uzakta)',
                             'action': f'Reaksiyon için izle',
-                            'price': price
+                            'price': price,
+                            'entry': ob_price,  # OB fiyatı entry
+                            'sl': sl,
+                            'tp': tp1
                         })
         
         # 3. MTF Confluence
@@ -135,7 +150,10 @@ class MarketIntelligence:
                     'title': f'✅ {symbol} Yüksek MTF Uyumu',
                     'detail': f'Confluence: {confluence}%, Trend: {trend_1h}',
                     'action': f'Trend yönünde işlem güçlü',
-                    'price': price
+                    'price': price,
+                    'entry': price,
+                    'sl': sl,
+                    'tp': tp1
                 })
         
         # 4. Whale Activity
@@ -150,9 +168,12 @@ class MarketIntelligence:
                     'type': 'OPPORTUNITY',
                     'category': 'WHALE',
                     'title': f'🐋 {symbol} Whale Desteği Yakın',
-                    'detail': f'Destek: ${whale_support:,.0f} (%.{support_distance:.1f} aşağıda)',
+                    'detail': f'Destek: ${whale_support:,.0f} (%{support_distance:.1f} aşağıda)',
                     'action': f'Güçlü destek noktası',
-                    'price': price
+                    'price': price,
+                    'entry': whale_support,  # Destekte giriş
+                    'sl': whale_support * 0.98,  # Desteğin %2 altı
+                    'tp': tp1 if tp1 else price * 1.03
                 })
         
         if whale_resistance > 0:
@@ -163,9 +184,12 @@ class MarketIntelligence:
                     'type': 'RISK',
                     'category': 'WHALE',
                     'title': f'🐋 {symbol} Whale Direnci Yakın',
-                    'detail': f'Direnç: ${whale_resistance:,.0f} (%.{resist_distance:.1f} yukarıda)',
+                    'detail': f'Direnç: ${whale_resistance:,.0f} (%{resist_distance:.1f} yukarıda)',
                     'action': f'Kar al noktası olabilir',
-                    'price': price
+                    'price': price,
+                    'entry': 0,
+                    'sl': 0,
+                    'tp': whale_resistance
                 })
         
         # 5. Wyckoff Phase
@@ -178,7 +202,10 @@ class MarketIntelligence:
                 'title': f'📊 {symbol} Birikim Fazı',
                 'detail': f'Akıllı para alım yapıyor',
                 'action': f'Orta vadeli long fırsatı',
-                'price': price
+                'price': price,
+                'entry': price,
+                'sl': sl,
+                'tp': tp1
             })
         elif wyckoff == 'DISTRIBUTION':
             findings.append({
@@ -188,13 +215,16 @@ class MarketIntelligence:
                 'title': f'📊 {symbol} Dağıtım Fazı',
                 'detail': f'Akıllı para satıyor',
                 'action': f'Dikkatli ol, düşüş gelebilir',
-                'price': price
+                'price': price,
+                'entry': 0,
+                'sl': 0,
+                'tp': 0
             })
         
         return findings
     
     def format_opportunity_report(self, opportunities: List[Dict]) -> str:
-        """Fırsat/risk listesini Telegram formatına çevir"""
+        """Fırsat/risk listesini Telegram formatına çevir - Entry/SL/TP dahil"""
         if not opportunities:
             return ""
         
@@ -209,7 +239,19 @@ class MarketIntelligence:
             for o in opps[:5]:  # Max 5
                 msg += f"• {o['title']}\n"
                 msg += f"  _{o['detail']}_\n"
-                msg += f"  💡 {o['action']}\n\n"
+                msg += f"  💡 {o['action']}\n"
+                
+                # Entry/SL/TP levels if available
+                entry = o.get('entry', 0)
+                sl = o.get('sl', 0)
+                tp = o.get('tp', 0)
+                
+                if entry and sl and tp:
+                    rr = abs(tp - entry) / abs(entry - sl) if abs(entry - sl) > 0 else 0
+                    msg += f"  📍 Entry: `${entry:,.2f}`\n"
+                    msg += f"  🛑 SL: `${sl:,.2f}` | 🎯 TP: `${tp:,.2f}`\n"
+                    msg += f"  📊 R/R: 1:{rr:.1f}\n"
+                msg += "\n"
         
         if risks:
             msg += "🔴 *RİSKLER:*\n"
