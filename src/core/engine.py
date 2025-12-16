@@ -283,6 +283,30 @@ class BotEngine:
         if snapshot:
             snapshot['derivatives'] = getattr(self, 'derivatives_data', {})
             snapshot['sentiment'] = getattr(self, 'sentiment_data', {})
+            
+            # CRITICAL: Save snapshot to dashboard_data.json for dashboard display
+            try:
+                import json
+                import os
+                dashboard_path = "dashboard_data.json"
+                
+                # Load existing data
+                if os.path.exists(dashboard_path):
+                    with open(dashboard_path, 'r') as f:
+                        db = json.load(f)
+                else:
+                    db = {}
+                
+                # Update with current snapshot
+                db[snapshot.get('symbol', 'UNKNOWN')] = snapshot
+                
+                # Save back
+                with open(dashboard_path, 'w') as f:
+                    json.dump(db, f, indent=2, default=str)
+                    
+                logger.debug(f"Dashboard data saved for {snapshot.get('symbol')}")
+            except Exception as e:
+                logger.warning(f"Failed to save dashboard data: {e}")
         
         # --- PHASE 32.5: PREDICTIVE SIGNALS (Leading Indicators) ---
         # Check for predictive signals FIRST - these are more valuable than lagging indicators
