@@ -1396,6 +1396,7 @@ elif page == "🌐 Web Intelligence":
         
         with col2:
             st.subheader("📊 TradingView Sinyalleri")
+            st.caption("_Kaynak: TradingView Technicals (MA + Oscillators)_")
             coins = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'LTCUSDT']
             
             tv_cols = st.columns(4)
@@ -1410,6 +1411,16 @@ elif page == "🌐 Web Intelligence":
                         st.metric(coin.replace('USDT', ''), f"{emoji} {action}", f"RSI: {rsi:.0f}")
                     except:
                         st.metric(coin.replace('USDT', ''), "⚪ N/A", "")
+            
+            # Explanation
+            st.markdown("""
+            <small>
+            📌 <b>Sinyal Kaynağı:</b> TradingView'den 10+ teknik indikatör (EMA, SMA, MACD, RSI, Stochastic, CCI, ADX) birleştirilir.<br>
+            • <b>BUY/STRONG_BUY:</b> Çoğu indikatör yükseliş sinyali veriyor<br>
+            • <b>SELL/STRONG_SELL:</b> Çoğu indikatör düşüş sinyali veriyor<br>
+            • <b>NEUTRAL:</b> İndikatörler karışık
+            </small>
+            """, unsafe_allow_html=True)
         
         st.divider()
         
@@ -1439,7 +1450,13 @@ elif page == "🌐 Web Intelligence":
                 change = tvl.get('change_24h', 0)
                 emoji = "🟢" if change > 0 else "🔴" if change < 0 else "⚪"
                 st.metric("Total TVL", tvl_formatted, f"{emoji} {change:+.1f}%")
-                st.caption(tvl.get('action', ''))
+                # Better explanation
+                if change > 3:
+                    st.caption("🟢 TVL artıyor = Para DeFi'ye giriyor = Risk-on sentiment = BULLISH")
+                elif change < -3:
+                    st.caption("🔴 TVL düşüyor = Para DeFi'den çıkıyor = Risk-off sentiment = BEARISH")
+                else:
+                    st.caption("⚪ TVL stabil = Piyasa dengeli, net sinyal yok")
             except Exception as e:
                 st.error(f"Veri alınamadı: {e}")
         
@@ -1449,10 +1466,17 @@ elif page == "🌐 Web Intelligence":
                 stable = scrapers.get_stablecoin_flow()
                 supply = stable.get('usdt_supply_formatted', 'N/A')
                 change = stable.get('change_7d_formatted', 'N/A')
+                change_value = stable.get('change_7d', 0)
                 direction = stable.get('direction', 'NEUTRAL')
                 emoji = "🟢" if direction == 'BULLISH' else "🔴" if direction == 'BEARISH' else "⚪"
                 st.metric("USDT Supply", supply, f"{emoji} {change} (7d)")
-                st.caption(stable.get('action', ''))
+                # Better explanation
+                if change_value > 500_000_000:
+                    st.caption(f"🟢 ${change_value/1e6:.0f}M yeni USDT mint edildi = Alım hazırlığı = BULLISH")
+                elif change_value < -500_000_000:
+                    st.caption(f"🔴 ${abs(change_value)/1e6:.0f}M USDT yakıldı = Çıkış yapılıyor = BEARISH")
+                else:
+                    st.caption("⚪ Stablecoin akışı normal seviyede")
             except Exception as e:
                 st.error(f"Veri alınamadı: {e}")
         

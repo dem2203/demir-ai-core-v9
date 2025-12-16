@@ -185,9 +185,13 @@ class CryptoNewsScraper:
                     source = post.get('source', {}).get('title', 'CryptoPanic')
                     url = post.get('url', '')
                     
-                    # Parse timestamp
+                    # Parse timestamp (strip timezone to avoid comparison issues)
                     pub_date = post.get('published_at', '')
-                    timestamp = datetime.fromisoformat(pub_date.replace('Z', '+00:00')) if pub_date else datetime.now()
+                    try:
+                        ts = datetime.fromisoformat(pub_date.replace('Z', '+00:00')) if pub_date else datetime.now()
+                        timestamp = ts.replace(tzinfo=None) if ts.tzinfo else ts
+                    except:
+                        timestamp = datetime.now()
                     
                     # Analyze
                     sentiment, impact = self._analyze_headline(title)
@@ -229,7 +233,7 @@ class CryptoNewsScraper:
         return ''
     
     def _parse_date(self, date_str: str) -> datetime:
-        """Parse various date formats"""
+        """Parse various date formats (returns timezone-naive datetime)"""
         try:
             # Common RSS formats
             formats = [
@@ -241,7 +245,9 @@ class CryptoNewsScraper:
             
             for fmt in formats:
                 try:
-                    return datetime.strptime(date_str.strip(), fmt)
+                    dt = datetime.strptime(date_str.strip(), fmt)
+                    # Strip timezone to avoid comparison issues
+                    return dt.replace(tzinfo=None) if dt.tzinfo else dt
                 except:
                     continue
                     
