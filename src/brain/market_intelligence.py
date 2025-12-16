@@ -63,6 +63,15 @@ class MarketIntelligence:
             self.news_scraper = None
             logger.warning(f"News scraper init failed: {e}")
         
+        # PHASE 36: Advanced Market Scrapers (Fear&Greed, TradingView, Token Unlocks, etc)
+        try:
+            from src.brain.advanced_scrapers import AdvancedMarketScrapers
+            self.advanced_scrapers = AdvancedMarketScrapers()
+            logger.info("✅ Advanced Scrapers initialized (Fear&Greed, TradingView, TokenUnlocks)")
+        except Exception as e:
+            self.advanced_scrapers = None
+            logger.warning(f"Advanced scrapers init failed: {e}")
+        
     def should_run_15min_check(self) -> bool:
         """15 dakika geçti mi kontrol et"""
         elapsed = (datetime.now() - self.last_15min_check).total_seconds() / 60
@@ -376,6 +385,38 @@ class MarketIntelligence:
                         msg += f"• {emoji} {news.title[:50]}...\n"
             except Exception as e:
                 logger.debug(f"News sentiment fetch failed: {e}")
+        
+        # PHASE 36: Advanced Market Intelligence
+        if self.advanced_scrapers:
+            try:
+                # Fear & Greed Index
+                fng = self.advanced_scrapers.get_fear_greed_index()
+                fng_value = fng.get('value', 50)
+                fng_class = fng.get('classification', 'Neutral')
+                fng_emoji = "🟢" if fng_value <= 30 else "🔴" if fng_value >= 70 else "🟡"
+                
+                msg += f"\n😱 *Fear & Greed Index:*\n"
+                msg += f"• {fng_emoji} {fng_value}/100 ({fng_class})\n"
+                msg += f"_{fng.get('action', '')}_\n"
+                
+                # TradingView Signals
+                tv_btc = self.advanced_scrapers.get_tradingview_signals('BTCUSDT')
+                tv_eth = self.advanced_scrapers.get_tradingview_signals('ETHUSDT')
+                
+                msg += f"\n📊 *TradingView Sinyalleri:*\n"
+                msg += f"• BTC: {tv_btc.get('summary', 'N/A')}\n"
+                msg += f"• ETH: {tv_eth.get('summary', 'N/A')}\n"
+                
+                # Upcoming Events (if any)
+                unlocks = self.advanced_scrapers.get_token_unlocks(7)
+                if unlocks:
+                    msg += f"\n🔓 *Yaklaşan Token Unlock'lar:*\n"
+                    for unlock in unlocks[:2]:
+                        msg += f"• {unlock.title}\n"
+                        msg += f"  _{unlock.detail}_\n"
+                        
+            except Exception as e:
+                logger.debug(f"Advanced scrapers failed: {e}")
         
         msg += f"\n⏰ _{datetime.now().strftime('%H:%M:%S')}_"
         self.last_hourly_report = datetime.now()
