@@ -54,6 +54,15 @@ class MarketIntelligence:
         # PHASE 34: Advanced Predictive Indicators
         self.predictive_indicators = PredictiveIndicators()
         
+        # PHASE 35: News Sentiment (API gerektirmez!)
+        try:
+            from src.brain.news_scraper import CryptoNewsScraper
+            self.news_scraper = CryptoNewsScraper()
+            logger.info("✅ News Scraper initialized (no API required)")
+        except Exception as e:
+            self.news_scraper = None
+            logger.warning(f"News scraper init failed: {e}")
+        
     def should_run_15min_check(self) -> bool:
         """15 dakika geçti mi kontrol et"""
         elapsed = (datetime.now() - self.last_15min_check).total_seconds() / 60
@@ -346,6 +355,27 @@ class MarketIntelligence:
                 msg += f"• L/S Ratio: {ls:.2f}\n"
             if btc_d > 0:
                 msg += f"• BTC Dominance: {btc_d:.1f}%\n"
+        
+        # PHASE 35: News Sentiment
+        if self.news_scraper:
+            try:
+                news_sentiment = self.news_scraper.get_market_sentiment()
+                score = news_sentiment.get('score', 50)
+                mood = "🟢" if score > 60 else "🔴" if score < 40 else "⚪"
+                
+                msg += f"\n📰 *Haber Sentimenti:*\n"
+                msg += f"• Mood: {mood} {news_sentiment['sentiment']} ({score:.0f}/100)\n"
+                msg += f"• Haberler: {news_sentiment.get('bullish_count', 0)}↑ {news_sentiment.get('bearish_count', 0)}↓\n"
+                
+                # Important news headlines
+                important = self.news_scraper.get_important_news(2)
+                if important:
+                    msg += "\n*Son Önemli Haberler:*\n"
+                    for news in important:
+                        emoji = "🟢" if news.sentiment == 'BULLISH' else "🔴" if news.sentiment == 'BEARISH' else "⚪"
+                        msg += f"• {emoji} {news.title[:50]}...\n"
+            except Exception as e:
+                logger.debug(f"News sentiment fetch failed: {e}")
         
         msg += f"\n⏰ _{datetime.now().strftime('%H:%M:%S')}_"
         self.last_hourly_report = datetime.now()
