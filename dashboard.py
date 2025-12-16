@@ -75,6 +75,67 @@ def load_json(filename):
         except: return {}
     return {}
 
+# ==========================================
+# CANLI VERİ FETCH (60 saniye cache)
+# ==========================================
+@st.cache_data(ttl=60)
+def fetch_live_market_data():
+    """Dashboard için canlı piyasa verisi - engine'den bağımsız"""
+    import requests
+    import yfinance as yf
+    
+    result = {
+        'gold': 0, 'gold_change': 0,
+        'nasdaq': 0, 'nasdaq_change': 0,
+        'btc_dominance': 0, 'btc_dominance_change': 0,
+        'open_interest': 0, 'long_short_ratio': 0
+    }
+    
+    # 1. Gold (GC=F)
+    try:
+        gold = yf.Ticker("GC=F")
+        gold_info = gold.fast_info
+        result['gold'] = gold_info.get('lastPrice') or gold_info.get('regularMarketPrice', 0)
+        prev = gold_info.get('previousClose') or gold_info.get('regularMarketPreviousClose', 0)
+        if prev and result['gold']:
+            result['gold_change'] = ((result['gold'] - prev) / prev) * 100
+    except: pass
+    
+    # 2. Nasdaq (^IXIC)
+    try:
+        nasdaq = yf.Ticker("^IXIC")
+        nasdaq_info = nasdaq.fast_info
+        result['nasdaq'] = nasdaq_info.get('lastPrice') or nasdaq_info.get('regularMarketPrice', 0)
+        prev = nasdaq_info.get('previousClose') or nasdaq_info.get('regularMarketPreviousClose', 0)
+        if prev and result['nasdaq']:
+            result['nasdaq_change'] = ((result['nasdaq'] - prev) / prev) * 100
+    except: pass
+    
+    # 3. BTC Dominance (CoinGecko)
+    try:
+        cg = requests.get("https://api.coingecko.com/api/v3/global", timeout=5)
+        if cg.status_code == 200:
+            data = cg.json()['data']
+            result['btc_dominance'] = data['market_cap_percentage']['btc']
+            result['btc_dominance_change'] = data.get('market_cap_change_percentage_24h_usd', 0)
+    except: pass
+    
+    # 4. Open Interest (Binance Futures)
+    try:
+        oi = requests.get("https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT", timeout=5)
+        if oi.status_code == 200:
+            result['open_interest'] = float(oi.json()['openInterest']) * 100000  # Approximate USD value
+    except: pass
+    
+    # 5. Long/Short Ratio (Binance Futures)
+    try:
+        ls = requests.get("https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=5m&limit=1", timeout=5)
+        if ls.status_code == 200:
+            result['long_short_ratio'] = float(ls.json()[0]['longShortRatio'])
+    except: pass
+    
+    return result
+
 risk_manager = RiskManager()
 
 # ==========================================
@@ -463,13 +524,26 @@ if page == "📡 Live Market Intelligence":
         # ======================================
         st.markdown("---")
         st.markdown("### 🌐 Piyasa Korelasyonları & Türevler")
-        st.caption("_Kripto piyasasını etkileyen dış faktörler_")
+        st.caption("_🔴 CANLI VERİ - Her 60 saniyede güncellenir_")
         
         cor_col1, cor_col2, cor_col3, cor_col4, cor_col5 = st.columns(5)
         
-        # Correlation Data
-        corr_data = main_info.get('correlations', {})
-        deriv_data = main_info.get('derivatives', {})
+        # ✅ CANLI VERİ FETCH - Engine'den bağımsız!
+        live_data = fetch_live_market_data()
+        
+        # Snapshot'tan veya canlı veriden al (canlı öncelikli)
+        corr_data = {
+            'gold': live_data.get('gold') or main_info.get('correlations', {}).get('gold', 0),
+            'gold_change': live_data.get('gold_change') or main_info.get('correlations', {}).get('gold_change', 0),
+            'nasdaq': live_data.get('nasdaq') or main_info.get('correlations', {}).get('nasdaq', 0),
+            'nasdaq_change': live_data.get('nasdaq_change') or main_info.get('correlations', {}).get('nasdaq_change', 0),
+            'btc_dominance': live_data.get('btc_dominance') or main_info.get('correlations', {}).get('btc_dominance', 0),
+            'btc_dominance_change': live_data.get('btc_dominance_change') or main_info.get('correlations', {}).get('btc_dominance_change', 0),
+        }
+        deriv_data = {
+            'open_interest': live_data.get('open_interest') or main_info.get('derivatives', {}).get('open_interest', 0),
+            'long_short_ratio': live_data.get('long_short_ratio') or main_info.get('derivatives', {}).get('long_short_ratio', 0),
+        }
         
         # Gold - Dynamic Analysis
         with cor_col1:
