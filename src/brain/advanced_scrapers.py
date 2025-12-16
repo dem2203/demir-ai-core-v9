@@ -2,13 +2,16 @@
 DEMIR AI - Advanced Market Scrapers
 API gerektirmeden gelişmiş piyasa verilerini web scraping ile çeker.
 
-PHASE 36: Ultra Intelligence
+PHASE 36-37: Ultra Intelligence
 1. Fear & Greed Index (alternative.me)
 2. Token Unlock Calendar (defillama)
 3. Liquidation Heatmap (coinglass)
 4. Economic Calendar (investing.com)
 5. Exchange Listings (binance announcements)
 6. TradingView Signals (technicals summary)
+7. CME Gap Tracker (tradingview/CME data)
+8. DeFi TVL Monitor (defillama)
+9. Stablecoin Flow (USDT/USDC minting)
 """
 import logging
 import requests
@@ -23,7 +26,7 @@ logger = logging.getLogger("ADVANCED_SCRAPERS")
 @dataclass
 class MarketEvent:
     """Piyasa olayı"""
-    event_type: str    # FEAR_GREED, TOKEN_UNLOCK, LIQUIDATION, ECONOMIC, LISTING, TV_SIGNAL
+    event_type: str    # FEAR_GREED, TOKEN_UNLOCK, LIQUIDATION, ECONOMIC, LISTING, TV_SIGNAL, CME_GAP, DEFI_TVL, STABLECOIN
     title: str
     detail: str
     impact: str        # HIGH, MEDIUM, LOW
@@ -44,6 +47,9 @@ class AdvancedMarketScrapers:
     - Ekonomik takvim
     - Borsa duyuruları
     - TradingView sinyalleri
+    - CME Gap Tracker
+    - DeFi TVL Monitor
+    - Stablecoin Flow
     """
     
     # Request headers to avoid blocks
@@ -57,6 +63,7 @@ class AdvancedMarketScrapers:
         self.last_fetch = {}
         self.cache = {}
         self.cache_duration = 300  # 5 minutes
+        self.cme_friday_close = None  # Track CME Friday close price
         
     # =========================================
     # 1. FEAR & GREED INDEX
@@ -562,3 +569,232 @@ class AdvancedMarketScrapers:
             coins.extend(matches)
         
         return list(set(coins))
+    
+    # =========================================
+    # 7. CME GAP TRACKER
+    # =========================================
+    def get_cme_gap(self) -> Dict:
+        """
+        Bitcoin CME Gap'i tespit et.
+        
+        CME (Chicago Mercantile Exchange) hafta sonları kapalı.
+        Hafta sonu BTC fiyatı değişirse, Pazartesi açılışında gap oluşur.
+        BTC genellikle bu gap'i kapatmak için o seviyeye döner.
+        
+        Returns:
+            {'has_gap': True, 'gap_price': 104000, 'current_price': 106000, 'gap_percent': -1.9}
+        """
+        cache_key = 'cme_gap'
+        if self._is_cached(cache_key):
+            return self.cache[cache_key]
+        
+        try:
+            # Get current BTC price
+            url = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
+            response = requests.get(url, timeout=5)
+            current_price = float(response.json()['price']) if response.status_code == 200 else 0
+            
+            # CME closes Friday 5PM EST, opens Sunday 6PM EST
+            # We need to track Friday close and compare to current
+            
+            now = datetime.now()
+            day_of_week = now.weekday()  # 0=Monday, 4=Friday, 5=Saturday, 6=Sunday
+            
+            # Get historical klines to find Friday close (approximate)
+            kline_url = "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=4h&limit=50"
+            kline_response = requests.get(kline_url, timeout=10)
+            
+            if kline_response.status_code == 200:
+                klines = kline_response.json()
+                
+                # Find Friday close (CME closes around 22:00 UTC Friday)
+                friday_close = None
+                for k in reversed(klines):
+                    kline_time = datetime.fromtimestamp(k[0] / 1000)
+                    if kline_time.weekday() == 4 and kline_time.hour >= 20:  # Friday evening
+                        friday_close = float(k[4])  # Close price
+                        break
+                
+                if friday_close and current_price:
+                    gap_percent = ((current_price - friday_close) / friday_close) * 100
+                    
+                    # Only report if gap is significant (>1%)
+                    if abs(gap_percent) > 1:
+                        direction = 'BULLISH' if gap_percent < 0 else 'BEARISH'
+                        action = f"Gap'i kapatmak için fiyat ${friday_close:,.0f}'a dönebilir!" if abs(gap_percent) > 2 else "Küçük gap - izle."
+                        
+                        result = {
+                            'has_gap': True,
+                            'gap_price': friday_close,
+                            'current_price': current_price,
+                            'gap_percent': gap_percent,
+                            'direction': direction,
+                            'action': action,
+                            'timestamp': datetime.now()
+                        }
+                    else:
+                        result = {
+                            'has_gap': False,
+                            'gap_price': friday_close,
+                            'current_price': current_price,
+                            'gap_percent': gap_percent,
+                            'direction': 'NEUTRAL',
+                            'action': 'CME gap yok veya kapatıldı.',
+                            'timestamp': datetime.now()
+                        }
+                    
+                    self._set_cache(cache_key, result)
+                    return result
+                    
+        except Exception as e:
+            logger.warning(f"CME gap fetch failed: {e}")
+        
+        return {
+            'has_gap': False,
+            'gap_price': 0,
+            'current_price': 0,
+            'gap_percent': 0,
+            'direction': 'NEUTRAL',
+            'action': 'CME gap verisi alınamadı',
+            'timestamp': datetime.now()
+        }
+    
+    # =========================================
+    # 8. DEFI TVL MONITOR
+    # =========================================
+    def get_defi_tvl(self) -> Dict:
+        """
+        DeFi Total Value Locked (TVL) takibi.
+        
+        TVL düşüşü = Risk-off sentiment, bearish
+        TVL artışı = Risk-on sentiment, bullish
+        
+        Returns:
+            {'total_tvl': 150B, 'change_24h': -2.5%, 'direction': 'BEARISH'}
+        """
+        cache_key = 'defi_tvl'
+        if self._is_cached(cache_key):
+            return self.cache[cache_key]
+        
+        try:
+            # DefiLlama TVL API (free)
+            url = "https://api.llama.fi/v2/historicalChainTvl"
+            response = requests.get(url, timeout=15, headers=self.HEADERS)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if len(data) >= 2:
+                    current_tvl = data[-1].get('tvl', 0)
+                    yesterday_tvl = data[-2].get('tvl', 0)
+                    
+                    if yesterday_tvl > 0:
+                        change_24h = ((current_tvl - yesterday_tvl) / yesterday_tvl) * 100
+                        
+                        # Determine direction
+                        if change_24h > 3:
+                            direction = 'BULLISH'
+                            action = "🟢 DeFi TVL artıyor! Risk-on sentiment, bullish."
+                        elif change_24h < -3:
+                            direction = 'BEARISH'
+                            action = "🔴 DeFi TVL düşüyor! Risk-off sentiment, dikkatli ol."
+                        else:
+                            direction = 'NEUTRAL'
+                            action = "DeFi TVL stabil."
+                        
+                        result = {
+                            'total_tvl': current_tvl,
+                            'total_tvl_formatted': f"${current_tvl/1e9:.1f}B",
+                            'change_24h': change_24h,
+                            'direction': direction,
+                            'action': action,
+                            'timestamp': datetime.now()
+                        }
+                        
+                        self._set_cache(cache_key, result)
+                        return result
+                        
+        except Exception as e:
+            logger.warning(f"DeFi TVL fetch failed: {e}")
+        
+        return {
+            'total_tvl': 0,
+            'total_tvl_formatted': 'N/A',
+            'change_24h': 0,
+            'direction': 'NEUTRAL',
+            'action': 'DeFi TVL verisi alınamadı',
+            'timestamp': datetime.now()
+        }
+    
+    # =========================================
+    # 9. STABLECOIN FLOW (USDT/USDC Minting)
+    # =========================================
+    def get_stablecoin_flow(self) -> Dict:
+        """
+        Stablecoin mint/burn takibi.
+        
+        Yeni stablecoin mint = Alım hazırlığı (bullish)
+        Stablecoin burn = Çıkış yapılıyor (bearish)
+        
+        Returns:
+            {'usdt_supply': 120B, 'change_7d': +500M, 'direction': 'BULLISH'}
+        """
+        cache_key = 'stablecoin_flow'
+        if self._is_cached(cache_key):
+            return self.cache[cache_key]
+        
+        try:
+            # DefiLlama stablecoins API
+            url = "https://stablecoins.llama.fi/stablecoincharts/all?stablecoin=1"  # USDT
+            response = requests.get(url, timeout=15, headers=self.HEADERS)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if len(data) >= 7:
+                    current_supply = data[-1].get('totalCirculating', {}).get('peggedUSD', 0)
+                    week_ago_supply = data[-7].get('totalCirculating', {}).get('peggedUSD', 0)
+                    
+                    if week_ago_supply > 0:
+                        change_7d = current_supply - week_ago_supply
+                        change_percent = (change_7d / week_ago_supply) * 100
+                        
+                        # Determine direction
+                        if change_7d > 500_000_000:  # $500M+ mint
+                            direction = 'BULLISH'
+                            action = f"🟢 ${change_7d/1e6:.0f}M USDT mint edildi! Alım hazırlığı."
+                        elif change_7d < -500_000_000:  # $500M+ burn
+                            direction = 'BEARISH'
+                            action = f"🔴 ${abs(change_7d)/1e6:.0f}M USDT yakıldı! Çıkış sinyali."
+                        else:
+                            direction = 'NEUTRAL'
+                            action = "Stablecoin akışı normal."
+                        
+                        result = {
+                            'usdt_supply': current_supply,
+                            'usdt_supply_formatted': f"${current_supply/1e9:.1f}B",
+                            'change_7d': change_7d,
+                            'change_7d_formatted': f"${change_7d/1e6:+.0f}M",
+                            'change_percent': change_percent,
+                            'direction': direction,
+                            'action': action,
+                            'timestamp': datetime.now()
+                        }
+                        
+                        self._set_cache(cache_key, result)
+                        return result
+                        
+        except Exception as e:
+            logger.warning(f"Stablecoin flow fetch failed: {e}")
+        
+        return {
+            'usdt_supply': 0,
+            'usdt_supply_formatted': 'N/A',
+            'change_7d': 0,
+            'change_7d_formatted': 'N/A',
+            'change_percent': 0,
+            'direction': 'NEUTRAL',
+            'action': 'Stablecoin verisi alınamadı',
+            'timestamp': datetime.now()
+        }
+
