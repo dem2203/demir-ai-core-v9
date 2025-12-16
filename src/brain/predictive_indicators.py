@@ -79,9 +79,9 @@ class PredictiveIndicators:
         if funding_alert:
             alerts.append(funding_alert)
         
-        # 4. Whale Alert (async call recommended in production)
-        # whale_alerts = self.detect_whale_moves(symbol)
-        # alerts.extend(whale_alerts)
+        # 4. Whale Alert - Büyük alım/satım ve transferler
+        whale_alerts = self.detect_whale_moves(symbol, current_data)
+        alerts.extend(whale_alerts)
         
         return alerts
     
@@ -260,27 +260,160 @@ class PredictiveIndicators:
         return None
     
     # =========================================
-    # 4. WHALE ALERT (Binance On-Chain)
+    # 4. WHALE ALERT (Büyük İşlem ve Transfer Takibi)
     # =========================================
-    def detect_whale_moves(self, symbol: str) -> List[PredictiveAlert]:
+    def detect_whale_moves(self, symbol: str, current_data: Dict = None) -> List[PredictiveAlert]:
         """
-        Büyük cüzdan transferlerini tespit et.
+        Büyük cüzdan transferlerini ve işlemlerini tespit et.
+        
+        1. Binance aggTrades -> Büyük alım/satım emirleri
+        2. whale-alert.io -> Exchange transferleri (premium özellik)
+        
         Exchange'e giriş = Satış hazırlığı
         Exchange'den çıkış = HODL (bullish)
         """
         alerts = []
         
         try:
-            # Use whale-alert.io free tier or Binance large transfer API
-            # For now, we'll use Binance's large trade detection
+            clean_symbol = symbol.replace('/', '')
             
-            # Alternative: Check for large trades in recent candles
-            # This is a simplified version - full implementation would use whale-alert API
+            # 1. Binance Aggravated Trades - Son 1 dakikadaki büyük işlemler
+            whale_trades = self._fetch_large_trades(clean_symbol)
             
-            pass  # Placeholder for whale alert API integration
+            if whale_trades:
+                total_buy_volume = sum(t['qty'] for t in whale_trades if not t['isBuyerMaker'])
+                total_sell_volume = sum(t['qty'] for t in whale_trades if t['isBuyerMaker'])
+                
+                # Check for significant imbalance
+                if total_buy_volume > 0 or total_sell_volume > 0:
+                    total = total_buy_volume + total_sell_volume
+                    buy_ratio = total_buy_volume / total if total > 0 else 0
+                    
+                    if buy_ratio > 0.7:  # %70+ alım
+                        price = current_data.get('price', 0) if current_data else 0
+                        usd_volume = total_buy_volume * price if price else total_buy_volume
+                        
+                        if usd_volume > self.WHALE_USD_THRESHOLD:
+                            alerts.append(PredictiveAlert(
+                                symbol=symbol,
+                                alert_type="WHALE_BUY",
+                                severity="HIGH",
+                                direction="BULLISH",
+                                title=f"🐋 {symbol} Whale ALIM!",
+                                detail=f"${usd_volume/1e6:.2f}M büyük alım tespit edildi",
+                                action="✅ Balinalar alım yapıyor - Yükseliş sinyali!",
+                                timestamp=datetime.now()
+                            ))
+                    
+                    elif buy_ratio < 0.3:  # %70+ satım
+                        price = current_data.get('price', 0) if current_data else 0
+                        usd_volume = total_sell_volume * price if price else total_sell_volume
+                        
+                        if usd_volume > self.WHALE_USD_THRESHOLD:
+                            alerts.append(PredictiveAlert(
+                                symbol=symbol,
+                                alert_type="WHALE_SELL",
+                                severity="HIGH",
+                                direction="BEARISH",
+                                title=f"🐋 {symbol} Whale SATIŞ!",
+                                detail=f"${usd_volume/1e6:.2f}M büyük satış tespit edildi",
+                                action="⚠️ Balinalar satıyor - Dikkatli ol!",
+                                timestamp=datetime.now()
+                            ))
+            
+            # 2. Blockchain whale transfers (for BTC/ETH)
+            if 'BTC' in symbol:
+                transfer_alerts = self._check_btc_whale_transfers()
+                alerts.extend(transfer_alerts)
+            elif 'ETH' in symbol:
+                transfer_alerts = self._check_eth_whale_transfers()
+                alerts.extend(transfer_alerts)
+                
+        except Exception as e:
+            logger.warning(f"Whale detection failed for {symbol}: {e}")
+        
+        return alerts
+    
+    def _fetch_large_trades(self, symbol: str, limit: int = 500) -> List[Dict]:
+        """Binance'den son büyük işlemleri çek"""
+        try:
+            url = f"https://fapi.binance.com/fapi/v1/aggTrades?symbol={symbol}&limit={limit}"
+            response = requests.get(url, timeout=5)
+            
+            if response.status_code == 200:
+                trades = response.json()
+                
+                # Filter for large trades (>$50K approximate)
+                large_trades = []
+                for trade in trades:
+                    qty = float(trade['q'])
+                    price = float(trade['p'])
+                    usd_value = qty * price
+                    
+                    if usd_value > 50000:  # $50K+
+                        large_trades.append({
+                            'qty': qty,
+                            'price': price,
+                            'usd': usd_value,
+                            'isBuyerMaker': trade['m'],  # True = Satış, False = Alım
+                            'time': trade['T']
+                        })
+                
+                return large_trades
+                
+        except Exception as e:
+            logger.warning(f"Large trades fetch failed: {e}")
+        
+        return []
+    
+    def _check_btc_whale_transfers(self) -> List[PredictiveAlert]:
+        """BTC whale transferlerini kontrol et (blockchain.info API)"""
+        alerts = []
+        
+        try:
+            # Check unconfirmed transactions > 100 BTC
+            url = "https://blockchain.info/unconfirmed-transactions?format=json"
+            response = requests.get(url, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                txs = data.get('txs', [])
+                
+                for tx in txs[:50]:  # Son 50 tx
+                    # Calculate total output
+                    total_btc = sum(out.get('value', 0) for out in tx.get('out', [])) / 1e8
+                    
+                    if total_btc > 100:  # 100+ BTC transfer
+                        # Check if going to exchange (simplified - would need address labeling)
+                        alerts.append(PredictiveAlert(
+                            symbol="BTC/USDT",
+                            alert_type="WHALE_TRANSFER",
+                            severity="MEDIUM",
+                            direction="NEUTRAL",
+                            title=f"🐋 BTC Büyük Transfer: {total_btc:.0f} BTC",
+                            detail=f"~${total_btc * 100000:,.0f} değerinde transfer",
+                            action="Takip et - Exchange'e girerse satış baskısı!",
+                            timestamp=datetime.now()
+                        ))
+                        break  # Only one alert per check
+                        
+        except Exception as e:
+            logger.debug(f"BTC whale transfer check failed: {e}")
+        
+        return alerts
+    
+    def _check_eth_whale_transfers(self) -> List[PredictiveAlert]:
+        """ETH whale transferlerini kontrol et"""
+        alerts = []
+        
+        try:
+            # Use Etherscan free API (rate limited)
+            # For now, we'll skip this as it requires API key
+            # In production, use etherscan.io API or Alchemy
+            pass
             
         except Exception as e:
-            logger.warning(f"Whale detection failed: {e}")
+            logger.debug(f"ETH whale transfer check failed: {e}")
         
         return alerts
     
