@@ -29,6 +29,9 @@ from src.data_ingestion.money_flow_analyzer import MoneyFlowAnalyzer
 from src.brain.sentiment_analyzer import SentimentAnalyzer
 from src.brain.predictive_analyzer import PredictiveAnalyzer
 
+# PHASE 33: Smart Notification System (15min scan)
+from src.brain.market_intelligence import MarketIntelligence
+
 # PHASE 11: Advanced Risk & Performance
 from src.core.risk_shield import RiskShield
 from src.core.performance_tracker import PerformanceTracker
@@ -101,6 +104,10 @@ class BotEngine:
         
         # 12. PHASE 32.5: Predictive Analyzer - Leading Indicators
         self.predictive_analyzer = PredictiveAnalyzer()
+        
+        # 13. PHASE 33: Smart Notification - 15min scan, 1h fallback
+        self.market_intelligence = MarketIntelligence()
+        self.all_snapshots = {}  # Store all coin snapshots for intelligence
         
         logger.info("✅ All Sub-systems Initialized Successfully.")
 
@@ -259,6 +266,49 @@ class BotEngine:
         if self.cycle_count % 10 == 0:
             logger.info("📊 Calculating performance metrics...")
             self.performance_tracker.calculate_metrics()
+        
+        # ======================================
+        # ADIM 5: SMART NOTIFICATION - 15dk Fırsat Taraması
+        # ======================================
+        try:
+            # 15 dakika doldu mu kontrol et
+            if self.market_intelligence.should_run_15min_check():
+                logger.info("🔍 15dk Fırsat/Risk Taraması Başlıyor...")
+                
+                # Tüm snapshot'ları topla (dashboard_data.json'dan)
+                import json
+                if os.path.exists("dashboard_data.json"):
+                    with open("dashboard_data.json", 'r') as f:
+                        self.all_snapshots = json.load(f)
+                
+                # Fırsat/Risk tara
+                opportunities = self.market_intelligence.scan_for_opportunities(self.all_snapshots)
+                
+                if opportunities:
+                    # Fırsat bulundu - hemen bildir!
+                    report = self.market_intelligence.format_opportunity_report(opportunities)
+                    await self.notifier.send_message_raw(report)
+                    logger.info(f"🎯 {len(opportunities)} fırsat/risk Telegram'a gönderildi!")
+                else:
+                    logger.info("✓ 15dk tarama tamamlandı - önemli fırsat/risk yok")
+            
+            # 1 saat fırsat bulunamadı mı kontrol et
+            if self.market_intelligence.should_send_hourly_fallback():
+                logger.info("📊 Saatlik Durum Özeti Gönderiliyor...")
+                
+                # Canlı derivatives data
+                live_data = {
+                    'open_interest': self.derivatives_data.get('open_interest', 0),
+                    'long_short_ratio': self.derivatives_data.get('long_short_ratio', 0),
+                    'btc_dominance': self.market_correlations.get('btc_dominance', 0)
+                }
+                
+                hourly_report = self.market_intelligence.format_hourly_status(self.all_snapshots, live_data)
+                await self.notifier.send_message_raw(hourly_report)
+                logger.info("✅ Saatlik özet gönderildi!")
+                
+        except Exception as e:
+            logger.warning(f"Market Intelligence scan failed: {e}")
 
     async def analyze_and_execute(self, ticker_data: List[dict]):
         """
