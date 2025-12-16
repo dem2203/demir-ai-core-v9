@@ -1543,8 +1543,66 @@ elif page == "🌐 Web Intelligence":
         
         st.divider()
         
+        # Row 5: Confluence Analyzer
+        st.subheader("🎯 Confluence Analyzer")
+        st.caption("MTF, Volatilite, Seans ve Exchange Flow analizi")
+        
+        try:
+            from src.brain.confluence_analyzer import ConfluenceAnalyzer
+            confluence = ConfluenceAnalyzer()
+            
+            # Analyze all coins
+            coins = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'LTCUSDT']
+            
+            for coin in coins:
+                conf_signal = confluence.calculate_confluence(coin)
+                
+                # Score bar visualization
+                score = conf_signal.confluence_score
+                score_bar = "█" * score + "░" * (10 - score)
+                
+                # Direction emoji
+                dir_emoji = "🟢" if conf_signal.direction == 'BULLISH' else "🔴" if conf_signal.direction == 'BEARISH' else "⚪"
+                
+                with st.expander(f"{dir_emoji} **{coin.replace('USDT', '')}** - Confluence: [{score_bar}] {score}/10"):
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.markdown("**📊 MTF:**")
+                        for tf, sig in conf_signal.mtf_agreement.items():
+                            tf_emoji = "🟢" if sig['direction'] == 'BULLISH' else "🔴" if sig['direction'] == 'BEARISH' else "⚪"
+                            st.markdown(f"• {tf}: {tf_emoji}")
+                    
+                    with col2:
+                        vol_emoji = "💥" if conf_signal.volatility_state == 'COMPRESSED' else "📊"
+                        st.markdown(f"**{vol_emoji} Volatilite:**")
+                        st.markdown(conf_signal.volatility_state)
+                    
+                    with col3:
+                        st.markdown("**🕐 Session:**")
+                        st.markdown(conf_signal.session)
+                    
+                    with col4:
+                        flow_emoji = "🟢" if conf_signal.exchange_flow == 'OUTFLOW' else "🔴" if conf_signal.exchange_flow == 'INFLOW' else "⚪"
+                        st.markdown(f"**{flow_emoji} Exchange:**")
+                        st.markdown(conf_signal.exchange_flow)
+                    
+                    # Action
+                    if score >= 6:
+                        st.success(conf_signal.action)
+                    elif score >= 4:
+                        st.info(conf_signal.action)
+                    else:
+                        st.warning(conf_signal.action)
+                        
+        except Exception as e:
+            st.error(f"Confluence Analyzer hatası: {e}")
+        
+        st.divider()
+        
         # Refresh button
         if st.button("🔄 Verileri Yenile"):
             st.cache_data.clear()
             st.rerun()
+
 
