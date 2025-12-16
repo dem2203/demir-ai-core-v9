@@ -25,8 +25,9 @@ from src.data_ingestion.derivatives_connector import DerivativesConnector
 # PHASE 30: Money Flow Analysis
 from src.data_ingestion.money_flow_analyzer import MoneyFlowAnalyzer
 
-# PHASE 32: Predictive Intelligence - Fear & Greed
-from src.data_ingestion.sentiment_analyzer import SentimentAnalyzer
+# PHASE 32: Predictive Intelligence
+from src.brain.sentiment_analyzer import SentimentAnalyzer
+from src.brain.predictive_analyzer import PredictiveAnalyzer
 
 # PHASE 11: Advanced Risk & Performance
 from src.core.risk_shield import RiskShield
@@ -97,6 +98,9 @@ class BotEngine:
         
         # 11. PHASE 32: Predictive Intelligence - Fear & Greed
         self.sentiment_analyzer = SentimentAnalyzer()
+        
+        # 12. PHASE 32.5: Predictive Analyzer - Leading Indicators
+        self.predictive_analyzer = PredictiveAnalyzer()
         
         logger.info("✅ All Sub-systems Initialized Successfully.")
 
@@ -279,6 +283,21 @@ class BotEngine:
         if snapshot:
             snapshot['derivatives'] = getattr(self, 'derivatives_data', {})
             snapshot['sentiment'] = getattr(self, 'sentiment_data', {})
+        
+        # --- PHASE 32.5: PREDICTIVE SIGNALS (Leading Indicators) ---
+        # Check for predictive signals FIRST - these are more valuable than lagging indicators
+        try:
+            current_price = ticker_data[-1].get('close', 0) if ticker_data else 0
+            predictive_signal = await self.predictive_analyzer.analyze_predictive_signals(symbol, current_price)
+            
+            if predictive_signal.get('has_signal'):
+                # Format and send predictive signal
+                formatted_msg = self.predictive_analyzer.format_predictive_signal(predictive_signal)
+                if formatted_msg:
+                    await self.notifier.send_message_raw(formatted_msg)
+                    logger.info(f"🔮 PREDICTIVE SIGNAL: {symbol} {predictive_signal['direction']} - {len(predictive_signal.get('reasons', []))} confirmations")
+        except Exception as e:
+            logger.warning(f"Predictive analysis failed for {symbol}: {e}")
         
         # --- PROAKTİF ERKEN UYARI (Early Warning) ---
         # Send early warnings to Telegram BEFORE signal is generated
