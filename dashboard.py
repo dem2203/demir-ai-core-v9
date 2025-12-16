@@ -424,145 +424,22 @@ if page == "📡 Live Market Intelligence":
                 }
             )
 
-        # AI Mantığı Detayları
-        st.markdown("### 🤖 AI Reasoning Engine")
-        c_left, c_right = st.columns(2)
+        # AI Reasoning Summary (Simplified - details in coin sections above)
+        st.markdown("### 🤖 AI Reasoning Summary")
+        st.caption("_Detaylı analiz için yukarıdaki coin bölümlerini açın_")
+        
+        # Simple 2-column summary
+        summary_left, summary_right = st.columns(2)
         
         for i, (symbol, info) in enumerate(data.items()):
-            col = c_left if i % 2 == 0 else c_right
+            col = summary_left if i % 2 == 0 else summary_right
             with col:
-                with st.expander(f"🔍 {symbol} Analysis Details", expanded=True):
-                    st.write(f"**Decision:** {info.get('ai_decision')}")
-                    st.write(f"**Reason:** {info.get('reason', 'N/A')}")
-                    
-                    # Fractal Göstergesi
-                    f_score = info.get('fractal_score', 0)
-                    if f_score > 80: st.success(f"Fractal Alignment: PERFECT ({f_score:.0f})")
-                    elif f_score > 50: st.warning(f"Fractal Alignment: MODERATE ({f_score:.0f})")
-                    else: st.error(f"Fractal Alignment: WEAK ({f_score:.0f})")
-                    
-                    st.write(f"**Regime:** {info.get('regime', 'UNKNOWN')}")
-                    st.write(f"**Funding Risk:** {info.get('funding_rate', 0):.4f}%")
-                    
-                    # PHASE 4A: Whale Walls
-                    whale_sup = info.get('whale_support', 0)
-                    whale_res = info.get('whale_resistance', 0)
-                    if whale_sup > 0:
-                        st.info(f"🐋 **Whale Support:** ${whale_sup:,.0f}")
-                    if whale_res > 0:
-                        st.warning(f"🐋 **Whale Resistance:** ${whale_res:,.0f}")
-                    
-                    # Order Book Imbalance
-                    imbalance = info.get('orderbook_imbalance', 0)
-                    if abs(imbalance) > 0.1:
-                        st.caption(f"Order Book Imbalance: {imbalance*100:.1f}% ({'BULLISH' if imbalance > 0 else 'BEARISH'})")
-                    
-                    # --- PHASE 8: AI Superpowers Display ---
-                    st.markdown("---")
-                    st.markdown("**🧠 AI Superpowers**")
-                    
-                    # On-Chain Intelligence
-                    onchain_sig = info.get('onchain_signal', 'N/A')
-                    onchain_score = info.get('onchain_score', 0)
-                    if onchain_sig != 'N/A':
-                        color = "🟢" if "BUY" in onchain_sig or "STRONG" in onchain_sig else "🔴" if "SELL" in onchain_sig else "🟡"
-                        st.write(f"🐋 On-Chain: {color} **{onchain_sig}** (Score: {onchain_score})")
-                    
-                    # Liquidation Data
-                    liq_sig = info.get('liq_signal', 'N/A')
-                    magnet = info.get('magnet_price', 0)
-                    if magnet > 0:
-                        st.write(f"🎯 Liquidation: **{liq_sig}** | Magnet: ${magnet:,.0f}")
-                    
-                    # Pattern Analysis
-                    wyckoff = info.get('wyckoff_phase', 'N/A')
-                    pattern = info.get('pattern_bias', 'NEUTRAL')
-                    structure = info.get('market_structure', 'N/A')
-                    st.write(f"📊 Wyckoff: **{wyckoff}** | Bias: **{pattern}**")
-                    st.write(f"📈 Structure: **{structure}**")
-                    
-                    # Adaptive Strategy
-                    adaptive = info.get('adaptive_strategy', 'N/A')
-                    risk_mult = info.get('risk_multiplier', 1.0)
-                    st.write(f"🧠 Strategy: **{adaptive}** | Risk Mult: **{risk_mult:.1f}x**")
-                    
-                    # --- PHASE 9: Technical Analysis Display ---
-                    st.markdown("---")
-                    st.markdown("**📐 Technical Analysis**")
-                    
-                    tech_bias = info.get('tech_bias', 'N/A')
-                    bias_color = "🟢" if "BULLISH" in tech_bias else "🔴" if "BEARISH" in tech_bias else "🟡"
-                    st.write(f"**Technical Bias:** {bias_color} **{tech_bias}**")
-                    
-                    # Candlestick Patterns
-                    candle_count = info.get('candlestick_count', 0)
-                    candle_latest = info.get('candlestick_latest', None)
-                    if candle_count > 0:
-                        st.write(f"🕯️ Candlestick: **{candle_latest}** ({candle_count} pattern)")
-                    
-                    # Chart Patterns
-                    chart_count = info.get('chart_pattern_count', 0)
-                    chart_latest = info.get('chart_pattern_latest', None)
-                    if chart_count > 0:
-                        st.write(f"📐 Chart Pattern: **{chart_latest}**")
-                    
-                    # Divergence
-                    div_count = info.get('divergence_count', 0)
-                    div_latest = info.get('divergence_latest', None)
-                    if div_count > 0:
-                        st.warning(f"⚠️ **Divergence:** {div_latest}")
-                    
-                    # Fibonacci
-                    fib_sup = info.get('fib_support', 0)
-                    fib_res = info.get('fib_resistance', 0)
-                    if fib_sup > 0:
-                        st.write(f"📏 Fib Support: **${fib_sup:,.0f}** | Resistance: **${fib_res:,.0f}**")
-                    
-                    # Pivot Points
-                    pivot = info.get('pivot', 0)
-                    pivot_sup = info.get('pivot_support', 0)
-                    pivot_res = info.get('pivot_resistance', 0)
-                    if pivot > 0:
-                        st.write(f"📍 Pivot: **${pivot:,.0f}** | S: ${pivot_sup:,.0f} | R: ${pivot_res:,.0f}")
-                    
-                    # Volume Signal
-                    vol_sig = info.get('volume_signal', 'N/A')
-                    if vol_sig != 'N/A':
-                        vol_color = "🟢" if "BULLISH" in vol_sig else "🔴" if "DISTRIBUTION" in vol_sig else "🟡"
-                        st.write(f"📊 Volume: {vol_color} **{vol_sig}**")
-                    
-                    # --- PHASE 13: Sentiment Analysis Display ---
-                    st.markdown("---")
-                    st.markdown("**📰 Market Sentiment**")
-                    
-                    sentiment_data = info.get('sentiment_data', {})
-                    if sentiment_data:
-                        sentiment = sentiment_data.get('sentiment', 'NEUTRAL')
-                        fg_index = sentiment_data.get('fear_greed_index', 50)
-                        comp_score = sentiment_data.get('composite_score', 0)
-                        
-                        # Color coding
-                        sent_color = "🟢" if sentiment == "BULLISH" else "🔴" if sentiment == "BEARISH" else "🟡"
-                        
-                        # Fear & Greed visualization
-                        if fg_index >= 75:
-                            fg_label = "Extreme Greed"
-                            fg_emoji = "🔥"
-                        elif fg_index >= 55:
-                            fg_label = "Greed"
-                            fg_emoji = "😁"
-                        elif fg_index >= 45:
-                            fg_label = "Neutral"
-                            fg_emoji = "😐"
-                        elif fg_index >= 25:
-                            fg_label = "Fear"
-                            fg_emoji = "😰"
-                        else:
-                            fg_label = "Extreme Fear"
-                            fg_emoji = "😱"
-                        
-                        st.write(f"**Sentiment:** {sent_color} **{sentiment}** (Score: {comp_score:.2f})")
-                        st.write(f"**Fear & Greed:** {fg_emoji} **{fg_label}** ({fg_index}/100)")
+                dec = info.get('ai_decision', 'NEUTRAL')
+                conf = info.get('ai_confidence', 0)
+                reason = info.get('reason', 'N/A')[:100]  # Truncate
+                
+                signal_emoji = "🟢" if dec == "BUY" else "🔴" if dec == "SELL" else "⚪"
+                st.info(f"{signal_emoji} **{symbol}**: {dec} ({conf:.0f}%)\n\n_{reason}..._")
 
 
 # ==========================================
