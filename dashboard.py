@@ -93,12 +93,48 @@ def render_coin_section(symbol: str, coin_data: dict, expanded: bool = False):
     # Expander with signal info in title
     with st.expander(f"{signal_emoji} **{symbol}** | ${price:,.2f} | {dec} ({conf:.0f}%)", expanded=expanded):
         
-        # Row 1: Basic metrics
+        # Row 1: Basic metrics with Turkish explanations
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("💰 Price", f"${price:,.2f}")
-        m2.metric("🎯 Signal", dec, f"{conf:.0f}%")
-        m3.metric("📊 Regime", coin_data.get('regime', 'N/A'))
-        m4.metric("📈 Fractal", f"{coin_data.get('fractal_score', 0):.0f}%")
+        
+        with m1:
+            st.metric("💰 Fiyat", f"${price:,.2f}")
+            st.caption('_"Güncel piyasa fiyatı"_')
+        
+        with m2:
+            signal_tr = "AL" if dec == "BUY" else "SAT" if dec == "SELL" else "BEKLE"
+            st.metric("🎯 Sinyal", signal_tr, f"{conf:.0f}%")
+            signal_explain = "Alım zamanı" if dec == "BUY" else "Satış zamanı" if dec == "SELL" else "Bekle, sinyal yok"
+            st.caption(f'_"{signal_explain}"_')
+        
+        with m3:
+            regime = coin_data.get('regime', 'N/A')
+            if "BULL" in regime:
+                regime_tr = "📈 BOĞA PİYASASI"
+                regime_explain = "Fiyatlar yükseliyor, alım avantajlı"
+            elif "BEAR" in regime:
+                regime_tr = "📉 AYI PİYASASI"
+                regime_explain = "Fiyatlar düşüyor, satış düşün"
+            elif "RANGE" in regime:
+                regime_tr = "↔️ YATAY"
+                regime_explain = "Fiyat dar aralıkta, kırılım bekle"
+            else:
+                regime_tr = "❓ BELİRSİZ"
+                regime_explain = "Trend belirlenemedi"
+            st.metric("📊 Piyasa Durumu", regime_tr)
+            st.caption(f'_"{regime_explain}"_')
+        
+        with m4:
+            fractal = coin_data.get('fractal_score', 0)
+            st.metric("📈 Fraktal Uyumu", f"{fractal:.0f}%")
+            if fractal >= 80:
+                frac_explain = "Mükemmel! Tüm zaman dilimleri aynı yönde"
+            elif fractal >= 60:
+                frac_explain = "İyi uyum, güvenilir sinyal"
+            elif fractal >= 40:
+                frac_explain = "Orta uyum, dikkatli ol"
+            else:
+                frac_explain = "Zayıf uyum, sinyal güvenilmez"
+            st.caption(f'_"{frac_explain}"_')
         
         # SMC Section - Enhanced with visible explanations
         st.markdown("#### 🎯 Smart Money Concepts (Akıllı Para Konseptleri)")
@@ -147,22 +183,58 @@ def render_coin_section(symbol: str, coin_data: dict, expanded: bool = False):
             st.caption(f'_"{strength_text}"_')
         
         
-        # MTF Section
-        st.markdown("#### 📊 Multi-Timeframe Confluence (Çoklu Zaman Dilimi Uyumu)")
+        # MTF Section with detailed Turkish explanations
+        st.markdown("#### 📊 Çoklu Zaman Dilimi Analizi")
+        st.caption("_1 saatlik, 4 saatlik ve günlük grafiklerin aynı yönü gösterip göstermediği_")
         mtf = coin_data.get('mtf', {})
         trends = mtf.get('trends', {})
         
         t1, t2, t3, t4, t5 = st.columns(5)
         
-        for col, (tf, label) in zip([t1, t2, t3], [('1h', '1H'), ('4h', '4H'), ('1d', '1D')]):
-            trend = trends.get(tf, {}).get('trend', 'N/A')
-            emoji = "🟢" if trend == "BULLISH" else "🔴" if trend == "BEARISH" else "⚪"
-            trend_tr = "YÜKSELİŞ" if trend == "BULLISH" else "DÜŞÜŞ" if trend == "BEARISH" else "NÖTR"
-            col.metric(f"{label} Trend (Yön)", f"{emoji} {trend_tr[:4]}")
+        tf_labels = {
+            '1h': ('1 Saat', 'Kısa vadeli yön'),
+            '4h': ('4 Saat', 'Orta vadeli yön'),
+            '1d': ('1 Gün', 'Uzun vadeli yön')
+        }
         
-        t4.metric("Confluence (Uyum)", f"{mtf.get('confluence_score', 0)}%")
-        entry_qual = mtf.get('entry_quality', {})
-        t5.metric("Quality (Kalite)", entry_qual.get('rating', 'N/A'))
+        for col, (tf, (label, desc)) in zip([t1, t2, t3], tf_labels.items()):
+            trend = trends.get(tf, {}).get('trend', 'N/A')
+            with col:
+                if trend == "BULLISH":
+                    st.metric(label, "🟢 YÜKSELİŞ")
+                    st.caption(f'_"{desc}: Alım fırsatı"_')
+                elif trend == "BEARISH":
+                    st.metric(label, "🔴 DÜŞÜŞ")
+                    st.caption(f'_"{desc}: Satış düşün"_')
+                else:
+                    st.metric(label, "⚪ KARARSIZ")
+                    st.caption(f'_"{desc}: Bekle"_')
+        
+        with t4:
+            confluence = mtf.get('confluence_score', 0)
+            st.metric("Uyum Skoru", f"{confluence}%")
+            if confluence >= 80:
+                conf_explain = "Mükemmel! Tüm zaman dilimleri hemfikir"
+            elif confluence >= 60:
+                conf_explain = "İyi uyum, sinyal güçlü"
+            elif confluence >= 40:
+                conf_explain = "Orta uyum, dikkatli ol"
+            else:
+                conf_explain = "Zayıf uyum, bekle"
+            st.caption(f'_"{conf_explain}"_')
+        
+        with t5:
+            entry_qual = mtf.get('entry_quality', {})
+            rating = entry_qual.get('rating', 'N/A')
+            rating_map = {
+                'EXCELLENT': ('⭐⭐⭐', 'Harika giriş zamanı'),
+                'GOOD': ('⭐⭐', 'İyi giriş zamanı'),
+                'FAIR': ('⭐', 'Vasat, riskli'),
+                'POOR': ('❌', 'Kötü, girme')
+            }
+            stars, explain = rating_map.get(rating, ('❓', 'Belirsiz'))
+            st.metric("Giriş Kalitesi", stars)
+            st.caption(f'_"{explain}"_')
         
         # Volume Profile Section - Enhanced with visible explanations
         st.markdown("#### 📈 Volume Profile (Hacim Profili)")
@@ -222,37 +294,115 @@ def render_coin_section(symbol: str, coin_data: dict, expanded: bool = False):
             st.caption(f'_"{pos_explain}"_')
         
         
-        # Smart SL/TP Section
+        # Smart SL/TP Section with Turkish
         sltp = coin_data.get('smart_sltp', {})
         if sltp.get('valid', False) or sltp.get('stop_loss', 0) > 0:
-            st.markdown("#### 🎯 Entry / Exit Levels")
+            st.markdown("#### 🎯 Giriş ve Çıkış Seviyeleri")
+            st.caption("_Stop Loss: Zarar kes noktası | TP: Kar al seviyeleri | R:R: Risk/Kazanç oranı_")
             
             direction = sltp.get('direction', dec)
-            dir_emoji = "🟢 LONG" if direction in ["LONG", "BUY"] else "🔴 SHORT" if direction in ["SHORT", "SELL"] else "⚪"
             
             e1, e2, e3, e4, e5 = st.columns(5)
-            e1.metric("Direction", dir_emoji)
-            e2.metric("Stop Loss", f"${sltp.get('stop_loss', 0):,.0f}", f"-{sltp.get('risk_pct', 0):.1f}%")
-            e3.metric("TP1", f"${sltp.get('take_profit_1', 0):,.0f}", f"R:R {sltp.get('risk_reward_1', 0)}")
-            e4.metric("TP2", f"${sltp.get('take_profit_2', 0):,.0f}", f"R:R {sltp.get('risk_reward_2', 0)}")
-            e5.metric("TP3", f"${sltp.get('take_profit_3', 0):,.0f}", f"R:R {sltp.get('risk_reward_3', 0)}")
             
-            # Quality indicator
+            with e1:
+                if direction in ["LONG", "BUY"]:
+                    st.metric("Yön", "🟢 AL")
+                    st.caption('_"Yükseliş bekleniyor"_')
+                elif direction in ["SHORT", "SELL"]:
+                    st.metric("Yön", "🔴 SAT")
+                    st.caption('_"Düşüş bekleniyor"_')
+                else:
+                    st.metric("Yön", "⚪ BEKLE")
+                    st.caption('_"Sinyal yok"_')
+            
+            with e2:
+                sl = sltp.get('stop_loss', 0)
+                risk_pct = sltp.get('risk_pct', 0)
+                st.metric("Zarar Kes", f"${sl:,.0f}", f"-{risk_pct:.1f}%")
+                st.caption('_"Bu fiyata düşerse sat"_')
+            
+            with e3:
+                tp1 = sltp.get('take_profit_1', 0)
+                rr1 = sltp.get('risk_reward_1', 0)
+                st.metric("Hedef 1", f"${tp1:,.0f}", f"R:R {rr1}")
+                st.caption('_"İlk kar al seviyesi"_')
+            
+            with e4:
+                tp2 = sltp.get('take_profit_2', 0)
+                rr2 = sltp.get('risk_reward_2', 0)
+                st.metric("Hedef 2", f"${tp2:,.0f}", f"R:R {rr2}")
+                st.caption('_"İkinci kar al"_')
+            
+            with e5:
+                tp3 = sltp.get('take_profit_3', 0)
+                rr3 = sltp.get('risk_reward_3', 0)
+                st.metric("Hedef 3", f"${tp3:,.0f}", f"R:R {rr3}")
+                st.caption('_"Tam hedef"_')
+            
+            # Quality indicator in Turkish
             quality = sltp.get('quality', 'UNKNOWN')
-            if quality == "EXCELLENT":
-                st.success(f"✅ **{quality}** - High probability setup!")
-            elif quality == "GOOD":
-                st.info(f"👍 **{quality}** - Decent setup")
-            elif quality == "FAIR":
-                st.warning(f"⚠️ **{quality}** - Caution advised")
+            quality_map = {
+                'EXCELLENT': ('✅ MÜKEMMEL', 'success', 'Güçlü sinyal, yüksek başarı olasılığı!'),
+                'GOOD': ('👍 İYİ', 'info', 'Güvenilir setup, normal risk'),
+                'FAIR': ('⚠️ ORTA', 'warning', 'Dikkatli ol, risk yüksek'),
+                'POOR': ('❌ ZAYIF', 'error', 'Girme, sinyal zayıf')
+            }
+            label, func, msg = quality_map.get(quality, ('❓ BİLİNMİYOR', 'info', 'Kalite belirlenemedi'))
+            getattr(st, func)(f"**{label}** - {msg}")
         
-        # Technical summary
-        st.markdown("#### 📐 Technical Summary")
+        # Technical summary with Turkish explanations
+        st.markdown("#### 📐 Teknik Özet")
+        st.caption("_Farklı analiz yöntemlerinin özeti_")
+        
         tech1, tech2, tech3, tech4 = st.columns(4)
-        tech1.metric("Tech Bias", coin_data.get('tech_bias', 'N/A'))
-        tech2.metric("Pattern", coin_data.get('pattern_bias', 'N/A'))
-        tech3.metric("On-Chain", coin_data.get('onchain_signal', 'N/A'))
-        tech4.metric("Wyckoff", coin_data.get('wyckoff_phase', 'N/A'))
+        
+        with tech1:
+            tech_bias = coin_data.get('tech_bias', 'N/A')
+            if "BULL" in tech_bias:
+                st.metric("Teknik Yön", "🟢 YÜKSELİŞ")
+                st.caption('_"İndikatörler alım diyor"_')
+            elif "BEAR" in tech_bias:
+                st.metric("Teknik Yön", "🔴 DÜŞÜŞ")
+                st.caption('_"İndikatörler satış diyor"_')
+            else:
+                st.metric("Teknik Yön", "⚪ NÖTR")
+                st.caption('_"İndikatörler kararsız"_')
+        
+        with tech2:
+            pattern = coin_data.get('pattern_bias', 'N/A')
+            if "BULL" in pattern:
+                st.metric("Grafik Deseni", "🟢 YÜKSELİŞ")
+                st.caption('_"Formasyonlar alım gösteriyor"_')
+            elif "BEAR" in pattern:
+                st.metric("Grafik Deseni", "🔴 DÜŞÜŞ")
+                st.caption('_"Formasyonlar satış gösteriyor"_')
+            else:
+                st.metric("Grafik Deseni", "⚪ BELİRSİZ")
+                st.caption('_"Net formasyon yok"_')
+        
+        with tech3:
+            onchain = coin_data.get('onchain_signal', 'N/A')
+            if "BUY" in onchain or "STRONG" in onchain:
+                st.metric("Zincir Verisi", "🟢 ALIŞ")
+                st.caption('_"Balinalar alıyor"_')
+            elif "SELL" in onchain:
+                st.metric("Zincir Verisi", "🔴 SATIŞ")
+                st.caption('_"Balinalar satıyor"_')
+            else:
+                st.metric("Zincir Verisi", "⚪ NÖTR")
+                st.caption('_"Balina aktivitesi normal"_')
+        
+        with tech4:
+            wyckoff = coin_data.get('wyckoff_phase', 'N/A')
+            wyckoff_map = {
+                'ACCUMULATION': ('🟢 BİRİKİM', 'Akıllı para alım yapıyor'),
+                'MARKUP': ('🚀 YÜKSELİŞ', 'Ralli başladı'),
+                'DISTRIBUTION': ('🔴 DAĞITIM', 'Akıllı para satıyor'),
+                'MARKDOWN': ('📉 DÜŞÜŞ', 'Düşüş rallisi')
+            }
+            label, explain = wyckoff_map.get(wyckoff, ('❓ BİLİNMİYOR', 'Faz belirlenemedi'))
+            st.metric("Wyckoff Fazı", label)
+            st.caption(f'_"{explain}"_')
 
 # ==========================================
 # 1. CANLI İZLEME (Live Market Intelligence)
