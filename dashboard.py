@@ -447,14 +447,69 @@ if page == "📡 Live Market Intelligence":
         c2.metric("😨 VIX Index", f"{vix:.2f}" if vix > 0 else "N/A")
         c3.metric(f"₿ {display_symbol}", f"${price:,.2f}" if price > 0 else "N/A")
         
+        # AI Signal - Türkçe ve coin ismi belirtilmiş
         dec = main_info.get('ai_decision', 'NEUTRAL')
         conf = main_info.get('ai_confidence', 0)
         
+        signal_tr = "AL" if dec == "BUY" else "SAT" if dec == "SELL" else "BEKLE"
         delta_color = "off"
         if dec == "BUY": delta_color = "normal"
         elif dec == "SELL": delta_color = "inverse"
         
-        c4.metric("🧠 AI Signal", dec, f"{conf:.1f}% Conf.", delta_color=delta_color)
+        c4.metric(f"🧠 {display_symbol} Sinyal", signal_tr, f"{conf:.1f}% Güven", delta_color=delta_color)
+        
+        # ======================================
+        # MARKET CORRELATIONS & DERIVATIVES (DXY/VIX'in hemen altında)
+        # ======================================
+        st.markdown("---")
+        st.markdown("### 🌐 Piyasa Korelasyonları & Türevler")
+        st.caption("_Kripto piyasasını etkileyen dış faktörler_")
+        
+        cor_col1, cor_col2, cor_col3, cor_col4, cor_col5 = st.columns(5)
+        
+        # Correlation Data
+        corr_data = main_info.get('correlations', {})
+        deriv_data = main_info.get('derivatives', {})
+        
+        # Gold
+        with cor_col1:
+            gold = corr_data.get('gold', 0)
+            st.metric("🥇 Altın", f"${gold:,.0f}" if gold else "N/A")
+            st.caption('_"Yükselirse BTC de yükselir"_')
+        
+        # Nasdaq 
+        with cor_col2:
+            nasdaq = corr_data.get('nasdaq', 0)
+            st.metric("📈 Nasdaq", f"{nasdaq:,.0f}" if nasdaq else "N/A")
+            st.caption('_"Risk iştahı göstergesi"_')
+        
+        # BTC Dominance
+        with cor_col3:
+            btc_d = corr_data.get('btc_dominance', 0)
+            st.metric("₿ BTC Dominans", f"{btc_d:.1f}%" if btc_d else "N/A")
+            st.caption('_"Düşerse altcoin rallisi"_')
+        
+        # Open Interest
+        with cor_col4:
+            oi = deriv_data.get('open_interest', 0)
+            oi_display = f"${oi/1e9:.2f}B" if oi > 1e9 else f"${oi/1e6:.0f}M" if oi > 0 else "N/A"
+            st.metric("📊 Açık Pozisyon", oi_display)
+            st.caption('_"Yüksek = volatilite riski"_')
+        
+        # Long/Short Ratio
+        with cor_col5:
+            ls_ratio = deriv_data.get('long_short_ratio', 0)
+            if ls_ratio > 1.5:
+                ls_emoji = "🔴"
+                ls_explain = "Herkes long, düşüş riski"
+            elif ls_ratio < 0.7:
+                ls_emoji = "🟢"
+                ls_explain = "Herkes short, yükseliş potansiyeli"
+            else:
+                ls_emoji = "⚪"
+                ls_explain = "Dengeli"
+            st.metric("📊 L/S Oranı", f"{ls_emoji} {ls_ratio:.2f}" if ls_ratio else "N/A")
+            st.caption(f'_"{ls_explain}"_')
 
         # ======================================
         # PER-COIN COLLAPSIBLE SECTIONS (PHASE 25)
@@ -489,41 +544,7 @@ if page == "📡 Live Market Intelligence":
                 with st.expander(f"{priority_emoji} {w.get('title', 'Warning')}", expanded=(priority in ['CRITICAL', 'HIGH'])):
                     st.write(w.get('message', ''))
                     st.info(f"➡️ **Tavsiye:** {w.get('action', '')}")
-        
-        # ======================================
-        # MARKET CORRELATIONS SECTION (PHASE 22)
-        # ======================================
-        st.markdown("---")
-        st.markdown("### 🌐 Market Correlations & Derivatives")
-        
-        cor_col1, cor_col2, cor_col3, cor_col4, cor_col5 = st.columns(5)
-        
-        # Correlation Data (from JSON if available)
-        corr_data = main_info.get('correlations', {})
-        deriv_data = main_info.get('derivatives', {})
-        
-        # Gold
-        gold = corr_data.get('gold', 0)
-        gold_chg = corr_data.get('gold_change', 0)
-        cor_col1.metric("🥇 Gold", f"${gold:,.0f}" if gold else "N/A", f"{gold_chg:+.1f}%" if gold else None)
-        
-        # Nasdaq 
-        nasdaq = corr_data.get('nasdaq', 0)
-        nasdaq_chg = corr_data.get('nasdaq_change', 0)
-        cor_col2.metric("📈 Nasdaq", f"{nasdaq:,.0f}" if nasdaq else "N/A", f"{nasdaq_chg:+.1f}%" if nasdaq else None)
-        
-        # BTC Dominance
-        btc_d = corr_data.get('btc_dominance', 0)
-        cor_col3.metric("₿ BTC.D", f"{btc_d:.1f}%" if btc_d else "N/A")
-        
-        # Open Interest
-        oi = deriv_data.get('open_interest', 0)
-        cor_col4.metric("📊 Open Interest", f"{oi:,.0f}" if oi else "N/A")
-        
-        # Long/Short Ratio
-        ls_ratio = deriv_data.get('long_short_ratio', 0)
-        ls_color = "normal" if ls_ratio > 1 else "inverse" if ls_ratio < 1 else "off"
-        cor_col5.metric("📊 L/S Ratio", f"{ls_ratio:.2f}" if ls_ratio else "N/A", delta_color=ls_color)
+
         
         # ======================================
         # NOTE: SMC/MTF/VP/SL-TP moved to Coin-by-Coin Analysis above
