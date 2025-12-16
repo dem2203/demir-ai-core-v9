@@ -109,39 +109,55 @@ class MacroConnector:
             btc_usdt = exchange.fetch_ticker('BTC/USDT')
             btc_price = float(btc_usdt['last']) if btc_usdt else 100000
             
-            # ✅ DASHBOARD: Gold Price (GC=F futures)
+            # ✅ DASHBOARD: Gold Price with 24h change (GC=F futures)
             try:
                 gold = yf.Ticker("GC=F")
-                gold_price = gold.fast_info.get('last_price', 2000)
-                result['gold'] = gold_price  # Direct price for dashboard
-                result['gold_btc_ratio'] = gold_price / btc_price if btc_price > 0 else 0.0
-            except:
+                gold_info = gold.fast_info
+                gold_price = gold_info.get('lastPrice') or gold_info.get('last_price') or gold_info.get('regularMarketPrice', 0)
+                gold_prev = gold_info.get('previousClose') or gold_info.get('regularMarketPreviousClose', 0)
+                result['gold'] = gold_price if gold_price else 0
+                result['gold_change'] = ((gold_price - gold_prev) / gold_prev * 100) if gold_prev and gold_price else 0
+                result['gold_btc_ratio'] = gold_price / btc_price if btc_price > 0 and gold_price else 0.0
+            except Exception as e:
+                logger.warning(f"Gold fetch failed: {e}")
                 result['gold'] = 0
+                result['gold_change'] = 0
                 result['gold_btc_ratio'] = 0.02
             
-            # ✅ DASHBOARD: Nasdaq Composite (^IXIC)
+            # ✅ DASHBOARD: Nasdaq Composite with 24h change (^IXIC)
             try:
                 nasdaq = yf.Ticker("^IXIC")
-                nasdaq_price = nasdaq.fast_info.get('last_price', 0)
-                result['nasdaq'] = nasdaq_price
-            except:
+                nasdaq_info = nasdaq.fast_info
+                nasdaq_price = nasdaq_info.get('lastPrice') or nasdaq_info.get('last_price') or nasdaq_info.get('regularMarketPrice', 0)
+                nasdaq_prev = nasdaq_info.get('previousClose') or nasdaq_info.get('regularMarketPreviousClose', 0)
+                result['nasdaq'] = nasdaq_price if nasdaq_price else 0
+                result['nasdaq_change'] = ((nasdaq_price - nasdaq_prev) / nasdaq_prev * 100) if nasdaq_prev and nasdaq_price else 0
+            except Exception as e:
+                logger.warning(f"Nasdaq fetch failed: {e}")
                 result['nasdaq'] = 0
+                result['nasdaq_change'] = 0
             
-            # ✅ DASHBOARD: BTC Dominance (CoinGecko free API)
+            # ✅ DASHBOARD: BTC Dominance with 24h change (CoinGecko free API)
             try:
                 cg_response = requests.get("https://api.coingecko.com/api/v3/global", timeout=5)
                 if cg_response.status_code == 200:
                     global_data = cg_response.json()
-                    result['btc_dominance'] = global_data['data']['market_cap_percentage']['btc']
+                    btc_d = global_data['data']['market_cap_percentage']['btc']
+                    btc_d_24h = global_data['data'].get('market_cap_change_percentage_24h_usd', 0)
+                    result['btc_dominance'] = btc_d
+                    result['btc_dominance_change'] = btc_d_24h  # Market cap change proxy
                 else:
                     result['btc_dominance'] = 0
-            except:
+                    result['btc_dominance_change'] = 0
+            except Exception as e:
+                logger.warning(f"BTC.D fetch failed: {e}")
                 result['btc_dominance'] = 0
+                result['btc_dominance_change'] = 0
                 
             # S&P500/BTC correlation proxy
             try:
                 spy = yf.Ticker("SPY")
-                spy_price = spy.fast_info.get('last_price', 500)
+                spy_price = spy.fast_info.get('lastPrice') or spy.fast_info.get('last_price') or spy.fast_info.get('regularMarketPrice', 500)
                 result['sp500_btc_ratio'] = spy_price / (btc_price / 1000) if btc_price > 0 else 0.0
             except:
                 result['sp500_btc_ratio'] = 5.0  # fallback

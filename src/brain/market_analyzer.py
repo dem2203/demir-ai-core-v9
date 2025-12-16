@@ -875,11 +875,14 @@ class MarketAnalyzer:
             "whale_support": whale_support if whale_support else 0,
             "whale_resistance": whale_resistance if whale_resistance else 0,
             "orderbook_imbalance": orderbook_imbalance,
-            # DASHBOARD: Korelasyonlar - macro_data'dan Gold/Nasdaq/BTC.D
+            # DASHBOARD: Korelasyonlar - macro_data'dan Gold/Nasdaq/BTC.D with 24h change
             "correlations": {
                 "gold": macro_data.get('gold', 0),
+                "gold_change": macro_data.get('gold_change', 0),
                 "nasdaq": macro_data.get('nasdaq', 0),
+                "nasdaq_change": macro_data.get('nasdaq_change', 0),
                 "btc_dominance": macro_data.get('btc_dominance', 0),
+                "btc_dominance_change": macro_data.get('btc_dominance_change', 0),
             },
             # PHASE 8: New Superpowers
             "onchain_signal": onchain_signal,

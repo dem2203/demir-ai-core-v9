@@ -471,45 +471,89 @@ if page == "📡 Live Market Intelligence":
         corr_data = main_info.get('correlations', {})
         deriv_data = main_info.get('derivatives', {})
         
-        # Gold
+        # Gold - Dynamic Analysis
         with cor_col1:
             gold = corr_data.get('gold', 0)
-            st.metric("🥇 Altın", f"${gold:,.0f}" if gold else "N/A")
-            st.caption('_"Yükselirse BTC de yükselir"_')
+            gold_chg = corr_data.get('gold_change', 0)
+            if gold and gold > 0:
+                st.metric("🥇 Altın", f"${gold:,.0f}", f"{gold_chg:+.1f}%" if gold_chg else None)
+                if gold_chg > 1:
+                    st.caption('_"📈 Altın yükseliyor → BTC için pozitif"_')
+                elif gold_chg < -1:
+                    st.caption('_"📉 Altın düşüyor → Risk iştahı azalıyor"_')
+                else:
+                    st.caption('_"↔️ Altın stabil"_')
+            else:
+                st.metric("🥇 Altın", "N/A")
+                st.caption('_"Piyasa kapalı veya veri yok"_')
         
-        # Nasdaq 
+        # Nasdaq - Dynamic Analysis
         with cor_col2:
             nasdaq = corr_data.get('nasdaq', 0)
-            st.metric("📈 Nasdaq", f"{nasdaq:,.0f}" if nasdaq else "N/A")
-            st.caption('_"Risk iştahı göstergesi"_')
+            nasdaq_chg = corr_data.get('nasdaq_change', 0)
+            if nasdaq and nasdaq > 0:
+                st.metric("📈 Nasdaq", f"{nasdaq:,.0f}", f"{nasdaq_chg:+.1f}%" if nasdaq_chg else None)
+                if nasdaq_chg > 1:
+                    st.caption('_"📈 Risk iştahı yüksek → Kripto için pozitif"_')
+                elif nasdaq_chg < -1:
+                    st.caption('_"📉 Hisseler düşüyor → Kriptoda dikkat"_')
+                else:
+                    st.caption('_"↔️ Piyasa kararsız"_')
+            else:
+                st.metric("📈 Nasdaq", "N/A")
+                st.caption('_"Hafta sonu veya piyasa kapalı"_')
         
-        # BTC Dominance
+        # BTC Dominance - Dynamic Analysis
         with cor_col3:
             btc_d = corr_data.get('btc_dominance', 0)
-            st.metric("₿ BTC Dominans", f"{btc_d:.1f}%" if btc_d else "N/A")
-            st.caption('_"Düşerse altcoin rallisi"_')
+            btc_d_chg = corr_data.get('btc_dominance_change', 0)
+            if btc_d and btc_d > 0:
+                st.metric("₿ BTC Dominans", f"{btc_d:.1f}%", f"{btc_d_chg:+.1f}%" if btc_d_chg else None)
+                if btc_d_chg > 0.5:
+                    st.caption('_"📈 BTC güçleniyor → Altcoinler zayıf"_')
+                elif btc_d_chg < -0.5:
+                    st.caption('_"📉 Altcoin sezonu başlıyor!"_')
+                else:
+                    st.caption('_"↔️ Denge durumu"_')
+            else:
+                st.metric("₿ BTC Dominans", "N/A")
+                st.caption('_"CoinGecko verisi yok"_')
         
-        # Open Interest
+        # Open Interest - Dynamic Analysis
         with cor_col4:
             oi = deriv_data.get('open_interest', 0)
-            oi_display = f"${oi/1e9:.2f}B" if oi > 1e9 else f"${oi/1e6:.0f}M" if oi > 0 else "N/A"
-            st.metric("📊 Açık Pozisyon", oi_display)
-            st.caption('_"Yüksek = volatilite riski"_')
+            if oi and oi > 0:
+                oi_display = f"${oi/1e9:.2f}B" if oi > 1e9 else f"${oi/1e6:.0f}M"
+                st.metric("📊 Açık Pozisyon", oi_display)
+                if oi > 30e9:  # 30B threshold
+                    st.caption('_"🔴 Çok yüksek! Volatilite riski"_')
+                elif oi > 20e9:
+                    st.caption('_"🟡 Yüksek kaldıraç - dikkatli ol"_')
+                else:
+                    st.caption('_"🟢 Normal seviye"_')
+            else:
+                st.metric("📊 Açık Pozisyon", "N/A")
+                st.caption('_"Binance Futures verisi bekleniyor"_')
         
-        # Long/Short Ratio
+        # Long/Short Ratio - Dynamic Analysis
         with cor_col5:
             ls_ratio = deriv_data.get('long_short_ratio', 0)
-            if ls_ratio > 1.5:
-                ls_emoji = "🔴"
-                ls_explain = "Herkes long, düşüş riski"
-            elif ls_ratio < 0.7:
-                ls_emoji = "🟢"
-                ls_explain = "Herkes short, yükseliş potansiyeli"
+            if ls_ratio and ls_ratio > 0:
+                if ls_ratio > 1.5:
+                    st.metric("📊 L/S Oranı", f"🔴 {ls_ratio:.2f}")
+                    st.caption('_"⚠️ Herkes long! Düşüş riski yüksek"_')
+                elif ls_ratio < 0.7:
+                    st.metric("📊 L/S Oranı", f"🟢 {ls_ratio:.2f}")
+                    st.caption('_"✅ Herkes short! Sıkışma fırsatı"_')
+                elif ls_ratio > 1.2:
+                    st.metric("📊 L/S Oranı", f"🟡 {ls_ratio:.2f}")
+                    st.caption('_"Long ağırlıklı - dikkatli ol"_')
+                else:
+                    st.metric("📊 L/S Oranı", f"⚪ {ls_ratio:.2f}")
+                    st.caption('_"↔️ Dengeli piyasa"_')
             else:
-                ls_emoji = "⚪"
-                ls_explain = "Dengeli"
-            st.metric("📊 L/S Oranı", f"{ls_emoji} {ls_ratio:.2f}" if ls_ratio else "N/A")
-            st.caption(f'_"{ls_explain}"_')
+                st.metric("📊 L/S Oranı", "N/A")
+                st.caption('_"Binance Futures verisi bekleniyor"_')
 
         # ======================================
         # PER-COIN COLLAPSIBLE SECTIONS (PHASE 25)
