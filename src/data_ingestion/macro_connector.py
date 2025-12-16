@@ -96,7 +96,7 @@ class MacroConnector:
         result["macro_score"] = score
         result["timestamp"] = datetime.now().isoformat()
         
-        # v6 MACRO FEATURES: Cross-market correlations
+        # v6 MACRO FEATURES: Cross-market correlations + Dashboard Display
         try:
             import ccxt
             exchange = ccxt.binance()
@@ -109,13 +109,34 @@ class MacroConnector:
             btc_usdt = exchange.fetch_ticker('BTC/USDT')
             btc_price = float(btc_usdt['last']) if btc_usdt else 100000
             
-            # Gold/BTC Ratio (Gold price from yfinance)
+            # ✅ DASHBOARD: Gold Price (GC=F futures)
             try:
                 gold = yf.Ticker("GC=F")
                 gold_price = gold.fast_info.get('last_price', 2000)
+                result['gold'] = gold_price  # Direct price for dashboard
                 result['gold_btc_ratio'] = gold_price / btc_price if btc_price > 0 else 0.0
             except:
-                result['gold_btc_ratio'] = 0.02  # fallback
+                result['gold'] = 0
+                result['gold_btc_ratio'] = 0.02
+            
+            # ✅ DASHBOARD: Nasdaq Composite (^IXIC)
+            try:
+                nasdaq = yf.Ticker("^IXIC")
+                nasdaq_price = nasdaq.fast_info.get('last_price', 0)
+                result['nasdaq'] = nasdaq_price
+            except:
+                result['nasdaq'] = 0
+            
+            # ✅ DASHBOARD: BTC Dominance (CoinGecko free API)
+            try:
+                cg_response = requests.get("https://api.coingecko.com/api/v3/global", timeout=5)
+                if cg_response.status_code == 200:
+                    global_data = cg_response.json()
+                    result['btc_dominance'] = global_data['data']['market_cap_percentage']['btc']
+                else:
+                    result['btc_dominance'] = 0
+            except:
+                result['btc_dominance'] = 0
                 
             # S&P500/BTC correlation proxy
             try:
@@ -125,12 +146,15 @@ class MacroConnector:
             except:
                 result['sp500_btc_ratio'] = 5.0  # fallback
                 
-            logger.info(f"📈 v6 Ratios: ETH/BTC={result.get('eth_btc_ratio', 0):.4f} | Gold/BTC={result.get('gold_btc_ratio', 0):.4f}")
+            logger.info(f"📈 Dashboard Macro: Gold=${result.get('gold', 0):,.0f} | Nasdaq={result.get('nasdaq', 0):,.0f} | BTC.D={result.get('btc_dominance', 0):.1f}%")
             
         except Exception as e:
             logger.warning(f"Could not fetch v6 ratios: {e}")
             result['eth_btc_ratio'] = 0.0
             result['gold_btc_ratio'] = 0.0
+            result['gold'] = 0
+            result['nasdaq'] = 0
+            result['btc_dominance'] = 0
             result['sp500_btc_ratio'] = 0.0
         
         # Log summary
