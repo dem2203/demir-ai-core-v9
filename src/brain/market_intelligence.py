@@ -72,6 +72,15 @@ class MarketIntelligence:
             self.advanced_scrapers = None
             logger.warning(f"Advanced scrapers init failed: {e}")
         
+        # PHASE 39: Signal Combiner ML Model
+        try:
+            from src.brain.signal_combiner import SignalCombinerModel
+            self.signal_combiner = SignalCombinerModel()
+            logger.info("✅ Signal Combiner ML initialized (unified signal prediction)")
+        except Exception as e:
+            self.signal_combiner = None
+            logger.warning(f"Signal combiner init failed: {e}")
+        
     def should_run_15min_check(self) -> bool:
         """15 dakika geçti mi kontrol et"""
         elapsed = (datetime.now() - self.last_15min_check).total_seconds() / 60
