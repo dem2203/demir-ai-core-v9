@@ -56,6 +56,7 @@ st.caption("v23.0 | Zero-Mock | On-Chain Intel | Liquidation Hunter | Wyckoff | 
 # --- Yan Menü ---
 page = st.sidebar.radio("System Modules", [
     "📡 Live Market Intelligence", 
+    "🌐 Web Intelligence",  # NEW: All web scraping data
     "🧠 AI Reasoning",
     "🧠 Neural Brain Monitor",
     "📈 Live Trading Chart",
@@ -1342,3 +1343,208 @@ elif page == "🔧 Debug":
     st.subheader("💼 Portfolio Data (Raw)")
     port = load_json("portfolio.json")
     st.json(port)
+
+# ==========================================
+# 🌐 WEB INTELLIGENCE - All Web Scraping Data
+# ==========================================
+elif page == "🌐 Web Intelligence":
+    st.header("🌐 Web Intelligence Dashboard")
+    st.caption("Tüm web scraping verileri - Fear&Greed, TradingView, CME Gap, DeFi TVL, Stablecoins, News")
+    
+    # Import scrapers
+    try:
+        from src.brain.advanced_scrapers import AdvancedMarketScrapers
+        from src.brain.news_scraper import CryptoNewsScraper
+        from src.brain.signal_combiner import SignalCombinerModel
+        scrapers = AdvancedMarketScrapers()
+        news_scraper = CryptoNewsScraper()
+        signal_combiner = SignalCombinerModel()
+        scrapers_available = True
+    except Exception as e:
+        st.warning(f"⚠️ Scrapers yüklenemedi: {e}")
+        scrapers_available = False
+    
+    if scrapers_available:
+        # Row 1: Fear & Greed + TradingView Signals
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("😱 Fear & Greed Index")
+            try:
+                fng = scrapers.get_fear_greed_index()
+                fng_value = fng.get('value', 50)
+                fng_class = fng.get('classification', 'Neutral')
+                
+                # Color based on value
+                if fng_value <= 25:
+                    color = "#00ff00"  # Green - Extreme Fear = Buy
+                    emoji = "🟢"
+                elif fng_value >= 75:
+                    color = "#ff0000"  # Red - Extreme Greed = Caution
+                    emoji = "🔴"
+                else:
+                    color = "#ffff00"  # Yellow
+                    emoji = "🟡"
+                
+                st.metric("Fear & Greed", f"{emoji} {fng_value}", fng_class)
+                st.caption(fng.get('action', ''))
+                
+                # Progress bar
+                st.progress(fng_value / 100)
+            except Exception as e:
+                st.error(f"Veri alınamadı: {e}")
+        
+        with col2:
+            st.subheader("📊 TradingView Sinyalleri")
+            coins = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'LTCUSDT']
+            
+            tv_cols = st.columns(4)
+            for i, coin in enumerate(coins):
+                with tv_cols[i]:
+                    try:
+                        tv = scrapers.get_tradingview_signals(coin)
+                        action = tv.get('action', 'NEUTRAL')
+                        emoji = tv.get('emoji', '⚪')
+                        rsi = tv.get('rsi', 50)
+                        
+                        st.metric(coin.replace('USDT', ''), f"{emoji} {action}", f"RSI: {rsi:.0f}")
+                    except:
+                        st.metric(coin.replace('USDT', ''), "⚪ N/A", "")
+        
+        st.divider()
+        
+        # Row 2: CME Gap + DeFi TVL + Stablecoin Flow
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.subheader("📈 CME Gap")
+            try:
+                cme = scrapers.get_cme_gap()
+                if cme.get('has_gap', False):
+                    gap_pct = cme.get('gap_percent', 0)
+                    gap_price = cme.get('gap_price', 0)
+                    emoji = "🔴" if gap_pct > 0 else "🟢"
+                    st.metric("CME Gap", f"{emoji} {gap_pct:+.1f}%", f"Gap: ${gap_price:,.0f}")
+                    st.caption(cme.get('action', ''))
+                else:
+                    st.metric("CME Gap", "✅ Yok", "Gap kapatılmış")
+            except Exception as e:
+                st.error(f"Veri alınamadı: {e}")
+        
+        with col2:
+            st.subheader("💧 DeFi TVL")
+            try:
+                tvl = scrapers.get_defi_tvl()
+                tvl_formatted = tvl.get('total_tvl_formatted', 'N/A')
+                change = tvl.get('change_24h', 0)
+                emoji = "🟢" if change > 0 else "🔴" if change < 0 else "⚪"
+                st.metric("Total TVL", tvl_formatted, f"{emoji} {change:+.1f}%")
+                st.caption(tvl.get('action', ''))
+            except Exception as e:
+                st.error(f"Veri alınamadı: {e}")
+        
+        with col3:
+            st.subheader("💵 Stablecoin Flow")
+            try:
+                stable = scrapers.get_stablecoin_flow()
+                supply = stable.get('usdt_supply_formatted', 'N/A')
+                change = stable.get('change_7d_formatted', 'N/A')
+                direction = stable.get('direction', 'NEUTRAL')
+                emoji = "🟢" if direction == 'BULLISH' else "🔴" if direction == 'BEARISH' else "⚪"
+                st.metric("USDT Supply", supply, f"{emoji} {change} (7d)")
+                st.caption(stable.get('action', ''))
+            except Exception as e:
+                st.error(f"Veri alınamadı: {e}")
+        
+        st.divider()
+        
+        # Row 3: News Sentiment
+        st.subheader("📰 Haber Sentimenti")
+        try:
+            news_sentiment = news_scraper.get_market_sentiment()
+            score = news_sentiment.get('score', 50)
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                mood = "🟢 BULLISH" if score > 60 else "🔴 BEARISH" if score < 40 else "⚪ NEUTRAL"
+                st.metric("Genel Mood", mood, f"Skor: {score:.0f}/100")
+            with col2:
+                st.metric("Pozitif Haberler", f"🟢 {news_sentiment.get('bullish_count', 0)}", "")
+            with col3:
+                st.metric("Negatif Haberler", f"🔴 {news_sentiment.get('bearish_count', 0)}", "")
+            with col4:
+                st.metric("Toplam Haber", news_sentiment.get('news_count', 0), "")
+            
+            # Show important news
+            important = news_scraper.get_important_news(5)
+            if important:
+                st.markdown("**Son Önemli Haberler:**")
+                for news in important:
+                    emoji = "🟢" if news.sentiment == 'BULLISH' else "🔴" if news.sentiment == 'BEARISH' else "⚪"
+                    impact = "⚡" if news.impact == 'HIGH' else ""
+                    st.markdown(f"- {emoji}{impact} **{news.title[:70]}...** _{news.source}_")
+        except Exception as e:
+            st.error(f"Haber verisi alınamadı: {e}")
+        
+        st.divider()
+        
+        # Row 4: Signal Combiner (Unified AI Signal)
+        st.subheader("🤖 AI Birleşik Sinyal")
+        st.caption("Tüm sinyaller ML modeli ile birleştirilir")
+        
+        try:
+            # Collect all signals for prediction
+            fng_data = scrapers.get_fear_greed_index()
+            tv_btc = scrapers.get_tradingview_signals('BTCUSDT')
+            stable_data = scrapers.get_stablecoin_flow()
+            tvl_data = scrapers.get_defi_tvl()
+            cme_data = scrapers.get_cme_gap()
+            news_data = news_scraper.get_market_sentiment()
+            
+            # Prepare input for Signal Combiner
+            raw_data = {
+                'fear_greed': fng_data.get('value', 50),
+                'tradingview': tv_btc.get('overall', 0),
+                'stablecoin_flow': stable_data.get('change_7d', 0),
+                'defi_tvl_change': tvl_data.get('change_24h', 0),
+                'cme_gap': cme_data.get('gap_percent', 0),
+                'news_sentiment': news_data.get('score', 50),
+                'bullish_patterns': 0,  # Would come from chart_patterns
+                'bearish_patterns': 0,
+                'funding_rate': 0,
+                'oi_velocity': 0,
+                'whale_ratio': 0.5,
+                'rsi': tv_btc.get('rsi', 50) if isinstance(tv_btc.get('rsi'), (int, float)) else 50
+            }
+            
+            signal = signal_combiner.predict(raw_data)
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                action_emoji = "🟢🟢" if signal.action == 'STRONG_BUY' else "🟢" if signal.action == 'BUY' else "🔴🔴" if signal.action == 'STRONG_SELL' else "🔴" if signal.action == 'SELL' else "⚪"
+                st.metric("AI Sinyal", f"{action_emoji} {signal.action}", f"Score: {signal.raw_score:+.2f}")
+            with col2:
+                conf_bar = "█" * int(signal.confidence / 20) + "░" * (5 - int(signal.confidence / 20))
+                st.metric("Güven", f"[{conf_bar}]", f"{signal.confidence:.0f}%")
+            with col3:
+                st.metric("Model", "Signal Combiner v1", "ML Trained")
+            
+            # Show reasoning
+            st.info(f"💡 **AI Reasoning:** {signal.reasoning}")
+            
+            # Show top factors
+            if signal.top_bullish:
+                st.success(f"🟢 Bullish faktörler: {', '.join(signal.top_bullish)}")
+            if signal.top_bearish:
+                st.error(f"🔴 Bearish faktörler: {', '.join(signal.top_bearish)}")
+                
+        except Exception as e:
+            st.error(f"Signal Combiner hatası: {e}")
+        
+        st.divider()
+        
+        # Refresh button
+        if st.button("🔄 Verileri Yenile"):
+            st.cache_data.clear()
+            st.rerun()
+
