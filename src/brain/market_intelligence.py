@@ -2,10 +2,19 @@
 DEMIR AI - Market Intelligence Report System
 Her 15 dakikada fırsat/risk tarar, bulursa bildirir.
 1 saat içinde bulamazsa saatlik özet gönderir.
+
+PHASE 34: Gelişmiş Öngörücü Göstergeler
+- Momentum Spike Detector
+- OI Velocity 
+- Funding Rate Extreme
+- Whale Alert
 """
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
+
+# PHASE 34: Advanced Predictive Indicators
+from src.brain.predictive_indicators import PredictiveIndicators, PredictiveAlert
 
 logger = logging.getLogger("MARKET_INTELLIGENCE")
 
@@ -16,6 +25,11 @@ class MarketIntelligence:
     - Her 15dk fırsat/risk tarar
     - Bulursa anında Telegram'a gönderir
     - 1 saat boş geçerse saatlik özet gönderir
+    
+    PHASE 34: Gelişmiş Öngörücü Göstergeler
+    - Momentum Spike: Hacim ↑ + Fiyat durağan = Büyük hareket yakın!
+    - OI Velocity: OI hızla değişiyor = Volatilite patlaması!
+    - Funding Extreme: Aşırı funding = Ters hareket riski!
     """
     
     # Fırsat/Risk eşikleri
@@ -36,6 +50,9 @@ class MarketIntelligence:
         self.last_hourly_report = datetime.now() - timedelta(hours=1)  # İlk rapor hemen gider
         self.check_interval = 15  # dakika
         self.hourly_fallback = 60  # dakika
+        
+        # PHASE 34: Advanced Predictive Indicators
+        self.predictive_indicators = PredictiveIndicators()
         
     def should_run_15min_check(self) -> bool:
         """15 dakika geçti mi kontrol et"""
@@ -58,8 +75,34 @@ class MarketIntelligence:
         opportunities = []
         
         for symbol, data in snapshots.items():
+            # 1. Mevcut SMC/MTF/Whale analizleri
             coin_opps = self._analyze_coin(symbol, data)
             opportunities.extend(coin_opps)
+            
+            # 2. PHASE 34: Gelişmiş Öngörücü Göstergeler
+            try:
+                predictive_alerts = self.predictive_indicators.analyze_all(symbol, data)
+                
+                for alert in predictive_alerts:
+                    # Convert PredictiveAlert to dict format
+                    opportunities.append({
+                        'symbol': alert.symbol,
+                        'type': 'OPPORTUNITY' if alert.direction == 'BULLISH' else 'RISK' if alert.direction == 'BEARISH' else 'WARNING',
+                        'category': alert.alert_type,
+                        'title': alert.title,
+                        'detail': alert.detail,
+                        'action': alert.action,
+                        'price': data.get('price', 0),
+                        'severity': alert.severity,
+                        'entry': 0,  # Predictive alerts are warnings, not trade signals
+                        'sl': 0,
+                        'tp': 0
+                    })
+                    
+                    logger.info(f"🔮 Predictive Alert: {alert.title}")
+                    
+            except Exception as e:
+                logger.warning(f"Predictive indicators failed for {symbol}: {e}")
         
         if opportunities:
             self.last_opportunity_time = datetime.now()
@@ -230,9 +273,20 @@ class MarketIntelligence:
         
         opps = [o for o in opportunities if o['type'] == 'OPPORTUNITY']
         risks = [o for o in opportunities if o['type'] == 'RISK']
+        warnings = [o for o in opportunities if o['type'] == 'WARNING']  # Predictive alerts
         
         msg = "🔍 *15dk Piyasa Taraması*\n"
         msg += "━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        # PHASE 34: Predictive Warnings First (most important!)
+        if warnings:
+            msg += "🔮 *ÖNGÖRÜLERİ (UYARI):*\n"
+            for w in warnings[:3]:  # Max 3
+                severity = w.get('severity', 'MEDIUM')
+                sev_emoji = "🔴" if severity == "HIGH" else "🟡"
+                msg += f"• {sev_emoji} {w['title']}\n"
+                msg += f"  _{w['detail']}_\n"
+                msg += f"  ⚡ {w['action']}\n\n"
         
         if opps:
             msg += "🟢 *FIRSATLAR:*\n"
