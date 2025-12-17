@@ -56,7 +56,8 @@ st.caption("v23.0 | Zero-Mock | On-Chain Intel | Liquidation Hunter | Wyckoff | 
 # --- Yan Menü ---
 page = st.sidebar.radio("System Modules", [
     "📡 Live Market Intelligence", 
-    "🌐 Web Intelligence",  # NEW: All web scraping data
+    "🔮 AI Predictions",  # NEW: Markov, LSTM, Whale Intel
+    "🌐 Web Intelligence",  # All web scraping data
     "🧠 AI Reasoning",
     "🧠 Neural Brain Monitor",
     "📈 Live Trading Chart",
@@ -2154,3 +2155,307 @@ elif page == "🌐 Web Intelligence":
             st.rerun()
 
 
+# ==========================================
+# NEW: AI PREDICTIONS MODULE
+# Markov Chain, LSTM, Whale Intel, Liquidation Hunter
+# ==========================================
+elif page == "🔮 AI Predictions":
+    st.header("🔮 AI Tahmin Merkezi")
+    st.caption("_Markov Zinciri + LSTM Deep Learning + Whale Intelligence_")
+    
+    # Get current BTC data for predictions
+    data = load_json("dashboard_data.json")
+    btc_data = data.get("BTCUSDT", {}) if data else {}
+    current_price = btc_data.get('price', 85000)
+    
+    # Calculate recent price change for Markov
+    price_history = btc_data.get('price_history', [current_price, current_price])
+    if len(price_history) >= 2:
+        recent_change = ((price_history[-1] / price_history[-2]) - 1) * 100
+    else:
+        recent_change = 0
+    
+    # ==========================================
+    # 1. MARKOV CHAIN PREDICTOR
+    # ==========================================
+    st.markdown("### 📊 Markov Zinciri Tahmin (1-2 Saat)")
+    st.caption("_Durum geçiş olasılıklarına dayalı matematiksel model_")
+    
+    try:
+        from src.brain.markov_predictor import MarkovPredictor
+        
+        markov = MarkovPredictor()
+        prediction = markov.predict_1_2_hours(recent_change)
+        
+        # Visual columns
+        m1, m2, m3, m4 = st.columns(4)
+        
+        # Signal badge
+        signal = prediction['combined_signal']
+        signal_color = "🟢" if signal == "LONG" else "🔴" if signal == "SHORT" else "⚪"
+        
+        with m1:
+            st.metric("🎯 Sinyal", f"{signal_color} {signal}")
+            st.caption(f"Güç: {prediction['signal_strength']:.0f}%")
+        
+        with m2:
+            st.metric("⏰ 1 Saat Tahmin", prediction['1_hour']['direction'])
+            st.caption(f"Olasılık: {prediction['1_hour']['probability']:.0f}%")
+        
+        with m3:
+            st.metric("⏰ 2 Saat Tahmin", prediction['2_hour']['direction'])
+            st.caption(f"Olasılık: {prediction['2_hour']['probability']:.0f}%")
+        
+        with m4:
+            st.metric("📈 Bullish / 📉 Bearish", 
+                     f"{prediction['1_hour']['bullish_probability']:.0f}% / {prediction['1_hour']['bearish_probability']:.0f}%")
+            st.caption(f"Mevcut durum: {prediction['current_state']}")
+        
+        # Probability distribution
+        with st.expander("📊 Olasılık Dağılımı"):
+            probs = prediction['1_hour']['all_probabilities']
+            cols = st.columns(5)
+            states = ['STRONG_UP', 'UP', 'NEUTRAL', 'DOWN', 'STRONG_DOWN']
+            emojis = ['🚀', '📈', '➡️', '📉', '💥']
+            for i, (state, emoji) in enumerate(zip(states, emojis)):
+                with cols[i]:
+                    st.metric(f"{emoji}", f"{probs[state]:.0f}%")
+                    st.caption(state.replace('_', ' '))
+        
+        # Trend duration estimate
+        duration = markov.get_trend_duration_estimate(prediction['current_state'])
+        st.info(f"⏱️ **Trend Süresi Tahmini:** {duration['expected_duration_hours']:.1f} saat | "
+               f"Tersine Dönüş: {duration['reversal_probability']:.0f}% | "
+               f"Momentum: {duration['momentum_strength']}")
+        
+    except Exception as e:
+        st.warning(f"Markov tahmin geçici olarak kullanılamıyor: {e}")
+    
+    st.divider()
+    
+    # ==========================================
+    # 2. LSTM DEEP LEARNING PREDICTION
+    # ==========================================
+    st.markdown("### 🧠 LSTM Neural Network Tahmin")
+    st.caption("_Deep Learning ile fiyat yönü tahmini_")
+    
+    try:
+        from src.brain.models.lstm_trend import LSTMTrendPredictor
+        import pandas as pd
+        
+        lstm = LSTMTrendPredictor()
+        
+        # Create simple price dataframe for prediction
+        if price_history and len(price_history) >= 24:
+            df = pd.DataFrame({'close': price_history[-24:]})
+            lstm_pred = lstm.predict(df)
+        else:
+            lstm_pred = lstm._fallback_prediction(pd.DataFrame({'close': [current_price]}))
+        
+        l1, l2, l3 = st.columns(3)
+        
+        with l1:
+            dir_emoji = "🟢" if lstm_pred['direction'] == 'UP' else "🔴" if lstm_pred['direction'] == 'DOWN' else "⚪"
+            st.metric("🎯 LSTM Yön", f"{dir_emoji} {lstm_pred['direction']}")
+        
+        with l2:
+            st.metric("💪 Güven", f"{lstm_pred['confidence']:.1f}%")
+        
+        with l3:
+            st.metric("🔧 Model", lstm_pred.get('model', 'N/A'))
+        
+        if 'probabilities' in lstm_pred:
+            with st.expander("📊 Yön Olasılıkları"):
+                p1, p2, p3 = st.columns(3)
+                with p1:
+                    st.metric("📈 UP", f"{lstm_pred['probabilities'].get('UP', 0):.0f}%")
+                with p2:
+                    st.metric("➡️ NEUTRAL", f"{lstm_pred['probabilities'].get('NEUTRAL', 0):.0f}%")
+                with p3:
+                    st.metric("📉 DOWN", f"{lstm_pred['probabilities'].get('DOWN', 0):.0f}%")
+        
+    except Exception as e:
+        st.warning(f"LSTM tahmin kullanılamıyor: {e}")
+    
+    st.divider()
+    
+    # ==========================================
+    # 3. WHALE INTELLIGENCE (Coinglass)
+    # ==========================================
+    st.markdown("### 🐋 Whale Intelligence")
+    st.caption("_Coinglass Hyperliquid - Büyük trader pozisyonları_")
+    
+    try:
+        from src.brain.coinglass_scraper import CoinglassScraper
+        
+        scraper = CoinglassScraper()
+        enhancement = scraper.get_signal_enhancement(current_price)
+        
+        w1, w2, w3, w4 = st.columns(4)
+        
+        with w1:
+            bias_emoji = "🟢" if enhancement['whale_bias'] == 'LONG' else "🔴" if enhancement['whale_bias'] == 'SHORT' else "⚪"
+            st.metric("🐋 Whale Yönelimi", f"{bias_emoji} {enhancement['whale_bias']}")
+        
+        with w2:
+            st.metric("💪 Güven Boost", f"+{enhancement['confidence_boost']}%")
+        
+        with w3:
+            st.metric("👥 Whale Sayısı", enhancement.get('whale_count', 0))
+        
+        with w4:
+            warning = enhancement.get('liquidation_warning', 'NONE')
+            warn_emoji = "⚠️" if warning != 'NONE' else "✅"
+            st.metric("⚠️ Likidasyon Riski", f"{warn_emoji} {warning.replace('_', ' ')}")
+        
+        st.caption("_Veriler Coinglass Hyperliquid'den alınmaktadır_")
+        
+    except Exception as e:
+        st.warning(f"Whale intel kullanılamıyor: {e}")
+    
+    st.divider()
+    
+    # ==========================================
+    # 4. LIQUIDATION HUNTER
+    # ==========================================
+    st.markdown("### 🎯 Liquidation Hunter")
+    st.caption("_Fiyatın çekileceği tasfiye seviyeleri_")
+    
+    try:
+        from src.brain.liquidation_hunter import LiquidationHunter
+        
+        hunter = LiquidationHunter()
+        
+        # Run async function sync
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        liq_data = loop.run_until_complete(hunter.calculate_liquidation_levels())
+        loop.close()
+        
+        if liq_data:
+            lh1, lh2, lh3 = st.columns(3)
+            
+            with lh1:
+                nearest_long = liq_data.get('nearest_long_liq', 0)
+                if nearest_long:
+                    st.metric("📈 En Yakın Long Liq", f"${nearest_long:,.0f}")
+                else:
+                    st.metric("📈 En Yakın Long Liq", "N/A")
+            
+            with lh2:
+                nearest_short = liq_data.get('nearest_short_liq', 0)
+                if nearest_short:
+                    st.metric("📉 En Yakın Short Liq", f"${nearest_short:,.0f}")
+                else:
+                    st.metric("📉 En Yakın Short Liq", "N/A")
+            
+            with lh3:
+                total_liq = liq_data.get('total_liquidation_value', 0)
+                st.metric("💰 Toplam Liq Değeri", f"${total_liq/1e6:.1f}M" if total_liq else "N/A")
+            
+            # Liquidation interpretation
+            interp = liq_data.get('interpretation', '')
+            if interp:
+                st.info(f"🎯 **Analiz:** {interp}")
+        
+        await hunter.close() if hasattr(hunter, 'close') else None
+        
+    except Exception as e:
+        st.warning(f"Liquidation hunter kullanılamıyor: {e}")
+    
+    st.divider()
+    
+    # ==========================================
+    # 5. COMBINED AI SIGNAL
+    # ==========================================
+    st.markdown("### 🎯 Kombine AI Sinyal")
+    st.caption("_Tüm modellerin ağırlıklı kombinasyonu_")
+    
+    # Combine all signals
+    signals = []
+    weights = []
+    
+    # Markov signal
+    try:
+        if prediction['combined_signal'] == 'LONG':
+            signals.append(1)
+            weights.append(prediction['signal_strength'] / 100)
+        elif prediction['combined_signal'] == 'SHORT':
+            signals.append(-1)
+            weights.append(prediction['signal_strength'] / 100)
+        else:
+            signals.append(0)
+            weights.append(0.3)
+    except:
+        pass
+    
+    # LSTM signal
+    try:
+        if lstm_pred['direction'] == 'UP':
+            signals.append(1)
+            weights.append(lstm_pred['confidence'] / 100)
+        elif lstm_pred['direction'] == 'DOWN':
+            signals.append(-1)
+            weights.append(lstm_pred['confidence'] / 100)
+        else:
+            signals.append(0)
+            weights.append(0.3)
+    except:
+        pass
+    
+    # Whale signal
+    try:
+        if enhancement['whale_bias'] == 'LONG':
+            signals.append(1)
+            weights.append(0.5)
+        elif enhancement['whale_bias'] == 'SHORT':
+            signals.append(-1)
+            weights.append(0.5)
+        else:
+            signals.append(0)
+            weights.append(0.2)
+    except:
+        pass
+    
+    # Calculate combined score
+    if signals and weights:
+        weighted_sum = sum(s * w for s, w in zip(signals, weights))
+        total_weight = sum(weights)
+        combined_score = weighted_sum / total_weight if total_weight > 0 else 0
+        
+        if combined_score > 0.3:
+            combined_signal = "🟢 LONG"
+            combined_confidence = min(100, combined_score * 100)
+        elif combined_score < -0.3:
+            combined_signal = "🔴 SHORT"
+            combined_confidence = min(100, abs(combined_score) * 100)
+        else:
+            combined_signal = "⚪ BEKLE"
+            combined_confidence = 50
+        
+        cs1, cs2, cs3 = st.columns(3)
+        
+        with cs1:
+            st.metric("🎯 KOMBİNE SİNYAL", combined_signal)
+        
+        with cs2:
+            st.metric("💪 Toplam Güven", f"{combined_confidence:.0f}%")
+        
+        with cs3:
+            st.metric("📊 Model Sayısı", len(signals))
+        
+        # Signal breakdown
+        with st.expander("📊 Sinyal Detayları"):
+            st.write("**Model Katkıları:**")
+            model_names = ["Markov Chain", "LSTM Neural", "Whale Intel"]
+            for i, (name, sig, wgt) in enumerate(zip(model_names, signals, weights)):
+                dir_text = "LONG" if sig > 0 else "SHORT" if sig < 0 else "NEUTRAL"
+                st.write(f"- **{name}:** {dir_text} (ağırlık: {wgt:.2f})")
+    
+    st.divider()
+    
+    # Refresh button
+    if st.button("🔄 Tahminleri Yenile"):
+        st.cache_data.clear()
+        st.rerun()
