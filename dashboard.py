@@ -1356,9 +1356,19 @@ elif page == "🌐 Web Intelligence":
         from src.brain.advanced_scrapers import AdvancedMarketScrapers
         from src.brain.news_scraper import CryptoNewsScraper
         from src.brain.signal_combiner import SignalCombinerModel
+        # PHASE 42: Critical Scrapers
+        from src.brain.liquidation_tracker import LiquidationTracker
+        from src.brain.whale_tracker import WhaleTracker
+        from src.brain.reddit_scraper import RedditScraper
+        
         scrapers = AdvancedMarketScrapers()
         news_scraper = CryptoNewsScraper()
         signal_combiner = SignalCombinerModel()
+        # Initialize Phase 42 scrapers
+        liquidation_tracker = LiquidationTracker()
+        whale_tracker = WhaleTracker()
+        reddit_scraper = RedditScraper()
+        
         scrapers_available = True
     except Exception as e:
         st.warning(f"⚠️ Scrapers yüklenemedi: {e}")
@@ -1621,6 +1631,126 @@ elif page == "🌐 Web Intelligence":
                         
         except Exception as e:
             st.error(f"Confluence Analyzer hatası: {e}")
+        
+        st.divider()
+        
+        # ===================================
+        # PHASE 42: CRITICAL SCRAPERS
+        # ===================================
+        
+        # Row 6: Liquidation Heatmap
+        st.subheader("⚡ Liquidation Heatmap")
+        st.caption("Binance Open Interest analizi - Cascade risk detection")
+        
+        try:
+            liq_summary = liquidation_tracker.get_liquidation_summary('BTCUSDT')
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                risk = liq_summary['cascade_risk']
+                risk_emoji = "🔴" if risk == 'HIGH' else "🟡" if risk == 'MEDIUM' else "🟢"
+                st.metric("Cascade Risk", f"{risk_emoji} {risk}", f"{liq_summary['zone_count']} zones")
+            
+            with col2:
+                nearby_size = liq_summary['nearby_liq_size']
+                st.metric("Nearby Liquidations", f"${nearby_size/1e9:.2f}B", "Within 3% of price")
+            
+            with col3:
+                nl = liq_summary.get('nearest_long_liq')
+                if nl:
+                    st.metric("Nearest Long Liq", f"${nl.price_level:,.0f}", f"{nl.distance_pct:.1f}% below")
+            
+            # Explanation
+            st.caption(liq_summary['summary'])
+            
+        except Exception as e:
+            st.error(f"Liquidation Heatmap hatası: {e}")
+        
+        st.divider()
+        
+        # Row 7: Whale Alert
+        st.subheader("🐋 Whale Alert")
+        st.caption("Bitcoin $1M+ transactions - Exchange flow analysis")
+        
+        try:
+            whale_summary = whale_tracker.get_whale_summary('BTC', hours=24)
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Whales Tracked", whale_summary['whale_count'], "Last 24h")
+            
+            with col2:
+                inflow = whale_summary['total_inflow']
+                st.metric("Exchange Inflow", f"${inflow/1e6:.1f}M", "🔴 Selling pressure")
+            
+            with col3:
+                outflow = whale_summary['total_outflow']
+                st.metric("Exchange Outflow", f"${outflow/1e6:.1f}M", "🟢 Accumulation")
+            
+            with col4:
+                net_flow = whale_summary['net_flow']
+                direction = whale_summary['direction']
+                dir_emoji = "🟢" if direction == 'BULLISH' else "🔴" if direction == 'BEARISH' else "⚪"
+                st.metric("Net Flow", f"${net_flow/1e6:+.0f}M", f"{dir_emoji} {direction}")
+            
+            # Recent whales
+            if whale_summary.get('recent_whales'):
+                st.markdown("**Son Büyük Transferler:**")
+                for whale in whale_summary['recent_whales'][:5]:
+                    tx_emoji = "🔴" if whale.tx_type == 'EXCHANGE_INFLOW' else "🟢"
+                    st.markdown(f"• {tx_emoji} ${whale.amount_usd/1e6:.1f}M {whale.tx_type} - {whale.timestamp.strftime('%H:%M')}")
+            
+            # Explanation
+            st.info(whale_summary['summary'])
+            
+        except Exception as e:
+            st.error(f"Whale Alert hatası: {e}")
+        
+        st.divider()
+        
+        # Row 8: Reddit Sentiment
+        st.subheader("💬 Reddit Sentiment")
+        st.caption("r/cryptocurrency + r/bitcoin + r/ethtrader sentiment analysis")
+        
+        try:
+            reddit_sentiment = reddit_scraper.get_sentiment(hours=24)
+            
+            score = reddit_sentiment['score']
+            mood = reddit_sentiment['sentiment']
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                # Score bar
+                bar_length = int(score / 10)
+                score_bar = "█" * bar_length + "░" * (10 - bar_length)
+                mood_emoji = "🟢" if mood == 'BULLISH' else "🔴" if mood == 'BEARISH' else "⚪"
+                st.metric("Sentiment Score", f"[{score_bar}]", f"{mood_emoji} {score}/100")
+            
+            with col2:
+                st.metric("Total Posts", reddit_sentiment['post_count'], "Last 24h")
+            
+            with col3:
+                st.metric("Bullish Posts", f"🟢 {reddit_sentiment['bullish_count']}", "")
+            
+            with col4:
+                st.metric("Bearish Posts", f"🔴 {reddit_sentiment['bearish_count']}", "")
+            
+            # Top posts
+            if reddit_sentiment.get('top_posts'):
+                st.markdown("**En Popüler Postlar:**")
+                for i, post in enumerate(reddit_sentiment['top_posts'][:5], 1):
+                    emoji = "🟢" if post.sentiment == 'BULLISH' else "🔴" if post.sentiment == 'BEARISH' else "⚪"
+                    st.markdown(f"{i}. {emoji} [{post.subreddit}] {post.title[:70]}...")
+                    st.caption(f"   ↑{post.score} ({post.upvote_ratio:.0%} upvoted)")
+            
+            # Summary
+            st.success(reddit_sentiment['summary'])
+            
+        except Exception as e:
+            st.error(f"Reddit Sentiment hatası: {e}")
         
         st.divider()
         
