@@ -2359,7 +2359,13 @@ elif page == "🔮 AI Predictions":
             if interp:
                 st.info(f"🎯 **Analiz:** {interp}")
         
-        await hunter.close() if hasattr(hunter, 'close') else None
+        # Close hunter (sync)
+        if hasattr(hunter, 'close'):
+            try:
+                import asyncio
+                asyncio.get_event_loop().run_until_complete(hunter.close())
+            except:
+                pass
         
     except Exception as e:
         st.warning(f"Liquidation hunter kullanılamıyor: {e}")
