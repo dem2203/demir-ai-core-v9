@@ -573,6 +573,31 @@ if page == "📡 Live Market Intelligence":
         c4.metric(f"🧠 {display_symbol} Sinyal", signal_tr, f"{conf:.1f}% Güven", delta_color=delta_color)
         
         # ======================================
+        # DATA VALIDATION STATUS
+        # ======================================
+        try:
+            from src.validation.data_validator import DataValidator
+            validator = DataValidator()
+            validation = validator.validate_all()
+            
+            val_col1, val_col2 = st.columns([3, 1])
+            with val_col1:
+                if validation['is_valid']:
+                    st.success(f"✅ Veri Doğrulama: {validation['passed']}/{validation['total_checks']} kontrol geçti")
+                elif validation['failed'] == 1:
+                    st.warning(f"⚠️ Veri Doğrulama: {validation['passed']}/{validation['total_checks']} kontrol geçti, 1 uyumsuzluk")
+                else:
+                    st.error(f"❌ Veri Doğrulama: {validation['failed']} uyumsuzluk tespit edildi")
+            
+            with val_col2:
+                with st.expander("Detaylar"):
+                    for r in validation['results']:
+                        status = "✅" if r.is_valid else "❌"
+                        st.text(f"{status} {r.metric}: {r.our_value:.2f} vs {r.reference_value:.2f} ({r.reference_source})")
+        except Exception as e:
+            st.caption(f"_Veri doğrulama geçici olarak kullanılamıyor_")
+        
+        # ======================================
         # MARKET CORRELATIONS & DERIVATIVES (DXY/VIX'in hemen altında)
         # ======================================
         st.markdown("---")
