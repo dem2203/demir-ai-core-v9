@@ -44,3 +44,6 @@ pillow
 praw
 beautifulsoup4>=3.10.0
 matplotlib>=3.7.0
+
+# --- Browser-Based Web Scraping ---
+playwright>=1.40.0
