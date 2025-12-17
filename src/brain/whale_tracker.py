@@ -224,11 +224,29 @@ class WhaleTracker:
                                 continue
                             
                             # Determine if inflow or outflow
-                            # Simplified: check if exchange address is in inputs or outputs
-                            is_inflow = any(inp.get('prev_out', {}).get('addr') != addr for inp in tx.get('inputs', []))
+                            # INFLOW: Money coming TO exchange (exchange address in outputs)
+                            # OUTFLOW: Money leaving FROM exchange (exchange address in inputs)
                             
-                            tx_type = 'EXCHANGE_INFLOW' if is_inflow else 'EXCHANGE_OUTFLOW'
-                            direction = 'BEARISH' if is_inflow else 'BULLISH'
+                            # Check if exchange address appears in outputs
+                            is_in_outputs = any(out.get('addr') == addr for out in tx.get('out', []))
+                            
+                            # Check if exchange address appears in inputs (prev_out)
+                            is_in_inputs = any(inp.get('prev_out', {}).get('addr') == addr for inp in tx.get('inputs', []))
+                            
+                            # Classification logic:
+                            # If exchange is in outputs but NOT in inputs => INFLOW (someone sending TO exchange)
+                            # If exchange is in inputs but NOT in outputs => OUTFLOW (exchange sending OUT)
+                            # If both => internal transfer, skip
+                            
+                            if is_in_outputs and not is_in_inputs:
+                                tx_type = 'EXCHANGE_INFLOW'
+                                direction = 'BEARISH'  # Selling pressure
+                            elif is_in_inputs and not is_in_outputs:
+                                tx_type = 'EXCHANGE_OUTFLOW'
+                                direction = 'BULLISH'  # Accumulation
+                            else:
+                                # Internal transfer or unclear, skip
+                                continue
                             
                             whales.append(WhaleTransaction(
                                 tx_hash=tx.get('hash', ''),

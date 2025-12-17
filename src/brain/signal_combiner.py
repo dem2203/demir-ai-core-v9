@@ -171,21 +171,23 @@ class SignalCombinerModel:
         else:
             features.append(0)
         
-        # === PHASE 42 FEATURES ===
+        # === PHASE 42 FEATURES (TEMPORARILY DISABLED) ===
+        # Model needs retraining for 15 features. Current model trained with 12.
+        # TODO: Retrain model with train_signal_combiner.py, then uncomment below
         
-        # 13. Liquidation Risk (0-1 scale, HIGH = bearish cascade risk)
-        liq_risk = raw_data.get('liquidation_risk', 0)
-        # Inverse: high risk = bearish
-        features.append(-np.clip(liq_risk, 0, 1))
-        
-        # 14. Whale Flow (-1 to +1: negative=inflow/bearish, positive=outflow/bullish)
-        whale_flow = raw_data.get('whale_flow', 0)
-        # Normalize $100M flow = +/-1
-        features.append(np.clip(whale_flow / 100_000_000, -1, 1))
-        
-        # 15. Reddit Sentiment (0-100 → -1 to +1)
-        reddit_sent = raw_data.get('reddit_sentiment', 50)
-        features.append((reddit_sent - 50) / 50)  # Center around 0
+        # # 13. Liquidation Risk (0-1 scale, HIGH = bearish cascade risk)
+        # liq_risk = raw_data.get('liquidation_risk', 0)
+        # # Inverse: high risk = bearish
+        # features.append(-np.clip(liq_risk, 0, 1))
+        # 
+        # # 14. Whale Flow (-1 to +1: negative=inflow/bearish, positive=outflow/bullish)
+        # whale_flow = raw_data.get('whale_flow', 0)
+        # # Normalize $100M flow = +/-1
+        # features.append(np.clip(whale_flow / 100_000_000, -1, 1))
+        # 
+        # # 15. Reddit Sentiment (0-100 → -1 to +1)
+        # reddit_sent = raw_data.get('reddit_sentiment', 50)
+        # features.append((reddit_sent - 50) / 50)  # Center around 0
         
         return np.array(features)
     
