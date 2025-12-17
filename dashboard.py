@@ -2455,6 +2455,143 @@ elif page == "🔮 AI Predictions":
     
     st.divider()
     
+    # ==========================================
+    # 6. SIGNAL ORCHESTRATOR (MERKEZ ORKESTRATÖR)
+    # ==========================================
+    st.markdown("### 🎯 Signal Orchestrator - Merkez Karar Motoru")
+    st.caption("_Tüm modülleri birleştirir, konsensüs sinyali üretir_")
+    
+    try:
+        from src.brain.signal_orchestrator import SignalOrchestrator
+        import asyncio
+        
+        orchestrator = SignalOrchestrator()
+        
+        # Collect signals
+        with st.spinner("Tüm modüllerden sinyal toplanıyor..."):
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            final_signal = loop.run_until_complete(orchestrator.orchestrate('BTCUSDT'))
+            loop.close()
+        
+        if final_signal:
+            so1, so2, so3, so4 = st.columns(4)
+            
+            with so1:
+                dir_emoji = "🟢" if final_signal.direction == 'LONG' else "🔴" if final_signal.direction == 'SHORT' else "⚪"
+                st.metric("🎯 ORKESTRE SİNYAL", f"{dir_emoji} {final_signal.direction}")
+            
+            with so2:
+                st.metric("💪 Güven", f"{final_signal.confidence:.0f}%")
+            
+            with so3:
+                st.metric("📊 Konsensüs", f"{final_signal.consensus_ratio:.0f}%")
+            
+            with so4:
+                strength_emoji = "💪💪💪" if final_signal.strength == 'STRONG' else "💪💪" if final_signal.strength == 'MODERATE' else "💪"
+                st.metric("⚡ Güç", f"{strength_emoji} {final_signal.strength}")
+            
+            # Entry/SL/TP
+            e1, e2, e3, e4 = st.columns(4)
+            with e1:
+                st.metric("📈 Entry", f"${final_signal.entry_price:,.2f}")
+            with e2:
+                st.metric("🛑 Stop Loss", f"${final_signal.stop_loss:,.2f}")
+            with e3:
+                st.metric("🎯 Take Profit", f"${final_signal.take_profit:,.2f}")
+            with e4:
+                st.metric("📊 Risk:Reward", f"{final_signal.risk_reward:.1f}:1")
+            
+            st.success(f"✅ **{len(final_signal.contributing_modules)} modül** aynı fikirde: {', '.join(final_signal.contributing_modules)}")
+        else:
+            st.info("⏸️ Şu an güçlü sinyal yok - tüm kriterler karşılanmadı (konsensüs, güven, R:R)")
+        
+        # Breakdown
+        breakdown = orchestrator.get_signal_breakdown()
+        with st.expander("📊 Modül Sinyalleri Detayı"):
+            for mod in breakdown.get('modules', []):
+                emoji = "🟢" if mod['direction'] == 'LONG' else "🔴" if mod['direction'] == 'SHORT' else "⚪"
+                st.write(f"{emoji} **{mod['name']}:** {mod['direction']} ({mod['confidence']:.0f}%) - {mod['reasoning']}")
+    
+    except Exception as e:
+        st.warning(f"Signal Orchestrator kullanılamıyor: {e}")
+    
+    st.divider()
+    
+    # ==========================================
+    # 7. RESEARCH AGENT STATUS
+    # ==========================================
+    st.markdown("### 🔬 Otonom Araştırma Durumu")
+    st.caption("_4 coin için otomatik TradingView grafik analizi_")
+    
+    try:
+        from src.brain.research_agent import ResearchAgent
+        
+        agent = ResearchAgent()
+        
+        with st.expander("🔍 Araştırma Başlat"):
+            if st.button("🚀 4 Coin İçin Otonom Araştırma Yap"):
+                with st.spinner("TradingView, teknik analiz ve on-chain verileri taranıyor..."):
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    results = loop.run_until_complete(agent.conduct_full_research())
+                    loop.close()
+                
+                summary = agent.get_research_summary()
+                
+                st.success(f"✅ {summary['coins_analyzed']} coin analiz edildi | Genel: {summary.get('overall_market', 'N/A')}")
+                
+                for symbol, data in summary.get('coins', {}).items():
+                    emoji = "🟢" if data['bias'] == 'BULLISH' else "🔴" if data['bias'] == 'BEARISH' else "⚪"
+                    st.write(f"{emoji} **{symbol}:** {data['bias']} ({data['confidence']:.0f}%) - {data['findings_count']} bulgu")
+                    if data.get('supports'):
+                        st.caption(f"  📉 Destek: ${data['supports'][0]:,.0f} | 📈 Direnç: ${data.get('resistances', [0])[0]:,.0f}")
+    
+    except Exception as e:
+        st.warning(f"Research Agent kullanılamıyor: {e}")
+    
+    st.divider()
+    
+    # ==========================================
+    # 8. SMART TIMING FILTER STATUS
+    # ==========================================
+    st.markdown("### ⏱️ Sinyal Zamanlama Durumu")
+    st.caption("_Spam önleme, kalite kontrolü_")
+    
+    try:
+        from src.brain.smart_timing_filter import SmartTimingFilter
+        
+        timing = SmartTimingFilter()
+        stats = timing.get_statistics()
+        cooldown = timing.get_cooldown_status()
+        
+        t1, t2, t3, t4 = st.columns(4)
+        
+        with t1:
+            st.metric("📊 Toplam Sinyal", stats['total'])
+        
+        with t2:
+            st.metric("📈 Kazanç Oranı", f"{stats['win_rate']:.0f}%")
+        
+        with t3:
+            st.metric("📅 Bugün", f"{stats['signals_today']}/{8}")
+        
+        with t4:
+            st.metric("🔄 Kalan", stats['remaining_today'])
+        
+        # Cooldown status per coin
+        with st.expander("⏰ Coin Bekleme Süreleri"):
+            for coin, status in cooldown.items():
+                if status['can_signal']:
+                    st.write(f"✅ **{coin}:** Sinyal gönderilebilir")
+                else:
+                    st.write(f"⏳ **{coin}:** {status['wait_minutes']:.0f} dakika bekle")
+    
+    except Exception as e:
+        st.warning(f"Timing Filter kullanılamıyor: {e}")
+    
+    st.divider()
+    
     # Refresh button
     if st.button("🔄 Tahminleri Yenile"):
         st.cache_data.clear()
