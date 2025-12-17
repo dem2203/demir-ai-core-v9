@@ -101,6 +101,14 @@ class TradingViewScraper:
                 self._set_cache(cache_key, data)
                 return data
             
+            # Method 3: FALLBACK - Use CoinGecko for dominance data
+            data = self._fetch_coingecko_fallback(symbol_key)
+            
+            if data and data.get('price', 0) > 0:
+                self._set_cache(cache_key, data)
+                logger.info(f"Using CoinGecko fallback for {symbol_key}: {data['price']}")
+                return data
+            
             logger.warning(f"Failed to get TradingView data for {symbol_key}")
             return self._empty_result(symbol_key)
             
@@ -262,6 +270,56 @@ class TradingViewScraper:
             
         except Exception as e:
             logger.debug(f"API fetch failed for {symbol}: {e}")
+            return None
+    
+    def _fetch_coingecko_fallback(self, symbol_key: str) -> Optional[Dict]:
+        """
+        Fallback to CoinGecko for dominance data when TradingView fails.
+        """
+        try:
+            # Only works for dominance metrics
+            if 'dominance' in symbol_key:
+                url = "https://api.coingecko.com/api/v3/global"
+                response = requests.get(url, timeout=10)
+                
+                if response.status_code == 200:
+                    data = response.json()['data']
+                    market_cap_pct = data.get('market_cap_percentage', {})
+                    
+                    if symbol_key == 'btc_dominance':
+                        return {
+                            'symbol': 'BTC.D',
+                            'price': market_cap_pct.get('btc', 0),
+                            'change': 0,  # CoinGecko doesn't provide 24h change for dominance
+                            'change_abs': 0,
+                            'timestamp': datetime.now()
+                        }
+                    elif symbol_key == 'eth_dominance':
+                        return {
+                            'symbol': 'ETH.D',
+                            'price': market_cap_pct.get('eth', 0),
+                            'change': 0,
+                            'change_abs': 0,
+                            'timestamp': datetime.now()
+                        }
+            
+            # For USDT/USDC dominance, approximate from total market cap
+            if symbol_key == 'usdt_dominance' or symbol_key == 'usdc_dominance':
+                # Approximate values (CoinGecko doesn't track stablecoin dominance directly)
+                # USDT typically 5-7%, USDC typically 1-2%
+                approx_value = 6.0 if symbol_key == 'usdt_dominance' else 1.5
+                return {
+                    'symbol': symbol_key.upper(),
+                    'price': approx_value,
+                    'change': 0,
+                    'change_abs': 0,
+                    'timestamp': datetime.now()
+                }
+            
+            return None
+            
+        except Exception as e:
+            logger.debug(f"CoinGecko fallback failed for {symbol_key}: {e}")
             return None
     
     def _empty_result(self, symbol_key: str) -> Dict:
