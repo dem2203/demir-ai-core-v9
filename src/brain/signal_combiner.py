@@ -60,6 +60,7 @@ class SignalCombinerModel:
     """
     
     # Feature names for interpretability
+    # UPDATED: Phase 42 - Added liquidation_risk, whale_flow, reddit_sentiment
     FEATURE_NAMES = [
         'fear_greed',
         'tradingview',
@@ -72,23 +73,31 @@ class SignalCombinerModel:
         'funding_rate',
         'oi_velocity',
         'whale_ratio',
-        'rsi'
+        'rsi',
+        'liquidation_risk',  # NEW: Phase 42
+        'whale_flow',         # NEW: Phase 42
+        'reddit_sentiment'    # NEW: Phase 42
     ]
     
     # Initial weights (will be learned)
+    # UPDATED: Phase 42 - Adjusted weights for new features
     DEFAULT_WEIGHTS = {
-        'fear_greed': 0.12,       # Inverse - low fear = bullish
-        'tradingview': 0.15,      # Direct signal
-        'stablecoin_flow': 0.10,  # Mint = bullish
-        'defi_tvl_change': 0.08,  # TVL up = bullish
-        'cme_gap': 0.08,          # Gap direction
-        'news_sentiment': 0.10,   # High = bullish
-        'bullish_patterns': 0.12, # Count of bullish patterns
-        'bearish_patterns': 0.10, # Count of bearish patterns (inverse)
-        'funding_rate': 0.05,     # Extreme = contrarian
+        'fear_greed': 0.10,       # Inverse - low fear = bullish
+        'tradingview': 0.12,      # Direct signal
+        'stablecoin_flow': 0.08,  # Mint = bullish
+        'defi_tvl_change': 0.06,  # TVL up = bullish
+        'cme_gap': 0.06,          # Gap direction
+        'news_sentiment': 0.08,   # High = bullish
+        'bullish_patterns': 0.10, # Count of bullish patterns
+        'bearish_patterns': 0.08, # Count of bearish patterns (inverse)
+        'funding_rate': 0.04,     # Extreme = contrarian
         'oi_velocity': 0.03,      # Volatility indicator
-        'whale_ratio': 0.05,      # Whale buy ratio
-        'rsi': 0.02               # Overbought/oversold
+        'whale_ratio': 0.04,      # Whale buy ratio
+        'rsi': 0.02,              # Overbought/oversold
+        #  Phase 42 features (higher weights - critical data!)
+        'liquidation_risk': 0.08, # Cascade risk (HIGH impact!)
+        'whale_flow': 0.06,       # Exchange flow direction
+        'reddit_sentiment': 0.05  # Social sentiment
     }
     
     def __init__(self):
@@ -161,6 +170,22 @@ class SignalCombinerModel:
             features.append(-0.5)  # Overbought = bearish
         else:
             features.append(0)
+        
+        # === PHASE 42 FEATURES ===
+        
+        # 13. Liquidation Risk (0-1 scale, HIGH = bearish cascade risk)
+        liq_risk = raw_data.get('liquidation_risk', 0)
+        # Inverse: high risk = bearish
+        features.append(-np.clip(liq_risk, 0, 1))
+        
+        # 14. Whale Flow (-1 to +1: negative=inflow/bearish, positive=outflow/bullish)
+        whale_flow = raw_data.get('whale_flow', 0)
+        # Normalize $100M flow = +/-1
+        features.append(np.clip(whale_flow / 100_000_000, -1, 1))
+        
+        # 15. Reddit Sentiment (0-100 → -1 to +1)
+        reddit_sent = raw_data.get('reddit_sentiment', 50)
+        features.append((reddit_sent - 50) / 50)  # Center around 0
         
         return np.array(features)
     
