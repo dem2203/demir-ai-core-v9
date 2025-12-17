@@ -18,6 +18,13 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import os
 
+# Import Config for token and chat_id
+try:
+    from src.config.settings import Config
+    HAS_CONFIG = True
+except ImportError:
+    HAS_CONFIG = False
+
 logger = logging.getLogger("TELEGRAM_NOTIFIER")
 
 
@@ -38,14 +45,22 @@ class TelegramNotifier:
     COINS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'LTCUSDT']
     
     def __init__(self, token: str = None, chat_id: str = None):
-        self.token = token or os.getenv('TELEGRAM_BOT_TOKEN') or ''
-        self.chat_id = chat_id or os.getenv('TELEGRAM_CHAT_ID') or ''
+        # Use Config if available (existing system integration)
+        if HAS_CONFIG:
+            self.token = token or Config.TELEGRAM_TOKEN or ''
+            self.chat_id = chat_id or Config.TELEGRAM_CHAT_ID or ''
+        else:
+            self.token = token or os.getenv('TELEGRAM_BOT_TOKEN') or ''
+            self.chat_id = chat_id or os.getenv('TELEGRAM_CHAT_ID') or ''
+        
         self.last_heartbeat = datetime.now()
         self.last_signal_time: Dict[str, datetime] = {}
         self.enabled = bool(self.token and self.chat_id)
         
-        if not self.enabled:
-            logger.warning("Telegram not configured (missing token or chat_id)")
+        if self.enabled:
+            logger.info("✅ Telegram Notifier initialized with Config settings")
+        else:
+            logger.warning("⚠️ Telegram not configured (missing token or chat_id)")
     
     def send_message(self, text: str, parse_mode: str = 'HTML') -> bool:
         """Telegram'a mesaj gönder."""
