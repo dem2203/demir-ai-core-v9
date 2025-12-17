@@ -326,11 +326,14 @@ class CryptoNewsScraper:
             sentiment = 'NEUTRAL'
         
         return {
+            'overall': sentiment,  # Changed from 'sentiment' for compatibility
             'sentiment': sentiment,
             'score': score,
+            'confidence': abs(score - 50) + 30,  # Convert score to confidence
             'bullish_count': bullish,
             'bearish_count': bearish,
             'neutral_count': neutral,
+            'total_count': total,
             'news_count': total,
             'high_impact_count': sum(1 for n in self.cached_news if n.impact == 'HIGH')
         }
