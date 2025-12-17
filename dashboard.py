@@ -548,11 +548,13 @@ if page == "📡 Live Market Intelligence":
             st.error("Data stream interrupted.")
             st.stop()
         
-        # Global Metrics
+        # Global Metrics - USE LIVE DATA from browser scraper!
         c1, c2, c3, c4 = st.columns(4)
         
-        dxy = main_info.get('dxy', 0)
-        vix = main_info.get('vix', 0)
+        # DXY/VIX from live browser scraper (not stale engine data)
+        live_data_header = fetch_live_market_data()
+        dxy = live_data_header.get('dxy', 0) or main_info.get('dxy', 0)
+        vix = live_data_header.get('vix', 0) or main_info.get('vix', 0)
         price = main_info.get('price', 0)
         
         c1.metric("🇺🇸 DXY Index", f"{dxy:.2f}" if dxy > 0 else "N/A")
@@ -592,8 +594,26 @@ if page == "📡 Live Market Intelligence":
             'btc_dominance_change': live_data.get('btc_dominance_change') or main_info.get('correlations', {}).get('btc_dominance_change', 0),
         }
         deriv_data = {
+            # Derivatives
             'open_interest': live_data.get('open_interest') or main_info.get('derivatives', {}).get('open_interest', 0),
             'long_short_ratio': live_data.get('long_short_ratio') or main_info.get('derivatives', {}).get('long_short_ratio', 0),
+            # Dominance metrics (from browser scraper)
+            'btc_dominance': live_data.get('btc_dominance', 0),
+            'btc_dominance_change': live_data.get('btc_dominance_change', 0),
+            'eth_dominance': live_data.get('eth_dominance', 0),
+            'eth_dominance_change': live_data.get('eth_dominance_change', 0),
+            'usdt_dominance': live_data.get('usdt_dominance', 0),
+            'usdc_dominance': live_data.get('usdc_dominance', 0),
+            'total_stablecoin_dominance': live_data.get('total_stablecoin_dominance', 0),
+            'stablecoin_signal': live_data.get('stablecoin_signal', 'NEUTRAL'),
+            'stablecoin_interpretation': live_data.get('stablecoin_interpretation', ''),
+            # Macro indicators
+            'dxy': live_data.get('dxy', 0),
+            'dxy_change': live_data.get('dxy_change', 0),
+            'vix': live_data.get('vix', 0),
+            'vix_change': live_data.get('vix_change', 0),
+            'spy': live_data.get('spy', 0),
+            'spy_change': live_data.get('spy_change', 0),
         }
         
         # Gold - Dynamic Analysis
