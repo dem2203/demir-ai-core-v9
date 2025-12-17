@@ -1985,7 +1985,10 @@ elif page == "🌐 Web Intelligence":
             st.caption(spike_data['summary'])
             
         except Exception as e:
-            st.error(f"DEX Volume Tracker hatası: {e}")
+            st.error(f"❌ DEX Volume Tracker hatası: {e}")
+            import traceback
+            with st.expander("Debug Info"):
+                st.code(traceback.format_exc())
         
         st.divider()
         
@@ -2036,7 +2039,10 @@ elif page == "🌐 Web Intelligence":
                 st.info(sentiment_data['summary'])
             
         except Exception as e:
-            st.error(f"Twitter Sentiment hatası: {e}")
+            st.error(f"❌ Twitter Sentiment hatası: {e}")
+            import traceback
+            with st.expander("Debug Info"):
+                st.code(traceback.format_exc())
         
         st.divider()
         
@@ -2090,7 +2096,10 @@ elif page == "🌐 Web Intelligence":
             st.caption(funding_data['summary'])
             
         except Exception as e:
-            st.error(f"Enhanced Funding hatası: {e}")
+            st.error(f"❌ Enhanced Funding hatası: {e}")
+            import traceback
+            with st.expander("Debug Info"):
+                st.code(traceback.format_exc())
         
         st.divider()
         
