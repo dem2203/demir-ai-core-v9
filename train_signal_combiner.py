@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 DEMIR AI - Signal Combiner Training Script
 Geçmiş verilerle Signal Combiner modelini eğitir.
@@ -15,6 +16,11 @@ from datetime import datetime, timedelta
 import logging
 import sys
 import os
+
+# Fix Windows Unicode encoding
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -164,6 +170,28 @@ def generate_synthetic_signals(df: pd.DataFrame) -> pd.DataFrame:
     df.loc[df['volume_ratio'] > 2, 'whale_ratio'] = 0.7  # High volume = whale activity
     df.loc[df['volume_ratio'] < 0.5, 'whale_ratio'] = 0.3
     
+    # === PHASE 42 FEATURES ===
+    
+    # 12. Liquidation Risk simülasyonu (High OI + Price extremes)
+    # When price is near highs/lows + high volume = cascade risk
+    df['price_norm'] = (df['close'] - df['close'].rolling(50).min()) / (df['close'].rolling(50).max() - df['close'].rolling(50).min())
+    df['liquidation_risk'] = 0.0
+    # High risk when price near bottom (0-0.2) or top (0.8-1.0) with high volume
+    df.loc[(df['price_norm'] < 0.2) & (df['volume_ratio'] > 1.5), 'liquidation_risk'] = 0.7
+    df.loc[(df['price_norm'] > 0.8) & (df['volume_ratio'] > 1.5), 'liquidation_risk'] = 0.6
+    
+    # 13. Whale Flow simülasyonu (Volume direction)
+    # Positive = outflow (bullish), Negative = inflow (bearish)
+    df['volume_ma'] = df['volume'].rolling(window=20).mean()
+    df['whale_flow'] = (df['volume'] - df['volume_ma']) * 50_000_000  # Normalize to USD
+    # Bias based on price action
+    df.loc[df['close'] > df['open'], 'whale_flow'] = df['whale_flow'].abs()  # Green candle = outflow
+    df.loc[df['close'] < df['open'], 'whale_flow'] = -df['whale_flow'].abs()  # Red candle = inflow
+    
+    # 14. Reddit Sentiment simülasyonu (Community mood based on returns)
+    # Positive returns = bullish sentiment
+    df['reddit_sentiment'] = 50 + (df['return_5'] * 1000).clip(-45, 45)
+    
     return df
 
 
@@ -185,6 +213,12 @@ def calculate_future_returns(df: pd.DataFrame, lookahead: int = 6) -> pd.DataFra
 def prepare_training_data(df: pd.DataFrame) -> list:
     """Training data formatına dönüştür"""
     
+    # Fill NaN values for Phase 42 features
+    df['liquidation_risk'] = df['liquidation_risk'].fillna(0)
+    df['whale_flow'] = df['whale_flow'].fillna(0)
+    df['reddit_sentiment'] = df['reddit_sentiment'].fillna(50)
+    df['price_norm'] = df['price_norm'].fillna(0.5)
+    
     training_data = []
     
     for idx, row in df.iterrows():
@@ -203,7 +237,11 @@ def prepare_training_data(df: pd.DataFrame) -> list:
             'funding_rate': row['funding_rate'],
             'oi_velocity': row['oi_velocity'] if not pd.isna(row['oi_velocity']) else 0,
             'whale_ratio': row['whale_ratio'],
-            'rsi': row['rsi']
+            'rsi': row['rsi'],
+            # Phase 42 features
+            'liquidation_risk': row.get('liquidation_risk', 0),
+            'whale_flow': row.get('whale_flow', 0),
+            'reddit_sentiment': row.get('reddit_sentiment', 50)
         }
         
         target = row['target']
@@ -216,7 +254,8 @@ def main():
     """Ana eğitim fonksiyonu"""
     
     print("=" * 60)
-    print("🤖 DEMIR AI - Signal Combiner Model Training")
+    print("DEMIR AI - Signal Combiner Model Training (Phase 44)")
+    print("   15 Features (12 original + 3 Phase 42)")
     print("=" * 60)
     
     # 1. Fetch historical data
