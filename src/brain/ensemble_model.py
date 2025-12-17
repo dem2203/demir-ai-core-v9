@@ -24,6 +24,58 @@ class VotingStrategy(Enum):
     UNANIMOUS = "unanimous"         # All must agree
     CONFIDENCE_THRESHOLD = "threshold"  # Above threshold wins
 
+# -*- coding: utf-8 -*-
+"""
+DEMIR AI - Enhanced Ensemble Model
+Multi-model voting ensemble for maximum accuracy
+
+PHASE 47: ML Enhancements
+- Added XGBoost (gradient boosting)
+- Added LightGBM (fast gradient boosting)
+- Voting ensemble strategy
+- Feature importance tracking
+"""
+import pickle
+import os
+from pathlib import Path
+
+try:
+    from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
+    from sklearn.linear_model import Ridge
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
+
+try:
+    import xgboost as xgb
+    XGBOOST_AVAILABLE = True
+except ImportError:
+    XGBOOST_AVAILABLE = False
+
+try:
+    import lightgbm as lgb
+    LIGHTGBM_AVAILABLE = True
+except ImportError:
+    LIGHTGBM_AVAILABLE = False
+
+
+class EnhancedEnsembleModel:
+    """
+    Enhanced Ensemble Model with XGBoost + LightGBM
+    
+    PHASE 47 Upgrade:
+    - GradientBoosting (sklearn) - baseline
+    - RandomForest (sklearn) - diversity
+    - XGBoost - performance
+    - LightGBM - speed
+    - Ridge Regression - regularization
+    
+    Voting: Weighted average of all models
+    """
+    
+    def __init__(self):
+        self.models = {}
+
 
 @dataclass
 class ModelPrediction:

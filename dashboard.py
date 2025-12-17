@@ -1940,6 +1940,160 @@ elif page == "🌐 Web Intelligence":
         
         st.divider()
         
+        # ===================================
+        # PHASE 45: HIGH-VALUE SCRAPERS
+        # ===================================
+        
+        # Row 9: DEX Volume Spikes
+        st.subheader("🔥 DEX Volume Spikes")
+        st.caption("DexScreener - Pump detection & new pairs")
+        
+        try:
+            from src.brain.dex_volume_tracker import DEXVolumeTracker
+            dex_tracker = DEXVolumeTracker()
+            
+            spike_data = dex_tracker.detect_volume_spikes(min_volume_24h=100000)
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("🚀 Mega Pumps", len(spike_data['mega_pumps']), ">1000% volume")
+            
+            with col2:
+                st.metric("⚡ Volume Spikes", len(spike_data['pump_signals']), ">300% volume")
+            
+            with col3:
+                st.metric("🆕 New Pairs", len(spike_data['new_pairs']), "Last 24h")
+            
+            with col4:
+                st.metric("📊 Total Tracked", spike_data['total_tracked'], "DEX pairs")
+            
+            # Mega pumps list
+            if spike_data['mega_pumps']:
+                st.warning("⚠️ **MEGA PUMP ALERT:**")
+                for pair in spike_data['mega_pumps'][:3]:
+                    st.markdown(f"• **{pair.base_token}/{pair.quote_token}** ({pair.chain})")
+                    st.caption(f"   📈 +{pair.volume_change_24h:.0f}% volume | ${pair.volume_24h/1e6:.1f}M | {pair.dex}")
+            
+            # Regular pumps
+            elif spike_data['pump_signals']:
+                st.info("ℹ️ **Volume Spikes Detected:**")
+                for pair in spike_data['pump_signals'][:5]:
+                    st.markdown(f"• {pair.base_token}: +{pair.volume_change_24h:.0f}%")
+            
+            # Summary
+            st.caption(spike_data['summary'])
+            
+        except Exception as e:
+            st.error(f"DEX Volume Tracker hatası: {e}")
+        
+        st.divider()
+        
+        # Row 10: Twitter Sentiment (Influencers)
+        st.subheader("🐦 Twitter Sentiment")
+        st.caption("Top crypto influencer analysis via Nitter")
+        
+        try:
+            from src.brain.twitter_sentiment import TwitterSentimentScraper
+            twitter = TwitterSentimentScraper()
+            
+            sentiment_data = twitter.get_influencer_sentiment(hours=24)
+            
+            score = sentiment_data['score']
+            mood = sentiment_data['sentiment']
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                # Score visualization
+                bar_length = int(score / 10)
+                score_bar = "█" * bar_length + "░" * (10 - bar_length)
+                mood_emoji = "🟢" if mood == 'BULLISH' else "🔴" if mood == 'BEARISH' else "⚪"
+                st.metric("Sentiment", f"[{score_bar}]", f"{mood_emoji} {score:.0f}/100")
+            
+            with col2:
+                st.metric("Tweets Analyzed", sentiment_data['tweet_count'], "Last 24h")
+            
+            with col3:
+                st.metric("Bullish", f"🟢 {sentiment_data['bullish_count']}", "")
+            
+            with col4:
+                st.metric("Bearish", f"🔴 {sentiment_data['bearish_count']}", "")
+            
+            # Top influencer tweet
+            if sentiment_data['top_tweets']:
+                top_tweet = sentiment_data['top_tweets'][0]
+                st.markdown(f"**Top Tweet** (@{top_tweet.username}):")
+                st.caption(f'"{top_tweet.text[:150]}..."')
+                st.caption(f"❤️ {top_tweet.likes} | 🔁 {top_tweet.retweets}")
+            
+            # Summary
+            if score >= 70:
+                st.success(sentiment_data['summary'])
+            elif score <= 30:
+                st.warning(sentiment_data['summary'])
+            else:
+                st.info(sentiment_data['summary'])
+            
+        except Exception as e:
+            st.error(f"Twitter Sentiment hatası: {e}")
+        
+        st.divider()
+        
+        # Row 11: Enhanced Funding Rate
+        st.subheader("💰 Enhanced Funding Rate")
+        st.caption("Multi-exchange comparison (Binance, Bybit, OKX)")
+        
+        try:
+            from src.brain.enhanced_funding import EnhancedFundingTracker
+            funding = EnhancedFundingTracker()
+            
+            funding_data = funding.get_multi_exchange_funding('BTCUSDT')
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                # Exchange rates
+                st.markdown("**Exchange Rates:**")
+                for exchange in ['binance', 'bybit', 'okx']:
+                    fr = funding_data.get(exchange)
+                    if fr and fr.rate is not None:
+                        rate_pct = fr.rate * 100
+                        emoji = "🔴" if fr.rate > 0.1 else "🟡" if fr.rate > 0.05 else "🟢"
+                        st.markdown(f"{emoji} {exchange.capitalize()}: {rate_pct:.4f}%")
+            
+            with col2:
+                avg_rate = funding_data['average'] * 100
+                st.metric("Average Rate", f"{avg_rate:.4f}%", "")
+                
+                divergence = funding_data['divergence'] * 100
+                if divergence > 0.05:
+                    st.metric("Divergence", f"⚠️ {divergence:.4f}%", "Cross-exchange")
+                else:
+                    st.metric("Divergence", f"{divergence:.4f}%", "Normal")
+            
+            with col3:
+                signal = funding_data['signal']
+                if signal == 'EXTREME_LONG':
+                    st.error("🔴 EXTREME LONG BIAS")
+                    st.caption("Contrarian SHORT signal!")
+                elif signal == 'EXTREME_SHORT':
+                    st.success("🟢 EXTREME SHORT BIAS")
+                    st.caption("Contrarian LONG signal!")
+                elif signal == 'DIVERGENCE':
+                    st.warning("⚠️ DIVERGENCE DETECTED")
+                    st.caption("Possible manipulation")
+                else:
+                    st.info("↔️ Normal Funding")
+            
+            # Summary
+            st.caption(funding_data['summary'])
+            
+        except Exception as e:
+            st.error(f"Enhanced Funding hatası: {e}")
+        
+        st.divider()
+        
         # Refresh button
         if st.button("🔄 Verileri Yenile"):
             st.cache_data.clear()
