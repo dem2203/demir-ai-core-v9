@@ -50,33 +50,41 @@ class SignalOrchestrator:
     
     Tüm modülleri koordine eder:
     1. Markov Predictor
-    2. LSTM Trend
+    2. LSTM Trend (trained model)
     3. Research Agent
     4. SMC Analyzer
     5. Whale Intelligence
     6. Liquidation Hunter
     7. Predictive Analyzer
+    8. News Sentiment (YENİ)
+    9. CME Gap Tracker (YENİ)
+    10. Options Flow (YENİ)
+    11. OnChain Intel (YENİ)
     
     Consensus kuralları:
-    - Minimum 3/5 modül aynı yönde olmalı
+    - Minimum 5/11 modül aynı yönde olmalı
     - Güven skoru > 65% olmalı
     - Risk/Reward > 2:1 olmalı
     """
     
     # Modül ağırlıkları (performansa göre ayarlanabilir)
     DEFAULT_WEIGHTS = {
-        'MarkovPredictor': 0.15,
-        'LSTMTrend': 0.15,
-        'ResearchAgent': 0.20,
-        'SMCAnalyzer': 0.15,
-        'WhaleIntelligence': 0.15,
-        'LiquidationHunter': 0.10,
-        'PredictiveAnalyzer': 0.10,
+        'MarkovPredictor': 0.10,
+        'LSTMTrend': 0.12,
+        'ResearchAgent': 0.12,
+        'SMCAnalyzer': 0.10,
+        'WhaleIntelligence': 0.10,
+        'LiquidationHunter': 0.08,
+        'PredictiveAnalyzer': 0.08,
+        'NewsSentiment': 0.10,
+        'CMEGapTracker': 0.08,
+        'OptionsFlow': 0.06,
+        'OnChainIntel': 0.06,
     }
     
     # Minimum sinyal gereksinimleri
-    MIN_CONSENSUS_RATIO = 0.6  # En az %60 aynı fikirde
-    MIN_CONFIDENCE = 65  # Minimum güven
+    MIN_CONSENSUS_RATIO = 0.5  # En az %50 aynı fikirde (11 modül için)
+    MIN_CONFIDENCE = 60  # Minimum güven
     MIN_RISK_REWARD = 2.0  # Minimum R:R
     
     def __init__(self):
@@ -88,14 +96,13 @@ class SignalOrchestrator:
     async def collect_all_signals(self, symbol: str = 'BTCUSDT', current_price: float = 0) -> List[ModuleSignal]:
         """Tüm modüllerden sinyal topla."""
         self.module_signals = []
+        import requests
         
         # 1. Markov Predictor
         try:
             from src.brain.markov_predictor import MarkovPredictor
             markov = MarkovPredictor()
             
-            # Son fiyat değişimini al
-            import requests
             resp = requests.get(f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1h&limit=2", timeout=5)
             if resp.status_code == 200:
                 klines = resp.json()
@@ -113,7 +120,7 @@ class SignalOrchestrator:
         except Exception as e:
             logger.warning(f"Markov signal failed: {e}")
         
-        # 2. LSTM Trend
+        # 2. LSTM Trend (with trained model)
         try:
             from src.brain.models.lstm_trend import LSTMTrendPredictor
             import pandas as pd
@@ -132,7 +139,7 @@ class SignalOrchestrator:
                     direction=dir_map.get(pred['direction'], 'NEUTRAL'),
                     confidence=pred['confidence'],
                     weight=self.weights['LSTMTrend'],
-                    reasoning=f"Model: {pred.get('model', 'N/A')}"
+                    reasoning=f"Model: {pred.get('model', 'trained')}"
                 ))
         except Exception as e:
             logger.warning(f"LSTM signal failed: {e}")
@@ -142,7 +149,6 @@ class SignalOrchestrator:
             from src.brain.research_agent import ResearchAgent
             agent = ResearchAgent()
             
-            # Sadece BTC için hızlı araştırma
             research = await agent.research_coin(symbol)
             
             dir_map = {'BULLISH': 'LONG', 'BEARISH': 'SHORT', 'NEUTRAL': 'NEUTRAL'}
@@ -201,15 +207,14 @@ class SignalOrchestrator:
             liq_data = await hunter.get_full_liquidation_analysis(symbol)
             
             if liq_data:
-                # Likidasyon yoğunluğuna göre sinyal
                 long_liq = liq_data.get('long_liquidations', 0)
                 short_liq = liq_data.get('short_liquidations', 0)
                 
                 if long_liq > short_liq * 1.5:
-                    direction = 'SHORT'  # Long'lar likidasyona yakın
+                    direction = 'SHORT'
                     confidence = 55
                 elif short_liq > long_liq * 1.5:
-                    direction = 'LONG'  # Short squeeze olasılığı
+                    direction = 'LONG'
                     confidence = 55
                 else:
                     direction = 'NEUTRAL'
@@ -227,7 +232,82 @@ class SignalOrchestrator:
         except Exception as e:
             logger.warning(f"Liquidation signal failed: {e}")
         
-        logger.info(f"Collected {len(self.module_signals)} signals from modules")
+        # 7. NEWS SENTIMENT (YENİ)
+        try:
+            from src.brain.news_scraper import CryptoNewsScraper
+            scraper = CryptoNewsScraper()
+            scraper.fetch_all_news(max_age_hours=4)
+            sentiment = scraper.get_market_sentiment()
+            
+            if sentiment['overall'] != 'NEUTRAL':
+                dir_map = {'BULLISH': 'LONG', 'BEARISH': 'SHORT'}
+                self.module_signals.append(ModuleSignal(
+                    module_name='NewsSentiment',
+                    direction=dir_map.get(sentiment['overall'], 'NEUTRAL'),
+                    confidence=sentiment.get('confidence', 50),
+                    weight=self.weights['NewsSentiment'],
+                    reasoning=f"{sentiment['bullish_count']} bullish, {sentiment['bearish_count']} bearish haber"
+                ))
+        except Exception as e:
+            logger.warning(f"News signal failed: {e}")
+        
+        # 8. CME GAP TRACKER (YENİ)
+        try:
+            from src.brain.cme_gap_tracker import CMEGapTracker
+            tracker = CMEGapTracker()
+            gap_signal = tracker.get_signal_bias()
+            
+            if gap_signal.get('has_gap') and gap_signal.get('signal') != 'NEUTRAL':
+                self.module_signals.append(ModuleSignal(
+                    module_name='CMEGapTracker',
+                    direction=gap_signal['signal'],
+                    confidence=gap_signal.get('confidence', 50),
+                    weight=self.weights['CMEGapTracker'],
+                    reasoning=gap_signal.get('reason', 'CME Gap analizi')
+                ))
+        except Exception as e:
+            logger.warning(f"CME Gap signal failed: {e}")
+        
+        # 9. OPTIONS FLOW (YENİ)
+        try:
+            from src.brain.options_flow import OptionsFlowAnalyzer
+            analyzer = OptionsFlowAnalyzer()
+            options = analyzer.get_signal_for_orchestrator()
+            
+            if options.get('direction') != 'NEUTRAL':
+                self.module_signals.append(ModuleSignal(
+                    module_name='OptionsFlow',
+                    direction=options['direction'],
+                    confidence=options.get('confidence', 50),
+                    weight=self.weights['OptionsFlow'],
+                    reasoning=options.get('reason', 'Options flow analizi')
+                ))
+        except Exception as e:
+            logger.warning(f"Options signal failed: {e}")
+        
+        # 10. ON-CHAIN INTEL (YENİ)
+        try:
+            from src.brain.onchain_intel import OnChainIntelligence
+            onchain = OnChainIntelligence()
+            analysis = await onchain.get_full_onchain_analysis(symbol)
+            
+            if analysis:
+                bias = analysis.get('overall_bias', 'NEUTRAL')
+                if bias != 'NEUTRAL':
+                    dir_map = {'BULLISH': 'LONG', 'BEARISH': 'SHORT'}
+                    self.module_signals.append(ModuleSignal(
+                        module_name='OnChainIntel',
+                        direction=dir_map.get(bias, 'NEUTRAL'),
+                        confidence=analysis.get('confidence', 50),
+                        weight=self.weights['OnChainIntel'],
+                        reasoning=f"Whale: {analysis.get('whale_bias', 'N/A')}, Flow: {analysis.get('netflow_bias', 'N/A')}"
+                    ))
+            
+            await onchain.close()
+        except Exception as e:
+            logger.warning(f"OnChain signal failed: {e}")
+        
+        logger.info(f"Collected {len(self.module_signals)} signals from {len(self.weights)} modules")
         return self.module_signals
     
     def calculate_consensus(self) -> Tuple[str, float, float]:
