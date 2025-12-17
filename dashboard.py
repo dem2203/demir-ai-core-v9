@@ -2592,6 +2592,185 @@ elif page == "🔮 AI Predictions":
     
     st.divider()
     
+    # ==========================================
+    # 9. NEWS SENTIMENT PANEL
+    # ==========================================
+    st.markdown("### 📰 Haber Sentiment Analizi")
+    st.caption("_Kripto haberlerinden piyasa duygu durumu_")
+    
+    try:
+        from src.brain.news_scraper import CryptoNewsScraper
+        
+        scraper = CryptoNewsScraper()
+        scraper.fetch_all_news(max_age_hours=4)
+        sentiment = scraper.get_market_sentiment()
+        important = scraper.get_important_news(max_items=3)
+        
+        n1, n2, n3, n4 = st.columns(4)
+        
+        with n1:
+            overall_emoji = "🟢" if sentiment['overall'] == 'BULLISH' else "🔴" if sentiment['overall'] == 'BEARISH' else "⚪"
+            st.metric("📊 Genel Sentiment", f"{overall_emoji} {sentiment['overall']}")
+        
+        with n2:
+            st.metric("🟢 Bullish", sentiment['bullish_count'])
+        
+        with n3:
+            st.metric("🔴 Bearish", sentiment['bearish_count'])
+        
+        with n4:
+            st.metric("📰 Toplam Haber", sentiment['total_count'])
+        
+        if important:
+            with st.expander("🔥 Önemli Haberler"):
+                for news in important:
+                    emoji = "🟢" if news.sentiment == 'BULLISH' else "🔴" if news.sentiment == 'BEARISH' else "⚪"
+                    st.write(f"{emoji} **{news.title[:80]}...**")
+                    st.caption(f"_{news.source} | {news.impact} impact_")
+    
+    except Exception as e:
+        st.warning(f"News Scraper kullanılamıyor: {e}")
+    
+    st.divider()
+    
+    # ==========================================
+    # 10. CME GAP TRACKER PANEL
+    # ==========================================
+    st.markdown("### 📉 CME Gap Tracker")
+    st.caption("_Bitcoin CME Futures hafta sonu gap analizi_")
+    
+    try:
+        from src.brain.cme_gap_tracker import CMEGapTracker
+        
+        tracker = CMEGapTracker()
+        gap_status = tracker.get_gap_status()
+        
+        if gap_status['status'] == 'NO_GAP':
+            st.info("📊 Şu an önemli CME gap yok")
+        else:
+            g1, g2, g3, g4 = st.columns(4)
+            
+            with g1:
+                gap_emoji = "🟢" if gap_status['type'] == 'BULLISH' else "🔴"
+                st.metric("📊 Gap Tipi", f"{gap_emoji} {gap_status['type']}")
+            
+            with g2:
+                st.metric("💰 Gap Boyutu", f"${gap_status['size_usd']:,.0f}")
+            
+            with g3:
+                st.metric("📈 Gap %", f"{gap_status['size_pct']:.2f}%")
+            
+            with g4:
+                st.metric("🎯 Doluluk", f"{gap_status['fill_pct']:.0f}%")
+            
+            # Gap details
+            st.write(f"**Cuma Kapanış:** ${gap_status['friday_close']:,.0f} | **Pazartesi Açılış:** ${gap_status['monday_open']:,.0f}")
+            st.write(f"**Hedef (Gap Kapanma):** ${gap_status['target']:,.0f}")
+            
+            signal_emoji = "📈" if gap_status['signal'] == 'LONG' else "📉"
+            if gap_status['status'] == 'GAP_FILLED':
+                st.success("✅ Gap kapandı!")
+            else:
+                st.warning(f"{signal_emoji} **Sinyal:** {gap_status['signal']} (gap kapanması bekleniyor)")
+    
+    except Exception as e:
+        st.warning(f"CME Gap Tracker kullanılamıyor: {e}")
+    
+    st.divider()
+    
+    # ==========================================
+    # 11. OPTIONS FLOW PANEL
+    # ==========================================
+    st.markdown("### 📈 Options Flow (Deribit)")
+    st.caption("_Opsiyon piyasası akıllı para analizi_")
+    
+    try:
+        from src.brain.options_flow import OptionsFlowAnalyzer
+        
+        analyzer = OptionsFlowAnalyzer()
+        options = analyzer.analyze()
+        
+        if options.get('available'):
+            o1, o2, o3, o4 = st.columns(4)
+            
+            with o1:
+                bias_emoji = "🟢" if options['bias'] == 'BULLISH' else "🔴" if options['bias'] == 'BEARISH' else "⚪"
+                st.metric("📊 Bias", f"{bias_emoji} {options['bias']}")
+            
+            with o2:
+                st.metric("📈 Call/Put", f"{options['call_put_ratio']:.2f}")
+            
+            with o3:
+                st.metric("🎯 Max Pain", f"${options['max_pain']:,.0f}")
+            
+            with o4:
+                iv_emoji = "🔥" if options['iv_status'] == 'VERY_HIGH' else "❄️" if options['iv_status'] == 'VERY_LOW' else "📊"
+                st.metric("📉 IV Rank", f"{iv_emoji} {options['iv_rank']:.0f}%")
+            
+            # Details
+            st.write(f"**Call OI:** {options['call_oi']:,.0f} | **Put OI:** {options['put_oi']:,.0f}")
+            
+            if options['max_pain_direction'] != 'NEUTRAL':
+                dir_emoji = "⬆️" if options['max_pain_direction'] == 'UP' else "⬇️"
+                st.write(f"{dir_emoji} Fiyat Max Pain'e doğru çekilebilir ({options['max_pain_distance_pct']:+.1f}%)")
+            
+            st.caption(f"_{options['iv_note']}_")
+        else:
+            st.info("📊 Options verisi şu an kullanılamıyor")
+    
+    except Exception as e:
+        st.warning(f"Options Flow kullanılamıyor: {e}")
+    
+    st.divider()
+    
+    # ==========================================
+    # 12. SIGNAL BACKTEST VALIDATION
+    # ==========================================
+    st.markdown("### 📊 Sinyal Backtest Doğrulama")
+    st.caption("_Geçmiş sinyallerin başarı oranı analizi_")
+    
+    try:
+        from src.notifications.signal_tracker import SignalTracker
+        
+        tracker = SignalTracker()
+        stats = tracker.get_statistics()
+        
+        b1, b2, b3, b4 = st.columns(4)
+        
+        with b1:
+            st.metric("📊 Toplam Sinyal", stats.get('total_signals', 0))
+        
+        with b2:
+            wr = stats.get('win_rate', 0)
+            wr_emoji = "🏆" if wr >= 60 else "📈" if wr >= 50 else "📉"
+            st.metric("🎯 Win Rate", f"{wr_emoji} {wr:.1f}%")
+        
+        with b3:
+            st.metric("✅ Kazanç", stats.get('wins', 0))
+        
+        with b4:
+            st.metric("❌ Kayıp", stats.get('losses', 0))
+        
+        # Profit summary
+        net = stats.get('net_profit_pct', 0)
+        if net != 0:
+            profit_emoji = "🟢" if net > 0 else "🔴"
+            st.metric("💰 Net Kar/Zarar", f"{profit_emoji} {net:+.2f}%")
+        
+        # Active signals
+        active = tracker.get_active_signals()
+        if active:
+            with st.expander(f"📍 Aktif Sinyaller ({len(active)})"):
+                for sig in active:
+                    emoji = "📈" if sig['direction'] == 'LONG' else "📉"
+                    st.write(f"{emoji} **{sig['symbol']}** {sig['direction']} @ ${sig['entry_price']:,.2f}")
+                    st.caption(f"SL: ${sig['stop_loss']:,.2f} | TP1: ${sig['take_profit_1']:,.2f}")
+    
+    except Exception as e:
+        st.warning(f"Backtest Validation kullanılamıyor: {e}")
+    
+    st.divider()
+    
     # Refresh button
     if st.button("🔄 Tahminleri Yenile"):
         st.cache_data.clear()
