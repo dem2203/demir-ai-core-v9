@@ -335,6 +335,190 @@ class TelegramNotifier:
             prices = self.get_current_prices()
             return self.send_heartbeat(prices)
         return False
+    
+    # ==========================================
+    # 7. MONEY FLOW REPORT (INOUT)
+    # ==========================================
+    def send_money_flow_report(self, money_flow_data: Dict) -> bool:
+        """
+        Mikabot tarzı para akışı raporu.
+        /inout komutuyla tetiklenir.
+        """
+        try:
+            # Header
+            msg = "📊 <b>Marketteki Tüm Coinlere Olan Nakit Girişi Raporu.</b>\n"
+            msg += f"<i>Kısa Vadeli Market Alım Gücü:</i> <b>{money_flow_data.get('buying_power', '+0.0X')}</b>\n"
+            msg += f"<i>Marketteki Hacim Payı:</i> <b>%{money_flow_data.get('market_buyer_pct', 50):.1f}</b>\n"
+            msg += "━━━━━━━━━━━━━━━━━━━━\n"
+            
+            # Timeframe analysis
+            tf_flows = money_flow_data.get('timeframe_flows', {})
+            for tf in ['15m', '1h', '4h', '12h', '1d']:
+                pct = tf_flows.get(tf, 50)
+                arrow = "🟢▲" if pct >= 50 else "🔴▼"
+                msg += f"{tf}=> <b>%{pct:.1f}</b> {arrow}\n"
+            
+            msg += "━━━━━━━━━━━━━━━━━━━━\n"
+            
+            # Coin details
+            msg += "<b>En çok nakit girişi olanlar.</b>\n"
+            msg += "<i>(Sonunda 🔺 olanlar sağlıklıdır)</i>\n"
+            msg += "<i>Nakitin nereye aktığını gösterir.</i>\n\n"
+            
+            coin_details = money_flow_data.get('coin_details', [])
+            
+            if coin_details:
+                for coin in coin_details[:5]:  # Top 5
+                    symbol = coin.get('symbol', '???')
+                    flow_pct = coin.get('flow_pct', 0)
+                    buyer_15m = coin.get('buyer_15m', 50)
+                    mts = coin.get('mts', 0)
+                    arrows = coin.get('arrows', '➖➖➖➖➖➖')
+                    
+                    msg += f"<b>{symbol}</b> Nakit: %{flow_pct:.1f} 15m:%{buyer_15m:.0f} Mts:{mts} {arrows}\n"
+            else:
+                # Fallback format
+                for symbol, data in money_flow_data.get('top_inflow', {}).items():
+                    if isinstance(data, dict):
+                        pct = data.get('flow_pct', 0)
+                    else:
+                        pct = data
+                    clean_symbol = symbol.replace('USDT', '')
+                    arrows = "🔺🔺🔺" if pct >= 55 else "🔺" if pct >= 50 else "🔻"
+                    msg += f"🔹 <b>{clean_symbol}</b> Nakit: %{pct:.1f} {arrows}\n"
+            
+            msg += "\n━━━━━━━━━━━━━━━━━━━━\n"
+            msg += f"<i>Güncelleme: {datetime.now().strftime('%H:%M')}</i>"
+            
+            return self.send_message(msg)
+            
+        except Exception as e:
+            logger.error(f"Money flow report failed: {e}")
+            return False
+    
+    # ==========================================
+    # 8. TELEGRAM COMMAND HANDLER
+    # ==========================================
+    def check_telegram_commands(self, money_flow_analyzer=None) -> None:
+        """
+        Telegram komutlarını kontrol et.
+        
+        Desteklenen komutlar:
+        - inout, /inout : Para akışı raporu
+        - status, /status : Sistem durumu
+        - help, /help : Yardım
+        """
+        if not self.enabled:
+            return
+        
+        try:
+            # Initialize last_update_id if not exists
+            if not hasattr(self, 'last_update_id'):
+                self.last_update_id = 0
+            
+            # Get updates from Telegram
+            url = f"https://api.telegram.org/bot{self.token}/getUpdates"
+            params = {
+                'offset': self.last_update_id + 1,
+                'timeout': 1,
+                'allowed_updates': ['message']
+            }
+            
+            response = requests.get(url, params=params, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get('ok') and data.get('result'):
+                    for update in data['result']:
+                        self.last_update_id = update['update_id']
+                        
+                        message = update.get('message', {})
+                        text = message.get('text', '').lower().strip()
+                        chat_id = str(message.get('chat', {}).get('id', ''))
+                        
+                        # Only respond to authorized chat
+                        if chat_id != str(self.chat_id):
+                            continue
+                        
+                        # Handle commands
+                        if text in ['inout', '/inout', 'moneyflow', '/moneyflow']:
+                            logger.info(f"📩 Telegram command received: {text}")
+                            self._handle_inout_command(money_flow_analyzer)
+                        
+                        elif text in ['status', '/status', 'durum', '/durum']:
+                            logger.info(f"📩 Telegram command received: {text}")
+                            self._handle_status_command()
+                        
+                        elif text in ['help', '/help', 'yardim', '/yardim']:
+                            self._handle_help_command()
+                            
+        except requests.exceptions.Timeout:
+            pass  # Normal, non-blocking check
+        except Exception as e:
+            logger.debug(f"Telegram command check error: {e}")
+    
+    def _handle_inout_command(self, money_flow_analyzer=None):
+        """inout komutu - Para akışı raporu."""
+        if money_flow_analyzer is None:
+            # Try to import and create analyzer
+            try:
+                from src.data_ingestion.money_flow_analyzer import MoneyFlowAnalyzer
+                money_flow_analyzer = MoneyFlowAnalyzer()
+            except Exception as e:
+                self.send_message("⚠️ Money Flow Analyzer kullanılamıyor")
+                return
+        
+        try:
+            self.send_message("⏳ Nakit akışı hesaplanıyor...")
+            
+            # Get fresh money flow data
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            money_flow_data = loop.run_until_complete(money_flow_analyzer.get_market_money_flow())
+            loop.close()
+            
+            self.send_money_flow_report(money_flow_data)
+            
+        except Exception as e:
+            self.send_message(f"❌ Hata: {e}")
+            logger.error(f"Money flow command error: {e}")
+    
+    def _handle_status_command(self):
+        """status komutu - Sistem durumu."""
+        try:
+            from src.notifications.signal_tracker import SignalTracker
+            tracker = SignalTracker()
+            stats = tracker.get_statistics()
+            active = len(tracker.get_active_signals())
+        except:
+            stats = {}
+            active = 0
+        
+        msg = "📊 <b>DEMIR AI DURUM</b>\n"
+        msg += f"━━━━━━━━━━━━━━━━━━━━\n"
+        msg += f"⏰ Zaman: {datetime.now().strftime('%H:%M:%S')}\n"
+        msg += f"🟢 Sistem: AKTIF\n"
+        msg += f"📈 Aktif Pozisyon: {active}\n"
+        msg += f"📊 Win Rate: {stats.get('win_rate', 0):.0f}%\n"
+        msg += f"━━━━━━━━━━━━━━━━━━━━\n"
+        msg += f"<i>/inout - Para akışı raporu</i>\n"
+        msg += f"<i>/help - Komut listesi</i>"
+        
+        self.send_message(msg)
+    
+    def _handle_help_command(self):
+        """help komutu - Yardım."""
+        msg = "📋 <b>KOMUT LİSTESİ</b>\n"
+        msg += f"━━━━━━━━━━━━━━━━━━━━\n"
+        msg += f"📊 <code>/inout</code> - Nakit akışı raporu\n"
+        msg += f"📈 <code>/status</code> - Sistem durumu\n"
+        msg += f"❓ <code>/help</code> - Bu yardım mesajı\n"
+        msg += f"━━━━━━━━━━━━━━━━━━━━\n"
+        msg += f"<i>Mikabot-tarzı para akışı analizi</i>"
+        
+        self.send_message(msg)
 
 
 # Convenience functions
@@ -350,3 +534,4 @@ def quick_signal(symbol: str, direction: str, entry: float,
     notifier = TelegramNotifier()
     signal_id = f"{symbol[:3]}-{datetime.now().strftime('%Y%m%d%H%M')}"
     return notifier.send_signal(symbol, direction, entry, sl, tp1, tp2, confidence, ['Manual'], signal_id)
+
