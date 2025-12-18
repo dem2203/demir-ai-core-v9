@@ -192,6 +192,32 @@ class BotEngine:
                             msg = brain.format_decision_for_telegram(decision, symbol, current_price)
                             await self.notifier.send_message_raw(msg)
                             
+                            # PHASE 117: Sinyali veritabanına kaydet (Self-Learning)
+                            try:
+                                from src.brain.signal_database import get_signal_database
+                                db = get_signal_database()
+                                
+                                # TP/SL hesapla
+                                if decision.action == 'LONG':
+                                    tp_price = current_price * 1.035
+                                    sl_price = current_price * 0.985
+                                else:
+                                    tp_price = current_price * 0.965
+                                    sl_price = current_price * 1.015
+                                
+                                signal_id = db.save_signal({
+                                    'symbol': symbol,
+                                    'direction': decision.action,
+                                    'confidence': decision.confidence,
+                                    'entry_price': current_price,
+                                    'tp_price': tp_price,
+                                    'sl_price': sl_price,
+                                    'modules': [{'name': m, 'direction': d} for m, d in decision.module_votes.items()] if hasattr(decision, 'module_votes') else []
+                                })
+                                logger.info(f"💾 Signal #{signal_id} saved to database")
+                            except Exception as db_err:
+                                logger.debug(f"Signal DB save skipped: {db_err}")
+                            
                             # Gate'i kapat
                             gate.open_gate(symbol, {
                                 'direction': decision.action,
@@ -238,6 +264,20 @@ class BotEngine:
                     
                     self.last_heartbeat_time = datetime.now()
                     logger.info("💓 Daily heartbeat sent to Telegram.")
+                
+                # PHASE 117: Sinyal sonuçlarını kontrol et (Self-Learning)
+                try:
+                    from src.brain.signal_result_tracker import get_signal_tracker
+                    tracker = get_signal_tracker()
+                    
+                    results = await tracker.check_active_signals()
+                    
+                    for result in results:
+                        await tracker.send_result_notification(result)
+                        logger.info(f"📊 Signal #{result['signal_id']} closed: {result['result']}")
+                        
+                except Exception as tracker_err:
+                    logger.debug(f"Signal tracker skipped: {tracker_err}")
                     
                 error_count = 0  # Reset on success
                 
