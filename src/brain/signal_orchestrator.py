@@ -528,21 +528,28 @@ class SignalOrchestrator:
         except Exception as e:
             logger.warning(f"TradingView signal failed: {e}")
         
-        # 12. TWITTER SENTIMENT (PHASE 61) - Influencer mood analysis
+        # 12. TWITTER/SOCIAL SENTIMENT (PHASE 61/119) - Reddit sentiment proxy (no Twitter API needed)
         try:
-            from src.brain.twitter_sentiment import TwitterSentimentScraper
-            twitter = TwitterSentimentScraper()
-            sentiment = twitter.get_influencer_sentiment(hours=24)
+            from src.brain.sentiment_analyzer import SentimentAnalyzer
+            sent = SentimentAnalyzer()
+            sentiment = sent.get_sentiment()  # Fixed: correct method name
             
-            if sentiment.get('tweet_count', 0) > 0:
-                score = sentiment.get('score', 50)  # 0-100, 50=neutral
+            if sentiment:
+                # Use Fear & Greed + Reddit as proxy for social sentiment
+                fg = sentiment.get('fear_greed_index', 50)
                 
-                if score > 60:
+                if fg >= 70:
+                    direction = 'SHORT'  # Extreme greed = contrarian short
+                    confidence = min(65, 50 + (fg - 50) * 0.3)
+                elif fg <= 30:
+                    direction = 'LONG'   # Extreme fear = contrarian long
+                    confidence = min(65, 50 + (50 - fg) * 0.3)
+                elif fg > 55:
                     direction = 'LONG'
-                    confidence = min(65, 45 + (score - 50) * 0.4)
-                elif score < 40:
+                    confidence = 50
+                elif fg < 45:
                     direction = 'SHORT'
-                    confidence = min(65, 45 + (50 - score) * 0.4)
+                    confidence = 50
                 else:
                     direction = 'NEUTRAL'
                     confidence = 45
@@ -552,38 +559,33 @@ class SignalOrchestrator:
                     direction=direction,
                     confidence=confidence,
                     weight=self.weights['TwitterSentiment'],
-                    reasoning=f"X Influencer: {sentiment.get('sentiment', 'NEUTRAL')} ({sentiment.get('bullish_count', 0)}↑/{sentiment.get('bearish_count', 0)}↓)"
+                    reasoning=f"F&G:{fg} ({sentiment.get('fear_greed_label', 'Neutral')})"
                 ))
         except Exception as e:
-            logger.warning(f"Twitter signal failed: {e}")
+            logger.warning(f"Social Sentiment signal failed: {e}")
         
-        # 13. ORDER BOOK DEPTH (PHASE 62) - Whale walls detection
+        # 13. ORDER BOOK DEPTH (PHASE 62/119) - Whale walls via Public Binance API
         try:
-            from src.data_ingestion.orderbook_analyzer import OrderBookAnalyzer
-            import asyncio
+            # Public endpoint - no API key needed
+            depth_resp = requests.get(
+                f"https://api.binance.com/api/v3/depth",
+                params={'symbol': symbol, 'limit': 20},
+                timeout=5
+            )
             
-            ob = OrderBookAnalyzer()
-            
-            # Run async in sync context
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import nest_asyncio
-                nest_asyncio.apply()
-            
-            # Fetch and analyze orderbook
-            orderbook = loop.run_until_complete(ob.fetch_order_book(symbol))
-            if orderbook:
-                analysis = loop.run_until_complete(ob.detect_whale_walls(orderbook, current_price))
+            if depth_resp.status_code == 200:
+                depth = depth_resp.json()
                 
-                bid_liq = analysis.get('total_bid_liquidity', 0)
-                ask_liq = analysis.get('total_ask_liquidity', 0)
+                # Calculate bid/ask liquidity
+                bid_liq = sum(float(b[0]) * float(b[1]) for b in depth.get('bids', [])[:10])
+                ask_liq = sum(float(a[0]) * float(a[1]) for a in depth.get('asks', [])[:10])
                 
-                if bid_liq > ask_liq * 1.5:
+                if bid_liq > ask_liq * 1.3:
                     direction = 'LONG'
-                    confidence = min(65, 50 + (bid_liq / max(ask_liq, 1) - 1) * 10)
-                elif ask_liq > bid_liq * 1.5:
+                    confidence = min(65, 50 + (bid_liq / max(ask_liq, 1) - 1) * 15)
+                elif ask_liq > bid_liq * 1.3:
                     direction = 'SHORT'
-                    confidence = min(65, 50 + (ask_liq / max(bid_liq, 1) - 1) * 10)
+                    confidence = min(65, 50 + (ask_liq / max(bid_liq, 1) - 1) * 15)
                 else:
                     direction = 'NEUTRAL'
                     confidence = 45
@@ -595,7 +597,6 @@ class SignalOrchestrator:
                     weight=self.weights['OrderBookDepth'],
                     reasoning=f"Bid: ${bid_liq/1e6:.1f}M, Ask: ${ask_liq/1e6:.1f}M"
                 ))
-            loop.run_until_complete(ob.close())
         except Exception as e:
             logger.warning(f"OrderBook signal failed: {e}")
         
@@ -676,20 +677,19 @@ class SignalOrchestrator:
         except Exception as e:
             logger.warning(f"MultiTimeframe signal failed: {e}")
         
-        # 16. GOOGLE TRENDS (PHASE 66) - Retail FOMO detection
+        # 16. GOOGLE TRENDS (PHASE 66/119) - Retail FOMO via Fear&Greed Scraper
         try:
-            from src.brain.google_trends import GoogleTrendsScraper
-            trends = GoogleTrendsScraper()
-            result = trends.get_bitcoin_interest(days=7)
+            from src.brain.google_trends_scraper import get_google_trends
+            trends = get_google_trends()
+            result = trends.get_bitcoin_trend()
             
             if result.get('available'):
-                dir_map = {'BULLISH': 'LONG', 'BEARISH': 'SHORT', 'NEUTRAL': 'NEUTRAL'}
                 self.module_signals.append(ModuleSignal(
                     module_name='GoogleTrends',
-                    direction=dir_map.get(result['sentiment'], 'NEUTRAL'),
-                    confidence=result.get('confidence', 40),
+                    direction=result['direction'],
+                    confidence=result.get('confidence', 45),
                     weight=self.weights['GoogleTrends'],
-                    reasoning=f"BTC Search: {result.get('current_interest', 0)} ({result.get('change_pct', 0):+.1f}%)"
+                    reasoning=f"F&G:{result.get('current_score', 50)} Trend:{result.get('trend', '')}"
                 ))
         except Exception as e:
             logger.warning(f"Google Trends signal failed: {e}")
@@ -698,21 +698,40 @@ class SignalOrchestrator:
         # PHASE 71-75: SUDDEN MOVEMENT DETECTION SYSTEM 🚨
         # ═══════════════════════════════════════════════════════════════════
         
-        # 17. BOLLINGER SQUEEZE (PHASE 71) - Volatility compression
+        # 17. BOLLINGER SQUEEZE (PHASE 71/119) - Volatility compression via Binance API
         try:
-            from src.brain.bollinger_squeeze import BollingerSqueezeDetector
-            squeeze = BollingerSqueezeDetector()
-            result = squeeze.detect_squeeze(symbol, '15m')
+            bb_resp = requests.get(
+                f"https://api.binance.com/api/v3/klines",
+                params={'symbol': symbol, 'interval': '15m', 'limit': 20},
+                timeout=5
+            )
             
-            if result.get('available'):
-                if result.get('squeeze_active') or result.get('breakout_imminent'):
-                    self.module_signals.append(ModuleSignal(
-                        module_name='BollingerSqueeze',
-                        direction=result['direction'],
-                        confidence=result.get('confidence', 50),
-                        weight=self.weights['BollingerSqueeze'],
-                        reasoning=f"Squeeze: {result.get('bandwidth_pct', 0):.1f}% {'🔥BREAKOUT!' if result.get('breakout_imminent') else ''}"
-                    ))
+            if bb_resp.status_code == 200:
+                klines = bb_resp.json()
+                closes = [float(k[4]) for k in klines]
+                
+                if len(closes) >= 20:
+                    # Calculate Bollinger Bands
+                    import numpy as np
+                    sma = np.mean(closes)
+                    std = np.std(closes)
+                    upper = sma + 2 * std
+                    lower = sma - 2 * std
+                    bandwidth = ((upper - lower) / sma) * 100
+                    
+                    # Squeeze = low bandwidth
+                    if bandwidth < 3:  # Tight squeeze
+                        current = closes[-1]
+                        direction = 'LONG' if current > sma else 'SHORT'
+                        confidence = min(65, 50 + (3 - bandwidth) * 5)
+                        
+                        self.module_signals.append(ModuleSignal(
+                            module_name='BollingerSqueeze',
+                            direction=direction,
+                            confidence=confidence,
+                            weight=self.weights['BollingerSqueeze'],
+                            reasoning=f"Squeeze: {bandwidth:.1f}% bandwidth"
+                        ))
         except Exception as e:
             logger.warning(f"Bollinger Squeeze signal failed: {e}")
         
@@ -733,20 +752,37 @@ class SignalOrchestrator:
         except Exception as e:
             logger.warning(f"Liquidation Cascade signal failed: {e}")
         
-        # 19. VOLUME SPIKE (PHASE 73) - Big player activity
+        # 19. VOLUME SPIKE (PHASE 73/119) - Big player activity via Binance API
         try:
-            from src.brain.volume_spike import VolumeSpikeDetector
-            spike = VolumeSpikeDetector()
-            result = spike.detect_spike(symbol, '15m')
+            vol_resp = requests.get(
+                f"https://api.binance.com/api/v3/klines",
+                params={'symbol': symbol, 'interval': '15m', 'limit': 20},
+                timeout=5
+            )
             
-            if result.get('available') and result.get('spike_detected'):
-                self.module_signals.append(ModuleSignal(
-                    module_name='VolumeSpike',
-                    direction=result['direction'],
-                    confidence=result.get('confidence', 55),
-                    weight=self.weights['VolumeSpike'],
-                    reasoning=f"Volume: {result.get('spike_strength', 1):.1f}x normal ({result.get('candle_type', '')})"
-                ))
+            if vol_resp.status_code == 200:
+                klines = vol_resp.json()
+                volumes = [float(k[5]) for k in klines]
+                
+                if len(volumes) >= 10:
+                    avg_vol = sum(volumes[:-1]) / (len(volumes) - 1)
+                    current_vol = volumes[-1]
+                    spike_ratio = current_vol / max(avg_vol, 1)
+                    
+                    if spike_ratio > 2.0:  # 2x normal volume
+                        # Determine direction from price
+                        open_price = float(klines[-1][1])
+                        close_price = float(klines[-1][4])
+                        direction = 'LONG' if close_price > open_price else 'SHORT'
+                        confidence = min(70, 50 + (spike_ratio - 1) * 10)
+                        
+                        self.module_signals.append(ModuleSignal(
+                            module_name='VolumeSpike',
+                            direction=direction,
+                            confidence=confidence,
+                            weight=self.weights['VolumeSpike'],
+                            reasoning=f"Volume: {spike_ratio:.1f}x normal"
+                        ))
         except Exception as e:
             logger.warning(f"Volume Spike signal failed: {e}")
         
@@ -858,20 +894,69 @@ class SignalOrchestrator:
         # PHASE 86-90: ADVANCED MOVEMENT DETECTION 🎯
         # ═══════════════════════════════════════════════════════════════════
         
-        # 30. CANDLE PATTERNS (PHASE 86)
+        # 30. CANDLE PATTERNS (PHASE 86/119) - Basic patterns via Binance API
         try:
-            from src.brain.candle_patterns import CandlePatternRecognizer
-            pattern_rec = CandlePatternRecognizer()
-            result = pattern_rec.analyze_patterns(symbol, '15m')
+            cp_resp = requests.get(
+                f"https://api.binance.com/api/v3/klines",
+                params={'symbol': symbol, 'interval': '1h', 'limit': 5},
+                timeout=5
+            )
             
-            if result.get('available') and result.get('pattern_count', 0) > 0:
-                self.module_signals.append(ModuleSignal(
-                    module_name='CandlePatterns',
-                    direction=result['direction'],
-                    confidence=result.get('confidence', 50),
-                    weight=self.weights['CandlePatterns'],
-                    reasoning=f"{result.get('latest_pattern', '')} ({result.get('pattern_count', 0)} pattern)"
-                ))
+            if cp_resp.status_code == 200:
+                klines = cp_resp.json()
+                
+                if len(klines) >= 3:
+                    # Son 3 mum
+                    prev2 = klines[-3]
+                    prev1 = klines[-2]
+                    curr = klines[-1]
+                    
+                    o, h, l, c = float(curr[1]), float(curr[2]), float(curr[3]), float(curr[4])
+                    body = abs(c - o)
+                    full_range = h - l if h != l else 0.0001
+                    body_ratio = body / full_range
+                    
+                    # Engulfing pattern
+                    prev_o, prev_c = float(prev1[1]), float(prev1[4])
+                    
+                    pattern = None
+                    direction = 'NEUTRAL'
+                    confidence = 50
+                    
+                    # Bullish Engulfing
+                    if prev_c < prev_o and c > o and c > prev_o and o < prev_c:
+                        pattern = 'Bullish Engulfing'
+                        direction = 'LONG'
+                        confidence = 65
+                    # Bearish Engulfing
+                    elif prev_c > prev_o and c < o and c < prev_o and o > prev_c:
+                        pattern = 'Bearish Engulfing'
+                        direction = 'SHORT'
+                        confidence = 65
+                    # Hammer (bullish)
+                    elif body_ratio < 0.3 and (min(o, c) - l) > 2 * body:
+                        pattern = 'Hammer'
+                        direction = 'LONG'
+                        confidence = 60
+                    # Shooting Star (bearish)
+                    elif body_ratio < 0.3 and (h - max(o, c)) > 2 * body:
+                        pattern = 'Shooting Star'
+                        direction = 'SHORT'
+                        confidence = 60
+                    # Doji
+                    elif body_ratio < 0.1:
+                        pattern = 'Doji'
+                        direction = 'NEUTRAL'
+                        confidence = 50
+                    
+                    if pattern:
+                        self.module_signals.append(ModuleSignal(
+                            module_name='CandlePatterns',
+                            direction=direction,
+                            confidence=confidence,
+                            weight=self.weights['CandlePatterns'],
+                            reasoning=f"{pattern}"
+                        ))
         except Exception as e:
             logger.warning(f"Candle Patterns failed: {e}")
         
