@@ -170,19 +170,19 @@ class SignalOrchestrator:
         except Exception as e:
             logger.warning(f"Research signal failed: {e}")
         
-        # 4. Whale Intelligence
+        # 4. Whale Intelligence (YENİ - Binance API)
         try:
-            from src.brain.coinglass_scraper import CoinglassScraper
-            scraper = CoinglassScraper()
-            enhancement = scraper.get_signal_enhancement(current_price)
+            from src.brain.whale_intelligence import WhaleIntelligence
+            whale = WhaleIntelligence()
+            whale_signal = whale.get_signal_for_orchestrator(symbol)
             
-            if enhancement['whale_bias'] != 'NEUTRAL':
+            if whale_signal.get('confidence', 0) > 0:
                 self.module_signals.append(ModuleSignal(
                     module_name='WhaleIntelligence',
-                    direction=enhancement['whale_bias'],
-                    confidence=50 + enhancement['confidence_boost'],
+                    direction=whale_signal['direction'],
+                    confidence=whale_signal.get('confidence', 50),
                     weight=self.weights['WhaleIntelligence'],
-                    reasoning=f"{enhancement.get('whale_count', 0)} whale pozisyonu"
+                    reasoning=whale_signal.get('reason', 'Whale analizi')
                 ))
         except Exception as e:
             logger.warning(f"Whale signal failed: {e}")
