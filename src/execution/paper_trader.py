@@ -181,3 +181,80 @@ class PaperTrader:
             "positions": open_positions,
             "history": self.portfolio['history'][-10:] # Son 10 işlem
         }
+    
+    def get_stats(self):
+        """İstatistikleri al."""
+        history = self.portfolio.get('history', [])
+        
+        if not history:
+            return {
+                'total_trades': 0,
+                'win_rate': 0,
+                'total_pnl': 0,
+                'balance': self.portfolio.get('balance', self.INITIAL_BALANCE)
+            }
+        
+        wins = len([t for t in history if t.get('pnl', 0) > 0])
+        losses = len([t for t in history if t.get('pnl', 0) <= 0])
+        total = len(history)
+        
+        total_pnl = sum(t.get('pnl', 0) for t in history)
+        
+        return {
+            'initial_balance': self.INITIAL_BALANCE,
+            'current_balance': self.portfolio.get('balance', self.INITIAL_BALANCE),
+            'total_pnl': total_pnl,
+            'total_pnl_pct': ((self.portfolio.get('balance', self.INITIAL_BALANCE) - self.INITIAL_BALANCE) / self.INITIAL_BALANCE) * 100,
+            'total_trades': total,
+            'wins': wins,
+            'losses': losses,
+            'win_rate': (wins / total) * 100 if total > 0 else 0,
+            'open_positions': len(self.portfolio.get('positions', {}))
+        }
+    
+    def format_stats_for_telegram(self):
+        """Telegram formatında istatistikler."""
+        s = self.get_stats()
+        
+        pnl_emoji = "📈" if s['total_pnl'] >= 0 else "📉"
+        win_emoji = "✅" if s['win_rate'] >= 55 else "⚠️" if s['win_rate'] >= 45 else "❌"
+        
+        msg = f"""
+📝 PAPER TRADİNG DURUMU
+━━━━━━━━━━━━━━━━━━━━━━
+💰 Başlangıç: ${s['initial_balance']:,.2f}
+💰 Şu An: ${s['current_balance']:,.2f}
+{pnl_emoji} Toplam Kar: ${s['total_pnl']:+,.2f} ({s['total_pnl_pct']:+.1f}%)
+━━━━━━━━━━━━━━━━━━━━━━
+📊 Toplam İşlem: {s['total_trades']}
+{win_emoji} Kazanma Oranı: %{s['win_rate']:.1f}
+✅ Kazanç: {s['wins']} | ❌ Kayıp: {s['losses']}
+📂 Açık Pozisyon: {s['open_positions']}
+━━━━━━━━━━━━━━━━━━━━━━
+⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}
+""".strip()
+        
+        return msg
+    
+    def reset(self):
+        """Paper trader'ı sıfırla."""
+        self.portfolio = {
+            "balance": self.INITIAL_BALANCE,
+            "equity": self.INITIAL_BALANCE,
+            "positions": {},
+            "history": []
+        }
+        self._save_portfolio()
+        logger.info("📝 Paper Trader reset")
+
+
+# Global instance
+_paper_trader = None
+
+def get_paper_trader():
+    """Get or create paper trader instance."""
+    global _paper_trader
+    if _paper_trader is None:
+        _paper_trader = PaperTrader()
+    return _paper_trader
+
