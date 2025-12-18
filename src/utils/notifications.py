@@ -763,6 +763,10 @@ class NotificationManager:
                             logger.info(f"📩 Telegram command received: {text}")
                             await self._handle_status_command()
                         
+                        elif text in ['winrate', '/winrate', 'performans', '/performans']:
+                            logger.info(f"📩 Telegram command received: {text}")
+                            await self._handle_winrate_command()
+                        
                         elif text in ['help', '/help', 'yardim', '/yardim']:
                             await self._handle_help_command()
                             
@@ -809,8 +813,121 @@ class NotificationManager:
         msg += f"━━━━━━━━━━━━━━━━━━━━\n"
         msg += f"📊 `/inout` - Nakit akışı raporu\n"
         msg += f"📈 `/status` - Sistem durumu\n"
+        msg += f"🏆 `/winrate` - Sinyal performansı\n"
         msg += f"❓ `/help` - Bu yardım mesajı\n"
         msg += f"━━━━━━━━━━━━━━━━━━━━\n"
-        msg += f"_Mikabot-tarzı para akışı analizi_"
+        msg += f"_35 modül AI analizi_"
         
         await self.send_message_raw(msg)
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # PHASE 91: WIN RATE TRACKING 🏆
+    # ═══════════════════════════════════════════════════════════════════
+    
+    async def send_signal_result(self, signal: dict):
+        """
+        Sinyal sonucu gönder (TP/SL vurulduğunda).
+        """
+        try:
+            from src.brain.signal_performance_tracker import get_tracker
+            tracker = get_tracker()
+            message = tracker.format_signal_result(signal)
+            
+            if message:
+                await self.send_message_raw(message)
+                logger.info(f"📊 Signal result sent: {signal['symbol']} {signal['status']}")
+        except Exception as e:
+            logger.error(f"Signal result notification failed: {e}")
+    
+    async def send_daily_performance_report(self):
+        """
+        Günlük performans raporu gönder.
+        """
+        try:
+            from src.brain.signal_performance_tracker import get_tracker
+            tracker = get_tracker()
+            message = tracker.format_daily_report()
+            
+            if message:
+                await self.send_message_raw(message)
+                logger.info("📊 Daily performance report sent")
+        except Exception as e:
+            logger.error(f"Daily performance report failed: {e}")
+    
+    async def record_signal_for_tracking(self, signal: dict):
+        """
+        Gönderilen sinyali Win Rate tracking için kaydet.
+        """
+        try:
+            from src.brain.signal_performance_tracker import get_tracker
+            tracker = get_tracker()
+            
+            signal_data = {
+                'symbol': signal.get('symbol', 'BTCUSDT'),
+                'direction': signal.get('side', 'LONG'),
+                'entry': signal.get('entry', 0),
+                'tp1': signal.get('tp1', 0),
+                'tp2': signal.get('tp2', 0),
+                'sl': signal.get('stop_loss', 0),
+                'confidence': signal.get('confidence', 50)
+            }
+            
+            signal_id = tracker.record_signal(signal_data)
+            logger.info(f"📝 Signal recorded for tracking: {signal_id}")
+            return signal_id
+        except Exception as e:
+            logger.error(f"Signal recording failed: {e}")
+            return None
+    
+    async def check_and_update_signals(self):
+        """
+        Aktif sinyallerin TP/SL durumunu kontrol et ve sonuç gönder.
+        """
+        try:
+            from src.brain.signal_performance_tracker import get_tracker
+            tracker = get_tracker()
+            
+            updated = tracker.check_signals()
+            
+            for signal in updated:
+                await self.send_signal_result(signal)
+            
+            if updated:
+                logger.info(f"📊 {len(updated)} signal(s) updated")
+                
+        except Exception as e:
+            logger.error(f"Signal check failed: {e}")
+    
+    async def _handle_winrate_command(self):
+        """Handle /winrate command"""
+        try:
+            from src.brain.signal_performance_tracker import get_tracker
+            tracker = get_tracker()
+            
+            stats_7d = tracker.get_win_rate(days=7)
+            stats_30d = tracker.get_win_rate(days=30)
+            
+            msg = f"""
+🏆 **SİNYAL PERFORMANSI**
+━━━━━━━━━━━━━━━━━━━━━━
+**Son 7 Gün:**
+├── Toplam: {stats_7d['total_signals']} sinyal
+├── ✅ Kazanan: {stats_7d['winners']}
+├── ❌ Kaybeden: {stats_7d['losers']}
+├── 📈 Win Rate: **%{stats_7d['win_rate']}**
+└── Ort. Kâr: {stats_7d['avg_profit_pct']:+.2f}%
+
+**Son 30 Gün:**
+├── Toplam: {stats_30d['total_signals']} sinyal
+├── 📈 Win Rate: **%{stats_30d['win_rate']}**
+└── Ort. Kâr: {stats_30d['avg_profit_pct']:+.2f}%
+━━━━━━━━━━━━━━━━━━━━━━
+⏳ Aktif: {stats_7d['active']} sinyal
+⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}
+""".strip()
+            
+            await self.send_message_raw(msg)
+            logger.info("📊 Win rate stats sent")
+        except Exception as e:
+            logger.error(f"Win rate command failed: {e}")
+            await self.send_message_raw("⚠️ Win rate verisi henüz yok.")
