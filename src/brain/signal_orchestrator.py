@@ -187,27 +187,79 @@ class SignalOrchestrator:
         except Exception as e:
             logger.warning(f"Whale signal failed: {e}")
         
-        # 5. Predictive Analyzer
+        # 5. SMC ANALYZER (Smart Money Concepts) - Always add
         try:
-            from src.brain.predictive_analyzer import PredictiveAnalyzer
-            predictor = PredictiveAnalyzer()
+            from src.brain.smc_analyzer import SMCAnalyzer
+            import pandas as pd
             
-            async with asyncio.timeout(10):
-                pred = await predictor.analyze_predictive_signals(symbol, current_price)
+            smc = SMCAnalyzer()
+            
+            # Fetch OHLCV data from Binance
+            resp = requests.get(
+                f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1h&limit=100",
+                timeout=5
+            )
+            if resp.status_code == 200:
+                klines = resp.json()
+                df = pd.DataFrame(klines, columns=[
+                    'timestamp', 'open', 'high', 'low', 'close', 'volume',
+                    'close_time', 'quote_volume', 'trades', 'taker_buy_base',
+                    'taker_buy_quote', 'ignore'
+                ])
+                df['open'] = df['open'].astype(float)
+                df['high'] = df['high'].astype(float)
+                df['low'] = df['low'].astype(float)
+                df['close'] = df['close'].astype(float)
+                df['volume'] = df['volume'].astype(float)
                 
-                if pred.get('has_signal'):
-                    direction = 'LONG' if 'LONG' in pred.get('signal_type', '') else 'SHORT'
-                    self.module_signals.append(ModuleSignal(
-                        module_name='PredictiveAnalyzer',
-                        direction=direction,
-                        confidence=pred.get('confidence', 50),
-                        weight=self.weights['PredictiveAnalyzer'],
-                        reasoning=', '.join(pred.get('reasons', []))
-                    ))
+                result = smc.analyze(df)
+                smc_signal = result.get('smc_signal', {})
+                
+                dir_map = {'BULLISH': 'LONG', 'BEARISH': 'SHORT', 'NEUTRAL': 'NEUTRAL'}
+                self.module_signals.append(ModuleSignal(
+                    module_name='SMCAnalyzer',
+                    direction=dir_map.get(smc_signal.get('direction', 'NEUTRAL'), 'NEUTRAL'),
+                    confidence=smc_signal.get('strength', 40),
+                    weight=self.weights['SMCAnalyzer'],
+                    reasoning=smc_signal.get('reason', 'SMC OB/FVG analizi')[:50]
+                ))
+        except Exception as e:
+            logger.warning(f"SMC signal failed: {e}")
+        
+        # 6. Predictive Analyzer - Simplified sync version
+        try:
+            # Use simple momentum prediction instead of async PredictiveAnalyzer
+            resp = requests.get(f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=4h&limit=6", timeout=5)
+            if resp.status_code == 200:
+                klines = resp.json()
+                closes = [float(k[4]) for k in klines]
+                
+                # Calculate momentum
+                short_ma = sum(closes[-3:]) / 3
+                long_ma = sum(closes) / 6
+                momentum = ((short_ma / long_ma) - 1) * 100
+                
+                if momentum > 0.3:
+                    direction = 'LONG'
+                    confidence = min(60, 40 + momentum * 10)
+                elif momentum < -0.3:
+                    direction = 'SHORT'
+                    confidence = min(60, 40 + abs(momentum) * 10)
+                else:
+                    direction = 'NEUTRAL'
+                    confidence = 35
+                
+                self.module_signals.append(ModuleSignal(
+                    module_name='PredictiveAnalyzer',
+                    direction=direction,
+                    confidence=confidence,
+                    weight=self.weights['PredictiveAnalyzer'],
+                    reasoning=f"4h Momentum: {momentum:.2f}%"
+                ))
         except Exception as e:
             logger.warning(f"Predictive signal failed: {e}")
         
-        # 6. Liquidation Hunter
+        # 7. Liquidation Hunter
         try:
             from src.brain.liquidation_hunter import LiquidationHunter
             hunter = LiquidationHunter()
