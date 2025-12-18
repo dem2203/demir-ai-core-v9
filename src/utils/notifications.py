@@ -961,3 +961,52 @@ class NotificationManager:
         except Exception as e:
             logger.error(f"Win rate command failed: {e}")
             await self.send_message_raw("⚠️ Win rate verisi henüz yok.")
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # PHASE 94: POSITION RISK MONITOR 🚨
+    # ═══════════════════════════════════════════════════════════════════
+    
+    async def send_risk_warning(self, message: str):
+        """
+        Risk uyarısı gönder.
+        """
+        if not self.telegram_token or not message:
+            return
+        
+        await self.send_message_raw(message)
+        logger.warning(f"🚨 Risk warning sent")
+    
+    async def check_active_position_risks(self):
+        """
+        Tüm aktif pozisyonlar için risk kontrolü yap.
+        Risk tespit edilirse uyarı gönder.
+        """
+        try:
+            from src.brain.signal_gate import get_gate
+            from src.brain.position_risk_monitor import get_monitor
+            
+            gate = get_gate()
+            monitor = get_monitor()
+            
+            active_signals = gate.get_active_signals()
+            
+            for symbol, position in active_signals.items():
+                # Cooldown kontrolü
+                if not monitor.can_send_warning(symbol):
+                    continue
+                
+                # Risk kontrolü
+                risks = monitor.check_position_risks(symbol, position)
+                
+                if risks:
+                    # Uyarı formatla ve gönder
+                    message = monitor.format_risk_warning(symbol, position, risks)
+                    await self.send_risk_warning(message)
+                    
+                    # Cooldown'ı başlat
+                    monitor.mark_warning_sent(symbol)
+                    
+                    logger.warning(f"🚨 Risk detected for {symbol}: {len(risks)} issues")
+                    
+        except Exception as e:
+            logger.error(f"Position risk check failed: {e}")
