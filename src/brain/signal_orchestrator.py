@@ -87,19 +87,28 @@ class SignalOrchestrator:
         'CMEGapTracker': 0.07,
         'OptionsFlow': 0.05,
         'OnChainIntel': 0.05,
-        'TradingViewTA': 0.10,  # Proven data source
+        'TradingViewTA': 0.08,  # Proven data source
         # PHASE 61-64: Sentiment & Multi-Source
-        'TwitterSentiment': 0.04,  # PHASE 61
-        'OrderBookDepth': 0.05,    # PHASE 62
-        'EnsembleModel': 0.03,     # PHASE 63
-        'MultiTimeframe': 0.03,    # PHASE 64
+        'TwitterSentiment': 0.03,  # PHASE 61
+        'OrderBookDepth': 0.04,    # PHASE 62
+        'EnsembleModel': 0.02,     # PHASE 63
+        'MultiTimeframe': 0.02,    # PHASE 64
         'GoogleTrends': 0.02,      # PHASE 66 - Retail sentiment
         # PHASE 71-75: SUDDEN MOVEMENT DETECTION 🚨
-        'BollingerSqueeze': 0.05,     # PHASE 71 - Volatility compression
-        'LiquidationCascade': 0.06,   # PHASE 72 - Squeeze risk
-        'VolumeSpike': 0.05,          # PHASE 73 - Big player activity
-        'TakerFlowDelta': 0.05,       # PHASE 74 - Aggressive buy/sell
-        'ExchangeDivergence': 0.04,   # PHASE 75 - Coinbase premium
+        'BollingerSqueeze': 0.04,     # PHASE 71 - Volatility compression
+        'LiquidationCascade': 0.05,   # PHASE 72 - Squeeze risk
+        'VolumeSpike': 0.04,          # PHASE 73 - Big player activity
+        'TakerFlowDelta': 0.04,       # PHASE 74 - Aggressive buy/sell
+        'ExchangeDivergence': 0.03,   # PHASE 75 - Coinbase premium
+        # PHASE 77-84: COINGLASS DATA 📊
+        'CGLiquidationMap': 0.04,     # PHASE 77 - Likidasyon haritası
+        'CGWhaleOrders': 0.04,        # PHASE 78 - Whale emirleri
+        'CGWhaleAlerts': 0.03,        # PHASE 79 - Borsa transferleri
+        'CGOIDelta': 0.03,            # PHASE 80 - OI değişim hızı
+        'CGFundingExtreme': 0.04,     # PHASE 81 - Funding extreme
+        'CGTopTraderLS': 0.04,        # PHASE 82 - Top trader oranı
+        'CGOrderbookDelta': 0.03,     # PHASE 83 - Likidite delta
+        'CGExchangeBalance': 0.03,    # PHASE 84 - Borsa bakiyesi
     }
     
     # Minimum sinyal gereksinimleri
@@ -716,7 +725,147 @@ class SignalOrchestrator:
         except Exception as e:
             logger.warning(f"Exchange Divergence signal failed: {e}")
         
-        # PHASE 67: Correlation Filter Warning
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 77-84: COINGLASS DATA INTEGRATION 📊
+        # ═══════════════════════════════════════════════════════════════════
+        
+        # 22. COINGLASS LIQUIDATION MAP (PHASE 77)
+        try:
+            from src.brain.coinglass_liquidation import CoinGlassLiquidation
+            cg_liq = CoinGlassLiquidation()
+            result = cg_liq.get_liquidation_levels(symbol.replace('USDT', ''))
+            
+            if result.get('available') and result.get('cascade_risk') != 'LOW':
+                self.module_signals.append(ModuleSignal(
+                    module_name='CGLiquidationMap',
+                    direction=result['direction'],
+                    confidence=result.get('confidence', 50),
+                    weight=self.weights['CGLiquidationMap'],
+                    reasoning=f"Cascade:{result.get('cascade_risk')} Long:{result.get('distance_to_long_pct', 0):.1f}%"
+                ))
+        except Exception as e:
+            logger.warning(f"CG Liquidation Map failed: {e}")
+        
+        # 23. COINGLASS WHALE ORDERS (PHASE 78)
+        try:
+            from src.brain.coinglass_whale_orders import CoinGlassWhaleOrders
+            cg_whale = CoinGlassWhaleOrders()
+            result = cg_whale.get_whale_orders(symbol)
+            
+            if result.get('available') and result.get('bid_count', 0) + result.get('ask_count', 0) > 0:
+                self.module_signals.append(ModuleSignal(
+                    module_name='CGWhaleOrders',
+                    direction=result['direction'],
+                    confidence=result.get('confidence', 50),
+                    weight=self.weights['CGWhaleOrders'],
+                    reasoning=f"Bids:{result.get('bid_count', 0)} Asks:{result.get('ask_count', 0)}"
+                ))
+        except Exception as e:
+            logger.warning(f"CG Whale Orders failed: {e}")
+        
+        # 24. COINGLASS WHALE ALERTS (PHASE 79)
+        try:
+            from src.brain.coinglass_whale_alerts import CoinGlassWhaleAlerts
+            cg_alerts = CoinGlassWhaleAlerts()
+            result = cg_alerts.get_whale_alerts()
+            
+            if result.get('available'):
+                self.module_signals.append(ModuleSignal(
+                    module_name='CGWhaleAlerts',
+                    direction=result['direction'],
+                    confidence=result.get('confidence', 50),
+                    weight=self.weights['CGWhaleAlerts'],
+                    reasoning=f"NetFlow:{result.get('net_flow_btc', 0):.0f}BTC OI:{result.get('oi_change_pct', 0):+.1f}%"
+                ))
+        except Exception as e:
+            logger.warning(f"CG Whale Alerts failed: {e}")
+        
+        # 25. COINGLASS OI DELTA (PHASE 80)
+        try:
+            from src.brain.coinglass_oi_delta import CoinGlassOIDelta
+            cg_oi = CoinGlassOIDelta()
+            result = cg_oi.get_oi_delta(symbol)
+            
+            if result.get('available') and result.get('velocity') != 'STABLE':
+                self.module_signals.append(ModuleSignal(
+                    module_name='CGOIDelta',
+                    direction=result['direction'],
+                    confidence=result.get('confidence', 50),
+                    weight=self.weights['CGOIDelta'],
+                    reasoning=f"OI 4h:{result.get('delta_4h_pct', 0):+.1f}% ({result.get('velocity', '')})"
+                ))
+        except Exception as e:
+            logger.warning(f"CG OI Delta failed: {e}")
+        
+        # 26. COINGLASS FUNDING EXTREME (PHASE 81)
+        try:
+            from src.brain.coinglass_funding import CoinGlassFunding
+            cg_fund = CoinGlassFunding()
+            result = cg_fund.get_funding_analysis(symbol)
+            
+            if result.get('available') and result.get('squeeze_risk') != 'LOW':
+                self.module_signals.append(ModuleSignal(
+                    module_name='CGFundingExtreme',
+                    direction=result['direction'],
+                    confidence=result.get('confidence', 50),
+                    weight=self.weights['CGFundingExtreme'],
+                    reasoning=f"Fund:{result.get('current_funding_pct', 0):.3f}% {result.get('extreme_type', '')}"
+                ))
+        except Exception as e:
+            logger.warning(f"CG Funding Extreme failed: {e}")
+        
+        # 27. COINGLASS TOP TRADER L/S (PHASE 82)
+        try:
+            from src.brain.coinglass_ls_ratio import CoinGlassLSRatio
+            cg_ls = CoinGlassLSRatio()
+            result = cg_ls.get_ls_ratio(symbol)
+            
+            if result.get('available') and result.get('sentiment') not in ['BALANCED', 'UNKNOWN']:
+                self.module_signals.append(ModuleSignal(
+                    module_name='CGTopTraderLS',
+                    direction=result['direction'],
+                    confidence=result.get('confidence', 50),
+                    weight=self.weights['CGTopTraderLS'],
+                    reasoning=f"TopTrader L/S:{result.get('top_trader_ratio', 1):.2f} ({result.get('sentiment', '')})"
+                ))
+        except Exception as e:
+            logger.warning(f"CG Top Trader L/S failed: {e}")
+        
+        # 28. COINGLASS ORDERBOOK DELTA (PHASE 83)
+        try:
+            from src.brain.coinglass_orderbook import CoinGlassOrderbook
+            cg_ob = CoinGlassOrderbook()
+            result = cg_ob.get_orderbook_delta(symbol)
+            
+            if result.get('available') and result.get('imbalance') not in ['BALANCED', 'UNKNOWN']:
+                self.module_signals.append(ModuleSignal(
+                    module_name='CGOrderbookDelta',
+                    direction=result['direction'],
+                    confidence=result.get('confidence', 50),
+                    weight=self.weights['CGOrderbookDelta'],
+                    reasoning=f"Delta:{result.get('delta_pct', 0):+.1f}% ({result.get('imbalance', '')})"
+                ))
+        except Exception as e:
+            logger.warning(f"CG Orderbook Delta failed: {e}")
+        
+        # 29. COINGLASS EXCHANGE BALANCE (PHASE 84)
+        try:
+            from src.brain.coinglass_exchange_balance import CoinGlassExchangeBalance
+            cg_bal = CoinGlassExchangeBalance()
+            result = cg_bal.get_exchange_balance(symbol)
+            
+            if result.get('available') and result.get('balance_trend') != 'STABLE':
+                self.module_signals.append(ModuleSignal(
+                    module_name='CGExchangeBalance',
+                    direction=result['direction'],
+                    confidence=result.get('confidence', 50),
+                    weight=self.weights['CGExchangeBalance'],
+                    reasoning=f"Balance:{result.get('balance_trend', '')} OI:{result.get('oi_change_pct', 0):+.1f}%"
+                ))
+        except Exception as e:
+            logger.warning(f"CG Exchange Balance failed: {e}")
+        
+        # PHASE 67: Correlation Filter Warning (updated for 30 modules)
         long_count = sum(1 for s in self.module_signals if s.direction == 'LONG')
         short_count = sum(1 for s in self.module_signals if s.direction == 'SHORT')
         total = len(self.module_signals)
