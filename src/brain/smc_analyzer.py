@@ -390,7 +390,7 @@ class SMCAnalyzer:
     
     def _generate_smc_signal(self, price: float, ob: Optional[OrderBlock], 
                             fvg: Optional[FairValueGap], liq: Optional[LiquidityZone]) -> Dict:
-        """Generate trading signal based on SMC analysis"""
+        """Generate trading signal based on SMC analysis - IMPROVED SCORING"""
         signal = {
             'direction': 'NEUTRAL',
             'strength': 0,
@@ -404,50 +404,63 @@ class SMCAnalyzer:
         bearish_score = 0
         reasons = []
         
-        # Order Block proximity signal
+        # Order Block proximity signal - WIDER PROXIMITY (2% instead of 0.5%)
         if ob:
-            if ob.type == 'BULLISH' and price <= ob.top * 1.005:  # Near OB
-                bullish_score += ob.strength / 2
-                reasons.append(f"Near Bullish OB ({ob.strength}%)")
+            if ob.type == 'BULLISH' and price <= ob.top * 1.02:  # Within 2% of OB
+                bullish_score += ob.strength  # Full strength, not /2
+                reasons.append(f"Bullish OB zone (%{ob.strength})")
                 signal['entry_zone'] = {'top': ob.top, 'bottom': ob.bottom}
-                signal['stop_loss'] = ob.bottom * 0.995  # Below OB
-            elif ob.type == 'BEARISH' and price >= ob.bottom * 0.995:
-                bearish_score += ob.strength / 2
-                reasons.append(f"Near Bearish OB ({ob.strength}%)")
+                signal['stop_loss'] = ob.bottom * 0.99
+            elif ob.type == 'BEARISH' and price >= ob.bottom * 0.98:  # Within 2%
+                bearish_score += ob.strength  # Full strength
+                reasons.append(f"Bearish OB zone (%{ob.strength})")
                 signal['entry_zone'] = {'top': ob.top, 'bottom': ob.bottom}
-                signal['stop_loss'] = ob.top * 1.005  # Above OB
+                signal['stop_loss'] = ob.top * 1.01
         
-        # FVG fill opportunity
+        # FVG fill opportunity - INCREASED SCORE
         if fvg:
             if fvg.type == 'BULLISH' and fvg.filled_pct < 50:
-                bullish_score += 25
+                bullish_score += 35  # Increased from 25
                 reasons.append("Unfilled Bullish FVG")
                 signal['take_profit'] = fvg.top
             elif fvg.type == 'BEARISH' and fvg.filled_pct < 50:
-                bearish_score += 25
+                bearish_score += 35  # Increased from 25
                 reasons.append("Unfilled Bearish FVG")
                 signal['take_profit'] = fvg.bottom
         
-        # Liquidity targets
+        # Liquidity targets - INCREASED MULTIPLIER
         if liq:
             if liq.type == 'BUY_STOPS':
-                bullish_score += liq.strength * 5
-                reasons.append(f"Buy stops above ({liq.strength} touches)")
+                bullish_score += liq.strength * 8  # Increased from 5
+                reasons.append(f"Buy stops above ({liq.strength}x)")
                 if not signal['take_profit']:
                     signal['take_profit'] = liq.price
             elif liq.type == 'SELL_STOPS':
-                bearish_score += liq.strength * 5
-                reasons.append(f"Sell stops below ({liq.strength} touches)")
+                bearish_score += liq.strength * 8  # Increased from 5
+                reasons.append(f"Sell stops below ({liq.strength}x)")
                 if not signal['take_profit']:
                     signal['take_profit'] = liq.price
         
-        # Determine direction
-        if bullish_score > bearish_score and bullish_score >= 25:
+        # Base market structure score - ADD MINIMUM
+        if len(self.order_blocks) > 0:
+            bullish_obs = len([x for x in self.order_blocks if x.type == 'BULLISH'])
+            bearish_obs = len([x for x in self.order_blocks if x.type == 'BEARISH'])
+            
+            if bullish_obs > bearish_obs:
+                bullish_score += 15
+            elif bearish_obs > bullish_obs:
+                bearish_score += 15
+        
+        # Determine direction - LOWER THRESHOLD (15 instead of 25)
+        if bullish_score > bearish_score and bullish_score >= 15:
             signal['direction'] = 'BULLISH'
-            signal['strength'] = min(100, int(bullish_score))
-        elif bearish_score > bullish_score and bearish_score >= 25:
+            signal['strength'] = min(100, int(bullish_score) + 40)  # Base 40 confidence
+        elif bearish_score > bullish_score and bearish_score >= 15:
             signal['direction'] = 'BEARISH'
-            signal['strength'] = min(100, int(bearish_score))
+            signal['strength'] = min(100, int(bearish_score) + 40)  # Base 40 confidence
+        else:
+            # Even neutral gets some confidence if we have data
+            signal['strength'] = 30 if len(self.order_blocks) > 0 else 0
         
         signal['reason'] = ' | '.join(reasons) if reasons else 'No clear SMC setup'
         
