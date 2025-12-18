@@ -47,7 +47,7 @@ class LSTMTrendPredictor:
     - Confidence: 0-100%
     """
     
-    def __init__(self, lookback_hours: int = 24, predict_hours: int = 2):
+    def __init__(self, lookback_hours: int = 24, predict_hours: int = 2, symbol: str = 'BTCUSDT'):
         self.lookback_hours = lookback_hours
         self.predict_hours = predict_hours
         self.model = None
@@ -55,11 +55,34 @@ class LSTMTrendPredictor:
         self.feature_columns = ['close', 'volume', 'rsi', 'macd', 'bb_position', 'velocity']
         self.trained = False
         self.last_train = None
+        self.symbol = symbol
+        
+        # Auto-load trained model from storage
+        if TF_AVAILABLE:
+            self._auto_load_model()
     
-    def build_model(self, input_shape: Tuple[int, int]) -> None:
-        """Build LSTM model architecture."""
-        if not TF_AVAILABLE:
-            logger.warning("Cannot build model - TensorFlow not available")
+    def _auto_load_model(self):
+        """Auto-load pre-trained model from storage."""
+        import os
+        import joblib
+        
+        model_path = f"src/brain/models/storage/lstm_v11_{self.symbol}.h5"
+        scaler_path = f"src/brain/models/storage/scaler_{self.symbol}.pkl"
+        
+        try:
+            if os.path.exists(model_path):
+                self.model = load_model(model_path)
+                logger.info(f"✅ LSTM model loaded: {model_path}")
+                
+                if os.path.exists(scaler_path):
+                    self.scaler = joblib.load(scaler_path)
+                    logger.info(f"✅ Scaler loaded: {scaler_path}")
+                
+                self.trained = True
+            else:
+                logger.warning(f"⚠️ No trained model found at {model_path}")
+        except Exception as e:
+            logger.error(f"Model load failed: {e}")
             return
         
         self.model = Sequential([
@@ -232,15 +255,19 @@ class LSTMTrendPredictor:
                 'probabilities': {'UP': X, 'NEUTRAL': Y, 'DOWN': Z}
             }
         """
-        if not TF_AVAILABLE or not self.trained or self.model is None:
-            return self._fallback_prediction(recent_data)
+        # NO FALLBACK - Real data only
+        if not TF_AVAILABLE:
+            return self._no_model_response("TensorFlow not available")
+        
+        if not self.trained or self.model is None:
+            return self._no_model_response("Model not trained/loaded")
         
         try:
             # Prepare features
             features = self.prepare_features(recent_data)
             
             if len(features) < self.lookback_hours:
-                return self._fallback_prediction(recent_data)
+                return self._no_model_response("Insufficient data for prediction")
             
             # Scale and create sequence
             scaled = self.scaler.transform(features.values[-self.lookback_hours:])
@@ -263,43 +290,23 @@ class LSTMTrendPredictor:
                     'NEUTRAL': round(probs[1] * 100, 1),
                     'DOWN': round(probs[2] * 100, 1)
                 },
-                'model': 'LSTM',
+                'model': 'LSTM_TRAINED',
                 'timestamp': datetime.now()
             }
             
         except Exception as e:
             logger.error(f"Prediction error: {e}")
-            return self._fallback_prediction(recent_data)
+            return self._no_model_response(f"Prediction failed: {e}")
     
-    def _fallback_prediction(self, data: pd.DataFrame) -> Dict:
-        """Simple fallback when LSTM not available."""
-        if len(data) < 4:
-            return {
-                'direction': 'NEUTRAL',
-                'confidence': 0,
-                'probabilities': {'UP': 33, 'NEUTRAL': 34, 'DOWN': 33},
-                'model': 'FALLBACK',
-                'timestamp': datetime.now()
-            }
-        
-        # Simple momentum-based fallback
-        pct_change = (data['close'].iloc[-1] / data['close'].iloc[-4] - 1) * 100
-        
-        if pct_change > 0.5:
-            direction = 'UP'
-            confidence = min(60, 30 + abs(pct_change) * 10)
-        elif pct_change < -0.5:
-            direction = 'DOWN'
-            confidence = min(60, 30 + abs(pct_change) * 10)
-        else:
-            direction = 'NEUTRAL'
-            confidence = 40
-        
+    def _no_model_response(self, reason: str) -> Dict:
+        """Return NO SIGNAL when model unavailable - NO FALLBACK DATA."""
+        logger.warning(f"LSTM NO SIGNAL: {reason}")
         return {
-            'direction': direction,
-            'confidence': round(confidence, 1),
-            'probabilities': {'UP': 33, 'NEUTRAL': 34, 'DOWN': 33},
-            'model': 'MOMENTUM_FALLBACK',
+            'direction': 'NEUTRAL',
+            'confidence': 0,  # ZERO confidence = no signal
+            'probabilities': {'UP': 0, 'NEUTRAL': 0, 'DOWN': 0},
+            'model': 'NO_MODEL',
+            'reason': reason,
             'timestamp': datetime.now()
         }
     

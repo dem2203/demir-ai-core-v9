@@ -15,6 +15,13 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
+# Fix event loop conflicts
+try:
+    import nest_asyncio
+    nest_asyncio.apply()
+except ImportError:
+    pass
+
 logger = logging.getLogger("SIGNAL_ORCHESTRATOR")
 
 
@@ -69,17 +76,18 @@ class SignalOrchestrator:
     
     # Modül ağırlıkları (performansa göre ayarlanabilir)
     DEFAULT_WEIGHTS = {
-        'MarkovPredictor': 0.10,
-        'LSTMTrend': 0.12,
-        'ResearchAgent': 0.12,
-        'SMCAnalyzer': 0.10,
-        'WhaleIntelligence': 0.10,
-        'LiquidationHunter': 0.08,
-        'PredictiveAnalyzer': 0.08,
-        'NewsSentiment': 0.10,
+        'MarkovPredictor': 0.08,
+        'LSTMTrend': 0.10,
+        'ResearchAgent': 0.10,
+        'SMCAnalyzer': 0.08,
+        'WhaleIntelligence': 0.08,
+        'LiquidationHunter': 0.06,
+        'PredictiveAnalyzer': 0.06,
+        'NewsSentiment': 0.08,
         'CMEGapTracker': 0.08,
         'OptionsFlow': 0.06,
         'OnChainIntel': 0.06,
+        'TradingViewTA': 0.16,  # NEW - High weight for proven data source
     }
     
     # Minimum sinyal gereksinimleri
@@ -306,6 +314,23 @@ class SignalOrchestrator:
             await onchain.close()
         except Exception as e:
             logger.warning(f"OnChain signal failed: {e}")
+        
+        # 11. TRADINGVIEW TECHNICAL ANALYSIS (YENİ - En güvenilir kaynak)
+        try:
+            from src.brain.tv_playwright import TradingViewPlaywright
+            tv = TradingViewPlaywright()
+            tv_signal = tv.get_signal_for_orchestrator(symbol)
+            
+            if tv_signal.get('confidence', 0) > 0:
+                self.module_signals.append(ModuleSignal(
+                    module_name='TradingViewTA',
+                    direction=tv_signal['direction'],
+                    confidence=tv_signal.get('confidence', 50),
+                    weight=self.weights['TradingViewTA'],
+                    reasoning=tv_signal.get('reason', 'TradingView Technical Analysis')
+                ))
+        except Exception as e:
+            logger.warning(f"TradingView signal failed: {e}")
         
         logger.info(f"Collected {len(self.module_signals)} signals from {len(self.weights)} modules")
         return self.module_signals
