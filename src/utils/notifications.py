@@ -180,9 +180,20 @@ class NotificationManager:
             
             message += f"━━━━━━━━━━━━━━━━━━\n"
             
-            # Quality and Confidence
+            # Quality and Confidence + PHASE 69: Star System
+            def confidence_to_stars(c: float) -> str:
+                if c >= 70:
+                    return "⭐⭐⭐"
+                elif c >= 55:
+                    return "⭐⭐"
+                elif c >= 40:
+                    return "⭐"
+                else:
+                    return ""
+            
+            stars = confidence_to_stars(conf)
             message += f"{quality_emoji} **Setup:** {quality}\n"
-            message += f"🧠 **Confidence:** {conf:.1f}%\n"
+            message += f"🧠 **Confidence:** {conf:.1f}% {stars}\n"
             message += f"📉 **Reason:** {signal.get('reason', 'AI Model')[:50]}\n"
             
             # MTF Confluence

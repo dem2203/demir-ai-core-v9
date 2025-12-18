@@ -76,18 +76,24 @@ class SignalOrchestrator:
     
     # Modül ağırlıkları (performansa göre ayarlanabilir)
     DEFAULT_WEIGHTS = {
-        'MarkovPredictor': 0.08,
-        'LSTMTrend': 0.10,
-        'ResearchAgent': 0.10,
-        'SMCAnalyzer': 0.08,
-        'WhaleIntelligence': 0.08,
-        'LiquidationHunter': 0.06,
-        'PredictiveAnalyzer': 0.06,
-        'NewsSentiment': 0.08,
-        'CMEGapTracker': 0.08,
-        'OptionsFlow': 0.06,
-        'OnChainIntel': 0.06,
-        'TradingViewTA': 0.16,  # NEW - High weight for proven data source
+        'MarkovPredictor': 0.06,
+        'LSTMTrend': 0.08,
+        'ResearchAgent': 0.07,
+        'SMCAnalyzer': 0.07,
+        'WhaleIntelligence': 0.07,
+        'LiquidationHunter': 0.05,
+        'PredictiveAnalyzer': 0.05,
+        'NewsSentiment': 0.06,
+        'CMEGapTracker': 0.07,
+        'OptionsFlow': 0.05,
+        'OnChainIntel': 0.05,
+        'TradingViewTA': 0.12,  # Proven data source
+        # PHASE 61-64: New modules
+        'TwitterSentiment': 0.05,  # PHASE 61
+        'OrderBookDepth': 0.06,    # PHASE 62
+        'EnsembleModel': 0.04,     # PHASE 63
+        'MultiTimeframe': 0.03,    # PHASE 64
+        'GoogleTrends': 0.03,      # PHASE 66 - Retail sentiment
     }
     
     # Minimum sinyal gereksinimleri
@@ -447,6 +453,182 @@ class SignalOrchestrator:
                 ))
         except Exception as e:
             logger.warning(f"TradingView signal failed: {e}")
+        
+        # 12. TWITTER SENTIMENT (PHASE 61) - Influencer mood analysis
+        try:
+            from src.brain.twitter_sentiment import TwitterSentimentScraper
+            twitter = TwitterSentimentScraper()
+            sentiment = twitter.get_influencer_sentiment(hours=24)
+            
+            if sentiment.get('tweet_count', 0) > 0:
+                score = sentiment.get('score', 50)  # 0-100, 50=neutral
+                
+                if score > 60:
+                    direction = 'LONG'
+                    confidence = min(65, 45 + (score - 50) * 0.4)
+                elif score < 40:
+                    direction = 'SHORT'
+                    confidence = min(65, 45 + (50 - score) * 0.4)
+                else:
+                    direction = 'NEUTRAL'
+                    confidence = 45
+                
+                self.module_signals.append(ModuleSignal(
+                    module_name='TwitterSentiment',
+                    direction=direction,
+                    confidence=confidence,
+                    weight=self.weights['TwitterSentiment'],
+                    reasoning=f"X Influencer: {sentiment.get('sentiment', 'NEUTRAL')} ({sentiment.get('bullish_count', 0)}↑/{sentiment.get('bearish_count', 0)}↓)"
+                ))
+        except Exception as e:
+            logger.warning(f"Twitter signal failed: {e}")
+        
+        # 13. ORDER BOOK DEPTH (PHASE 62) - Whale walls detection
+        try:
+            from src.data_ingestion.orderbook_analyzer import OrderBookAnalyzer
+            import asyncio
+            
+            ob = OrderBookAnalyzer()
+            
+            # Run async in sync context
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import nest_asyncio
+                nest_asyncio.apply()
+            
+            # Fetch and analyze orderbook
+            orderbook = loop.run_until_complete(ob.fetch_order_book(symbol))
+            if orderbook:
+                analysis = loop.run_until_complete(ob.detect_whale_walls(orderbook, current_price))
+                
+                bid_liq = analysis.get('total_bid_liquidity', 0)
+                ask_liq = analysis.get('total_ask_liquidity', 0)
+                
+                if bid_liq > ask_liq * 1.5:
+                    direction = 'LONG'
+                    confidence = min(65, 50 + (bid_liq / max(ask_liq, 1) - 1) * 10)
+                elif ask_liq > bid_liq * 1.5:
+                    direction = 'SHORT'
+                    confidence = min(65, 50 + (ask_liq / max(bid_liq, 1) - 1) * 10)
+                else:
+                    direction = 'NEUTRAL'
+                    confidence = 45
+                
+                self.module_signals.append(ModuleSignal(
+                    module_name='OrderBookDepth',
+                    direction=direction,
+                    confidence=confidence,
+                    weight=self.weights['OrderBookDepth'],
+                    reasoning=f"Bid: ${bid_liq/1e6:.1f}M, Ask: ${ask_liq/1e6:.1f}M"
+                ))
+            loop.run_until_complete(ob.close())
+        except Exception as e:
+            logger.warning(f"OrderBook signal failed: {e}")
+        
+        # 14. ENSEMBLE MODEL (PHASE 63) - RL+LSTM voting
+        try:
+            from src.brain.ensemble_model import EnsembleModel
+            ensemble = EnsembleModel()
+            
+            # Get RL and LSTM predictions from existing signals
+            rl_signal = next((s for s in self.module_signals if s.module_name == 'MarkovPredictor'), None)
+            lstm_signal = next((s for s in self.module_signals if s.module_name == 'LSTMTrend'), None)
+            
+            if rl_signal and lstm_signal:
+                rl_action = 2 if rl_signal.direction == 'LONG' else (0 if rl_signal.direction == 'SHORT' else 1)
+                lstm_pred = 0.8 if lstm_signal.direction == 'LONG' else (0.2 if lstm_signal.direction == 'SHORT' else 0.5)
+                
+                signal, conf, reason = ensemble.predict(
+                    rl_action=rl_action,
+                    rl_confidence=rl_signal.confidence,
+                    lstm_prediction=lstm_pred,
+                    lstm_confidence=lstm_signal.confidence
+                )
+                
+                self.module_signals.append(ModuleSignal(
+                    module_name='EnsembleModel',
+                    direction=signal,
+                    confidence=conf,
+                    weight=self.weights['EnsembleModel'],
+                    reasoning=reason[:50]
+                ))
+        except Exception as e:
+            logger.warning(f"Ensemble signal failed: {e}")
+        
+        # 15. MULTI-TIMEFRAME SYNC (PHASE 64) - 1h + 4h + 1d alignment
+        try:
+            # Fetch EMA for 3 timeframes
+            def get_ema_direction(tf: str) -> str:
+                resp = requests.get(f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={tf}&limit=30", timeout=5)
+                if resp.status_code != 200:
+                    return 'NEUTRAL'
+                closes = [float(k[4]) for k in resp.json()]
+                ema9 = sum(closes[-9:]) / 9
+                ema21 = sum(closes[-21:]) / 21
+                return 'LONG' if ema9 > ema21 else 'SHORT'
+            
+            tf_1h = get_ema_direction('1h')
+            tf_4h = get_ema_direction('4h')
+            tf_1d = get_ema_direction('1d')
+            
+            # Check alignment
+            directions = [tf_1h, tf_4h, tf_1d]
+            long_count = directions.count('LONG')
+            short_count = directions.count('SHORT')
+            
+            if long_count == 3:
+                direction = 'LONG'
+                confidence = 70  # Perfect alignment
+            elif short_count == 3:
+                direction = 'SHORT'
+                confidence = 70
+            elif long_count >= 2:
+                direction = 'LONG'
+                confidence = 55
+            elif short_count >= 2:
+                direction = 'SHORT'
+                confidence = 55
+            else:
+                direction = 'NEUTRAL'
+                confidence = 40
+            
+            self.module_signals.append(ModuleSignal(
+                module_name='MultiTimeframe',
+                direction=direction,
+                confidence=confidence,
+                weight=self.weights['MultiTimeframe'],
+                reasoning=f"1h:{tf_1h} 4h:{tf_4h} 1d:{tf_1d}"
+            ))
+        except Exception as e:
+            logger.warning(f"MultiTimeframe signal failed: {e}")
+        
+        # 16. GOOGLE TRENDS (PHASE 66) - Retail FOMO detection
+        try:
+            from src.brain.google_trends import GoogleTrendsScraper
+            trends = GoogleTrendsScraper()
+            result = trends.get_bitcoin_interest(days=7)
+            
+            if result.get('available'):
+                dir_map = {'BULLISH': 'LONG', 'BEARISH': 'SHORT', 'NEUTRAL': 'NEUTRAL'}
+                self.module_signals.append(ModuleSignal(
+                    module_name='GoogleTrends',
+                    direction=dir_map.get(result['sentiment'], 'NEUTRAL'),
+                    confidence=result.get('confidence', 40),
+                    weight=self.weights['GoogleTrends'],
+                    reasoning=f"BTC Search: {result.get('current_interest', 0)} ({result.get('change_pct', 0):+.1f}%)"
+                ))
+        except Exception as e:
+            logger.warning(f"Google Trends signal failed: {e}")
+        
+        # PHASE 67: Correlation Filter Warning
+        long_count = sum(1 for s in self.module_signals if s.direction == 'LONG')
+        short_count = sum(1 for s in self.module_signals if s.direction == 'SHORT')
+        total = len(self.module_signals)
+        
+        if long_count >= 10:
+            logger.warning(f"⚠️ CROWDED TRADE WARNING: {long_count}/{total} modules are LONG!")
+        elif short_count >= 10:
+            logger.warning(f"⚠️ CROWDED TRADE WARNING: {short_count}/{total} modules are SHORT!")
         
         logger.info(f"Collected {len(self.module_signals)} signals from {len(self.weights)} modules")
         return self.module_signals
