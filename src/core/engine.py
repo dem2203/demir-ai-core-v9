@@ -158,20 +158,20 @@ class BotEngine:
                 await self.notifier.check_and_update_signals()  # TP/SL vuruldu mu?
                 await self.notifier.check_active_position_risks()  # Risk var mı?
                 
-                # Phase 21: Hourly Heartbeat
-                if (datetime.now() - self.last_heartbeat_time).total_seconds() > 3600:
+                # Phase 21: Daily Heartbeat (was hourly - PHASE 100: reduced spam)
+                if (datetime.now() - self.last_heartbeat_time).total_seconds() > 86400:  # 24 hours
                     await self.notifier.send_heartbeat(self.latest_prices)
                     
-                    # Phase 30: Money Flow Report (Mikabot-style)
-                    try:
-                        money_flow_data = await self.money_flow_analyzer.get_market_money_flow()
-                        await self.notifier.send_money_flow_report(money_flow_data)
-                        logger.info("📊 Money Flow report sent to Telegram.")
-                    except Exception as mf_err:
-                        logger.error(f"Money Flow report failed: {mf_err}")
+                    # Phase 30: Money Flow Report - DISABLED (PHASE 100: spam)
+                    # try:
+                    #     money_flow_data = await self.money_flow_analyzer.get_market_money_flow()
+                    #     await self.notifier.send_money_flow_report(money_flow_data)
+                    #     logger.info("📊 Money Flow report sent to Telegram.")
+                    # except Exception as mf_err:
+                    #     logger.error(f"Money Flow report failed: {mf_err}")
                     
                     self.last_heartbeat_time = datetime.now()
-                    logger.info("💓 Heartbeat sent to Telegram.")
+                    logger.info("💓 Daily heartbeat sent to Telegram.")
                     
                 error_count = 0  # Reset on success
                 
@@ -272,47 +272,31 @@ class BotEngine:
             self.performance_tracker.calculate_metrics()
         
         # ======================================
-        # ADIM 5: SMART NOTIFICATION - 15dk Fırsat Taraması
+        # PHASE 100: DISABLED - 15dk Fırsat Taraması (Spam)
+        # Only Signal Gate system now - no more 15dk scans
         # ======================================
-        try:
-            # 15 dakika doldu mu kontrol et
-            if self.market_intelligence.should_run_15min_check():
-                logger.info("🔍 15dk Fırsat/Risk Taraması Başlıyor...")
-                
-                # Tüm snapshot'ları topla (dashboard_data.json'dan)
-                import json
-                if os.path.exists("dashboard_data.json"):
-                    with open("dashboard_data.json", 'r') as f:
-                        self.all_snapshots = json.load(f)
-                
-                # Fırsat/Risk tara
-                opportunities = self.market_intelligence.scan_for_opportunities(self.all_snapshots)
-                
-                if opportunities:
-                    # Fırsat bulundu - hemen bildir!
-                    report = self.market_intelligence.format_opportunity_report(opportunities)
-                    await self.notifier.send_message_raw(report)
-                    logger.info(f"🎯 {len(opportunities)} fırsat/risk Telegram'a gönderildi!")
-                else:
-                    logger.info("✓ 15dk tarama tamamlandı - önemli fırsat/risk yok")
-            
-            # 1 saat fırsat bulunamadı mı kontrol et
-            if self.market_intelligence.should_send_hourly_fallback():
-                logger.info("📊 Saatlik Durum Özeti Gönderiliyor...")
-                
-                # Canlı derivatives data
-                live_data = {
-                    'open_interest': self.derivatives_data.get('open_interest', 0),
-                    'long_short_ratio': self.derivatives_data.get('long_short_ratio', 0),
-                    'btc_dominance': self.market_correlations.get('btc_dominance', 0)
-                }
-                
-                hourly_report = self.market_intelligence.format_hourly_status(self.all_snapshots, live_data)
-                await self.notifier.send_message_raw(hourly_report)
-                logger.info("✅ Saatlik özet gönderildi!")
-                
-        except Exception as e:
-            logger.warning(f"Market Intelligence scan failed: {e}")
+        # try:
+        #     if self.market_intelligence.should_run_15min_check():
+        #         logger.info("🔍 15dk Fırsat/Risk Taraması Başlıyor...")
+        #         import json
+        #         if os.path.exists("dashboard_data.json"):
+        #             with open("dashboard_data.json", 'r') as f:
+        #                 self.all_snapshots = json.load(f)
+        #         opportunities = self.market_intelligence.scan_for_opportunities(self.all_snapshots)
+        #         if opportunities:
+        #             report = self.market_intelligence.format_opportunity_report(opportunities)
+        #             await self.notifier.send_message_raw(report)
+        #             logger.info(f"🎯 {len(opportunities)} fırsat/risk Telegram'a gönderildi!")
+        #         else:
+        #             logger.info("✓ 15dk tarama tamamlandı - önemli fırsat/risk yok")
+        #     if self.market_intelligence.should_send_hourly_fallback():
+        #         logger.info("📊 Saatlik Durum Özeti Gönderiliyor...")
+        #         live_data = {...}
+        #         hourly_report = self.market_intelligence.format_hourly_status(...)
+        #         await self.notifier.send_message_raw(hourly_report)
+        # except Exception as e:
+        #     logger.warning(f"Market Intelligence scan failed: {e}")
+        pass  # Phase 100: All spam disabled
 
     async def analyze_and_execute(self, ticker_data: List[dict]):
         """
@@ -414,15 +398,14 @@ class BotEngine:
         except Exception as e:
             logger.warning(f"Predictive analysis failed for {symbol}: {e}")
         
-        # --- PROAKTİF ERKEN UYARI (Early Warning) ---
-        # Send early warnings to Telegram BEFORE signal is generated
-        if snapshot and snapshot.get('early_warnings'):
-            warnings = snapshot['early_warnings']
-            # Only send if there are HIGH or CRITICAL priority warnings
-            priority_warnings = [w for w in warnings if w.get('priority') in ['HIGH', 'CRITICAL']]
-            if priority_warnings:
-                visual_data = snapshot.get('visual_analysis', {})
-                await self.notifier.send_early_warning(symbol, priority_warnings, visual_data)
+        # --- PHASE 100: DISABLED - ERKEN UYARI (Early Warning) ---
+        # These were causing spam. Only Signal Gate system now.
+        # if snapshot and snapshot.get('early_warnings'):
+        #     warnings = snapshot['early_warnings']
+        #     priority_warnings = [w for w in warnings if w.get('priority') in ['HIGH', 'CRITICAL']]
+        #     if priority_warnings:
+        #         visual_data = snapshot.get('visual_analysis', {})
+        #         await self.notifier.send_early_warning(symbol, priority_warnings, visual_data)
         
         if not signal:
             return
