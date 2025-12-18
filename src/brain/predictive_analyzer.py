@@ -285,29 +285,55 @@ class PredictiveAnalyzer:
     
     def format_predictive_signal(self, signal: Dict) -> str:
         """
-        Telegram formatında predictive sinyal
+        Telegram formatında predictive sinyal - YENİ 30-MODÜL FORMATI
         """
         if not signal.get('has_signal'):
             return ""
         
         direction = signal['direction']
-        emoji = "🟢" if direction == "LONG" else "🔴"
+        confidence = signal.get('confidence', 50)
         
-        msg = f"{emoji} **ÖNCEDEN UYARI SİNYALİ**\n"
-        msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        msg += f"📍 **Yön:** {direction}\n"
-        msg += f"💰 **Giriş:** ${signal['entry']:,.0f}\n"
-        msg += f"🛡️ **Stop Loss:** ${signal['stop_loss']:,.0f}\n"
-        msg += f"🎯 **TP1:** ${signal['take_profit_1']:,.0f}\n"
-        msg += f"🎯 **TP2:** ${signal['take_profit_2']:,.0f}\n"
-        msg += f"📊 **Güven:** %{signal['confidence']}\n"
-        msg += f"⏰ **Süre:** {signal['time_horizon']}\n"
-        msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        msg += f"**Nedenler:**\n"
+        # Yön emoji
+        if direction == "LONG":
+            emoji = "🟢"
+            dir_text = "LONG 📈"
+        else:
+            emoji = "🔴"
+            dir_text = "SHORT 📉"
+        
+        # Star System (Phase 69)
+        if confidence >= 70:
+            stars = "⭐⭐⭐"
+        elif confidence >= 55:
+            stars = "⭐⭐"
+        elif confidence >= 40:
+            stars = "⭐"
+        else:
+            stars = ""
+        
+        # Nedenler listesi
+        reasons_text = ""
         for reason in signal.get('reasons', []):
-            msg += f"• {reason}\n"
-        msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        msg += f"_⚠️ Bu bir TAHMİNDİR, garanti değildir!_"
+            reasons_text += f"• {reason}\n"
+        
+        msg = f"""
+{emoji} **ÖNCÜ HAREKET SİNYALİ**
+━━━━━━━━━━━━━━━━━━━━━━
+📍 Yön: **{dir_text}**
+💰 Giriş: **${signal['entry']:,.2f}**
+🛡️ SL: ${signal['stop_loss']:,.2f}
+🎯 TP1: ${signal['take_profit_1']:,.2f}
+🎯 TP2: ${signal['take_profit_2']:,.2f}
+📊 Güven: **%{confidence}** {stars}
+━━━━━━━━━━━━━━━━━━━━━━
+**Tetikleyiciler ({signal.get('signal_count', 0)}x):**
+{reasons_text.strip()}
+━━━━━━━━━━━━━━━━━━━━━━
+⏱️ Süre: **{signal.get('time_horizon', '2-6 saat')}**
+⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}
+━━━━━━━━━━━━━━━━━━━━━━
+_30 modülden analiz edildi_
+""".strip()
         
         return msg
 
