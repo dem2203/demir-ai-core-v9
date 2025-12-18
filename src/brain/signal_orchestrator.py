@@ -128,6 +128,59 @@ class SignalOrchestrator:
         self.last_signal: Optional[FinalSignal] = None
         self.signal_history: List[FinalSignal] = []
     
+    def get_ai_optimized_weights(self, volatility_pct: float = 2.0) -> Dict[str, float]:
+        """
+        PHASE 95-98: TRUE AI WEIGHT OPTIMIZATION
+        
+        4 katmanlı zeka ile ağırlıkları dinamik ayarlar:
+        1. Learning - Geçmiş performansdan öğren
+        2. Regime - Piyasa koşullarına adapte ol
+        3. Correlation - Modül sinerjilerini kullan
+        4. Temporal - Zaman ve volatiliteye göre optimize et
+        
+        Returns:
+            AI-optimized weights dict
+        """
+        weights = self.DEFAULT_WEIGHTS.copy()
+        
+        try:
+            # Phase 95: Learning from past performance
+            from src.brain.module_learner import get_learner
+            learner = get_learner()
+            learned_weights = learner.get_learned_weights()
+            if learned_weights:
+                # Blend: 70% learned, 30% default
+                for module in weights:
+                    if module in learned_weights:
+                        weights[module] = weights[module] * 0.3 + learned_weights[module] * 0.7
+                logger.debug("📚 Applied learning weights")
+        except Exception as e:
+            logger.debug(f"Learning weights skipped: {e}")
+        
+        try:
+            # Phase 96: Regime adaptation
+            from src.brain.regime_adapter import get_adapter
+            adapter = get_adapter()
+            adapter.detect_regime()  # Update regime
+            weights = adapter.apply_regime_weights(weights)
+            logger.debug(f"🌍 Applied regime weights ({adapter.current_regime})")
+        except Exception as e:
+            logger.debug(f"Regime weights skipped: {e}")
+        
+        try:
+            # Phase 98: Temporal optimization
+            from src.brain.temporal_optimizer import get_optimizer
+            optimizer = get_optimizer()
+            weights = optimizer.apply_temporal_weights(weights, volatility_pct)
+            logger.debug("⏰ Applied temporal weights")
+        except Exception as e:
+            logger.debug(f"Temporal weights skipped: {e}")
+        
+        # Update instance weights
+        self.weights = weights
+        
+        return weights
+    
     async def collect_all_signals(self, symbol: str = 'BTCUSDT', current_price: float = 0) -> List[ModuleSignal]:
         """Tüm modüllerden sinyal topla."""
         self.module_signals = []
