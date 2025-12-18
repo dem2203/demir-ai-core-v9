@@ -87,13 +87,19 @@ class SignalOrchestrator:
         'CMEGapTracker': 0.07,
         'OptionsFlow': 0.05,
         'OnChainIntel': 0.05,
-        'TradingViewTA': 0.12,  # Proven data source
-        # PHASE 61-64: New modules
-        'TwitterSentiment': 0.05,  # PHASE 61
-        'OrderBookDepth': 0.06,    # PHASE 62
-        'EnsembleModel': 0.04,     # PHASE 63
+        'TradingViewTA': 0.10,  # Proven data source
+        # PHASE 61-64: Sentiment & Multi-Source
+        'TwitterSentiment': 0.04,  # PHASE 61
+        'OrderBookDepth': 0.05,    # PHASE 62
+        'EnsembleModel': 0.03,     # PHASE 63
         'MultiTimeframe': 0.03,    # PHASE 64
-        'GoogleTrends': 0.03,      # PHASE 66 - Retail sentiment
+        'GoogleTrends': 0.02,      # PHASE 66 - Retail sentiment
+        # PHASE 71-75: SUDDEN MOVEMENT DETECTION 🚨
+        'BollingerSqueeze': 0.05,     # PHASE 71 - Volatility compression
+        'LiquidationCascade': 0.06,   # PHASE 72 - Squeeze risk
+        'VolumeSpike': 0.05,          # PHASE 73 - Big player activity
+        'TakerFlowDelta': 0.05,       # PHASE 74 - Aggressive buy/sell
+        'ExchangeDivergence': 0.04,   # PHASE 75 - Coinbase premium
     }
     
     # Minimum sinyal gereksinimleri
@@ -619,6 +625,96 @@ class SignalOrchestrator:
                 ))
         except Exception as e:
             logger.warning(f"Google Trends signal failed: {e}")
+        
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 71-75: SUDDEN MOVEMENT DETECTION SYSTEM 🚨
+        # ═══════════════════════════════════════════════════════════════════
+        
+        # 17. BOLLINGER SQUEEZE (PHASE 71) - Volatility compression
+        try:
+            from src.brain.bollinger_squeeze import BollingerSqueezeDetector
+            squeeze = BollingerSqueezeDetector()
+            result = squeeze.detect_squeeze(symbol, '15m')
+            
+            if result.get('available'):
+                if result.get('squeeze_active') or result.get('breakout_imminent'):
+                    self.module_signals.append(ModuleSignal(
+                        module_name='BollingerSqueeze',
+                        direction=result['direction'],
+                        confidence=result.get('confidence', 50),
+                        weight=self.weights['BollingerSqueeze'],
+                        reasoning=f"Squeeze: {result.get('bandwidth_pct', 0):.1f}% {'🔥BREAKOUT!' if result.get('breakout_imminent') else ''}"
+                    ))
+        except Exception as e:
+            logger.warning(f"Bollinger Squeeze signal failed: {e}")
+        
+        # 18. LIQUIDATION CASCADE (PHASE 72) - Long/Short squeeze risk
+        try:
+            from src.brain.liquidation_cascade import LiquidationCascadePredictor
+            cascade = LiquidationCascadePredictor()
+            result = cascade.predict_cascade(symbol)
+            
+            if result.get('available') and result.get('cascade_risk') in ['HIGH', 'MEDIUM']:
+                self.module_signals.append(ModuleSignal(
+                    module_name='LiquidationCascade',
+                    direction=result['direction'],
+                    confidence=result.get('confidence', 50),
+                    weight=self.weights['LiquidationCascade'],
+                    reasoning=f"{result.get('squeeze_type', '')} Risk:{result.get('risk_score', 0)} F:{result.get('funding_rate_pct', 0):.2f}%"
+                ))
+        except Exception as e:
+            logger.warning(f"Liquidation Cascade signal failed: {e}")
+        
+        # 19. VOLUME SPIKE (PHASE 73) - Big player activity
+        try:
+            from src.brain.volume_spike import VolumeSpikeDetector
+            spike = VolumeSpikeDetector()
+            result = spike.detect_spike(symbol, '15m')
+            
+            if result.get('available') and result.get('spike_detected'):
+                self.module_signals.append(ModuleSignal(
+                    module_name='VolumeSpike',
+                    direction=result['direction'],
+                    confidence=result.get('confidence', 55),
+                    weight=self.weights['VolumeSpike'],
+                    reasoning=f"Volume: {result.get('spike_strength', 1):.1f}x normal ({result.get('candle_type', '')})"
+                ))
+        except Exception as e:
+            logger.warning(f"Volume Spike signal failed: {e}")
+        
+        # 20. TAKER FLOW DELTA (PHASE 74) - Aggressive buy/sell imbalance
+        try:
+            from src.brain.taker_flow import TakerFlowDelta
+            taker = TakerFlowDelta()
+            result = taker.analyze_flow(symbol, minutes=15)
+            
+            if result.get('available') and result.get('imbalance') != 'NONE':
+                self.module_signals.append(ModuleSignal(
+                    module_name='TakerFlowDelta',
+                    direction=result['direction'],
+                    confidence=result.get('confidence', 50),
+                    weight=self.weights['TakerFlowDelta'],
+                    reasoning=f"Taker B/S: {result.get('ratio', 1):.2f} ({result.get('imbalance', '')})"
+                ))
+        except Exception as e:
+            logger.warning(f"Taker Flow signal failed: {e}")
+        
+        # 21. EXCHANGE DIVERGENCE (PHASE 75) - Coinbase/Kraken premium
+        try:
+            from src.brain.exchange_divergence import ExchangeDivergenceDetector
+            diverge = ExchangeDivergenceDetector()
+            result = diverge.detect_divergence(symbol)
+            
+            if result.get('available') and result.get('divergence_type') != 'ALIGNED':
+                self.module_signals.append(ModuleSignal(
+                    module_name='ExchangeDivergence',
+                    direction=result['direction'],
+                    confidence=result.get('confidence', 50),
+                    weight=self.weights['ExchangeDivergence'],
+                    reasoning=f"{result.get('divergence_type', '')}: {result.get('premium_pct', 0):+.2f}%"
+                ))
+        except Exception as e:
+            logger.warning(f"Exchange Divergence signal failed: {e}")
         
         # PHASE 67: Correlation Filter Warning
         long_count = sum(1 for s in self.module_signals if s.direction == 'LONG')
