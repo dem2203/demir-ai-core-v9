@@ -51,12 +51,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🦅 DEMIR AI - Institutional Trading Terminal")
-st.caption("v23.0 | Zero-Mock | On-Chain Intel | Liquidation Hunter | Wyckoff | Adaptive AI")
+st.caption("v35.0 | 35 AI Modules | CoinGlass | WebSocket | Win Rate Tracking")
 
 # --- Yan Menü ---
 page = st.sidebar.radio("System Modules", [
     "📡 Live Market Intelligence", 
     "🔮 AI Predictions",  # NEW: Markov, LSTM, Whale Intel
+    "🎯 AI Module Monitor",  # NEW: 35 module status
     "🌐 Web Intelligence",  # All web scraping data
     "🧠 AI Reasoning",
     "🧠 Neural Brain Monitor",
@@ -2781,3 +2782,144 @@ elif page == "🔮 AI Predictions":
     if st.button("🔄 Tahminleri Yenile"):
         st.cache_data.clear()
         st.rerun()
+
+# ==========================================
+# 🎯 AI MODULE MONITOR (Phase 92)
+# 35 AI modülünün durumunu göster
+# ==========================================
+if page == "🎯 AI Module Monitor":
+    st.sidebar.markdown("---")
+    st.sidebar.info("**35 AI Modül Monitörü**")
+    
+    st.markdown("## 🧠 AI Module Status Dashboard")
+    st.caption("_SignalOrchestrator'dan canlı modül durumları - 35 aktif modül_")
+    
+    if st.button("🔄 Modülleri Yeniden Tara"):
+        st.cache_data.clear()
+        st.rerun()
+    
+    try:
+        from src.brain.signal_orchestrator import SignalOrchestrator
+        
+        orchestrator = SignalOrchestrator()
+        
+        # Modül özeti
+        st.markdown("### 📊 Modül Özeti")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        total_modules = len(orchestrator.weights)
+        
+        with col1:
+            st.metric("🧠 Toplam Modül", total_modules)
+        
+        with col2:
+            st.metric("⚡ Aktif", total_modules)
+        
+        with col3:
+            st.metric("📊 Ağırlık Toplamı", f"{sum(orchestrator.weights.values()):.0%}")
+        
+        with col4:
+            st.metric("🔧 Version", "v35.0")
+        
+        st.markdown("---")
+        
+        # Modül kategorileri
+        st.markdown("### 📋 Modül Listesi (Ağırlıklar)")
+        
+        # Phase bazlı gruplandırma
+        phases = {
+            "🔮 Core AI (Phase 1-30)": [
+                ('MarkovPredictor', 'Markov tahmini'),
+                ('LSTMTrend', 'LSTM trend'),
+                ('ResearchAgent', 'Araştırma ajanı'),
+                ('SMCAnalyzer', 'Smart Money'),
+                ('WhaleIntelligence', 'Balina takibi'),
+                ('LiquidationHunter', 'Likidasyon avı'),
+                ('PredictiveAnalyzer', 'Öncü analiz'),
+                ('NewsSentiment', 'Haber duygusu'),
+                ('CMEGapTracker', 'CME boşluk'),
+                ('OptionsFlow', 'Opsiyon akışı'),
+                ('OnChainIntel', 'On-chain'),
+                ('TradingViewTA', 'TradingView'),
+            ],
+            "📊 Phase 61-66": [
+                ('TwitterSentiment', 'Twitter'),
+                ('OrderBookDepth', 'Orderbook'),
+                ('EnsembleModel', 'Ensemble'),
+                ('MultiTimeframe', 'MTF'),
+                ('GoogleTrends', 'Google Trends'),
+            ],
+            "🚨 Sudden Movement (Phase 71-75)": [
+                ('BollingerSqueeze', 'Bollinger sıkışma'),
+                ('LiquidationCascade', 'Likidasyon cascade'),
+                ('VolumeSpike', 'Hacim artışı'),
+                ('TakerFlowDelta', 'Taker akışı'),
+                ('ExchangeDivergence', 'Borsa divergence'),
+            ],
+            "📈 CoinGlass (Phase 77-84)": [
+                ('CGLiquidationMap', 'CG Likidasyon haritası'),
+                ('CGWhaleOrders', 'CG Whale emirleri'),
+                ('CGWhaleAlerts', 'CG Whale uyarıları'),
+                ('CGOIDelta', 'CG OI Delta'),
+                ('CGFundingExtreme', 'CG Funding'),
+                ('CGTopTraderLS', 'CG Top Trader L/S'),
+                ('CGOrderbookDelta', 'CG Orderbook'),
+                ('CGExchangeBalance', 'CG Borsa bakiyesi'),
+            ],
+            "🎯 Advanced (Phase 86-90)": [
+                ('CandlePatterns', 'Mum formasyonları'),
+                ('VolatilityPredictor', 'Volatilite tahmini'),
+                ('CrossAssetCorr', 'Çapraz korelasyon'),
+                ('CVDAnalyzer', 'CVD analizi'),
+                ('CompositeAlert', 'Birleşik alarm'),
+            ],
+        }
+        
+        for phase_name, modules in phases.items():
+            with st.expander(phase_name, expanded=True):
+                cols = st.columns(4)
+                for i, (mod_name, mod_desc) in enumerate(modules):
+                    weight = orchestrator.weights.get(mod_name, 0)
+                    with cols[i % 4]:
+                        if weight > 0:
+                            st.success(f"**{mod_name}**\n{weight:.0%}")
+                            st.caption(mod_desc)
+                        else:
+                            st.warning(f"**{mod_name}**\n❌ Kayıtlı değil")
+        
+        st.markdown("---")
+        
+        # Win Rate Stats
+        st.markdown("### 🏆 Sinyal Performansı")
+        
+        try:
+            from src.brain.signal_performance_tracker import get_tracker
+            tracker = get_tracker()
+            stats_7d = tracker.get_win_rate(days=7)
+            stats_30d = tracker.get_win_rate(days=30)
+            
+            w1, w2, w3, w4 = st.columns(4)
+            
+            with w1:
+                st.metric("📊 Son 7 Gün", f"{stats_7d['total_signals']} sinyal")
+            
+            with w2:
+                wr = stats_7d['win_rate']
+                emoji = "🏆" if wr >= 60 else "📈" if wr >= 50 else "📉"
+                st.metric("🎯 Win Rate", f"{emoji} {wr:.1f}%")
+            
+            with w3:
+                st.metric("✅ Kazanan", stats_7d['winners'])
+            
+            with w4:
+                st.metric("❌ Kaybeden", stats_7d['losers'])
+            
+            st.caption(f"_Son 30 gün: {stats_30d['total_signals']} sinyal, %{stats_30d['win_rate']:.1f} win rate_")
+            
+        except Exception as e:
+            st.info("📊 Henüz sinyal performans verisi yok. İlk sinyaller kaydedildikten sonra görüntülenecek.")
+        
+    except Exception as e:
+        st.error(f"SignalOrchestrator yüklenemedi: {e}")
+        st.info("Engine çalışmıyor olabilir. Railway'de deploy edildiğinden emin olun.")
