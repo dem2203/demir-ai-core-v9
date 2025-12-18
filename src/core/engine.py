@@ -158,28 +158,22 @@ class BotEngine:
                 await self.notifier.check_and_update_signals()  # TP/SL vuruldu mu?
                 await self.notifier.check_active_position_risks()  # Risk var mı?
                 
-                # Phase 101: Market Alert System - Ani hareket ve fırsat tespiti
+                # Phase 102: AI PREDICTOR ENGINE - Gerçek AI ile ani hareket tahmini
+                # 8 leading indicator kombinasyonu: whale, liq, OI, funding, CVD, orderflow, volume, mempool
                 try:
-                    from src.brain.market_alert_system import get_alert_system
-                    alert_system = get_alert_system()
+                    from src.brain.ai_predictor_engine import get_predictor
+                    predictor = get_predictor()
                     
-                    # Her coin için kontrol
                     for symbol in ['BTCUSDT', 'ETHUSDT']:
-                        # Ani hareket kontrolü
-                        sudden_alert = await alert_system.check_sudden_movement(symbol)
-                        if sudden_alert:
-                            msg = alert_system.format_sudden_move_alert(sudden_alert)
-                            await self.notifier.send_message_raw(msg)
-                            logger.warning(f"🚨 SUDDEN MOVE ALERT: {symbol} {sudden_alert['type']}")
+                        prediction = await predictor.predict(symbol)
                         
-                        # Fırsat kontrolü
-                        opp_alert = await alert_system.check_opportunity(symbol)
-                        if opp_alert:
-                            msg = alert_system.format_opportunity_alert(opp_alert)
+                        if prediction:
+                            msg = predictor.format_prediction_alert(prediction, symbol)
                             await self.notifier.send_message_raw(msg)
-                            logger.info(f"🟢 OPPORTUNITY ALERT: {symbol} {opp_alert['type']}")
-                except Exception as alert_err:
-                    logger.debug(f"Market alert check skipped: {alert_err}")
+                            logger.warning(f"🧠 AI PREDICTION: {symbol} {prediction.direction} {prediction.confidence:.0f}%")
+                            
+                except Exception as pred_err:
+                    logger.debug(f"AI Predictor check skipped: {pred_err}")
                 
                 # Phase 21: Daily Heartbeat (was hourly - PHASE 100: reduced spam)
                 if (datetime.now() - self.last_heartbeat_time).total_seconds() > 86400:  # 24 hours
