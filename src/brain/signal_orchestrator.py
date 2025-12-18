@@ -1041,7 +1041,89 @@ class SignalOrchestrator:
             logger.warning(f"⚠️ CROWDED TRADE WARNING: {short_count}/{total} modules are SHORT!")
         
         logger.info(f"Collected {len(self.module_signals)} signals from {len(self.weights)} modules")
+        
+        # PHASE 120: Boost confidence based on real confirmations
+        self._boost_all_signals()
+        
         return self.module_signals
+    
+    def _boost_all_signals(self):
+        """
+        PHASE 120: Gerçek güven artırımı.
+        
+        Her sinyal için onay sayısına göre güven artır:
+        - Multi-timeframe onay: +15%
+        - Volume onay: +10%
+        - Konsensüs (2+ modül aynı yönde): +10%
+        - Trend yönünde: +10%
+        
+        Maksimum: 95%
+        """
+        if not self.module_signals:
+            return
+        
+        # 1. Get consensus direction
+        long_count = sum(1 for s in self.module_signals if s.direction == 'LONG')
+        short_count = sum(1 for s in self.module_signals if s.direction == 'SHORT')
+        total = len(self.module_signals)
+        
+        consensus_direction = 'LONG' if long_count > short_count else 'SHORT' if short_count > long_count else 'NEUTRAL'
+        consensus_strength = max(long_count, short_count) / total if total > 0 else 0
+        
+        # 2. Get MultiTimeframe signal
+        mtf_signal = next((s for s in self.module_signals if s.module_name == 'MultiTimeframe'), None)
+        mtf_direction = mtf_signal.direction if mtf_signal else 'NEUTRAL'
+        
+        # 3. Check for volume spike
+        vol_signal = next((s for s in self.module_signals if s.module_name == 'VolumeSpike'), None)
+        has_volume_spike = vol_signal is not None
+        
+        # 4. Get TakerFlow for trend
+        taker_signal = next((s for s in self.module_signals if s.module_name == 'TakerFlowDelta'), None)
+        trend_direction = taker_signal.direction if taker_signal else 'NEUTRAL'
+        
+        # 5. Boost each signal
+        for sig in self.module_signals:
+            boost = 0
+            reasons = []
+            
+            # Skip NEUTRAL signals
+            if sig.direction == 'NEUTRAL':
+                continue
+            
+            # +15% Multi-timeframe confirmation
+            if mtf_direction == sig.direction and mtf_direction != 'NEUTRAL':
+                boost += 15
+                reasons.append("MTF+15")
+            
+            # +10% Volume confirmation
+            if has_volume_spike and vol_signal.direction == sig.direction:
+                boost += 10
+                reasons.append("VOL+10")
+            
+            # +10% Consensus (at least 40% of modules agree)
+            if consensus_direction == sig.direction and consensus_strength >= 0.4:
+                boost += 10
+                reasons.append(f"CONS+10({consensus_strength:.0%})")
+            
+            # +10% Trend alignment
+            if trend_direction == sig.direction and trend_direction != 'NEUTRAL':
+                boost += 10
+                reasons.append("TREND+10")
+            
+            # Apply boost (max 95%)
+            if boost > 0:
+                old_conf = sig.confidence
+                new_conf = min(95, sig.confidence + boost)
+                
+                # Create new signal with boosted confidence
+                sig.confidence = new_conf
+                
+                # Add boost info to reasoning
+                if reasons:
+                    sig.reasoning = f"{sig.reasoning} [{','.join(reasons)}]"
+                
+                logger.debug(f"Boosted {sig.module_name}: {old_conf:.0f}% → {new_conf:.0f}% ({','.join(reasons)})")
     
     def calculate_consensus(self) -> Tuple[str, float, float]:
         """Konsensüs hesapla."""
