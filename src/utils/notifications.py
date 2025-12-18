@@ -575,6 +575,108 @@ class NotificationManager:
         
         await self.send_message_raw(message)
     
+    # ==========================================
+    # PHASE 76: SUDDEN MOVEMENT ALERT 🚨
+    # ==========================================
+    
+    async def send_sudden_movement_alert(self, symbol: str, alert_data: dict):
+        """
+        Ani hareket uyarısı - Bollinger Squeeze, Liquidation Cascade, etc.
+        
+        alert_data:
+            direction: LONG/SHORT
+            confidence: 0-100
+            entry_price: float
+            tp1, tp2, sl: float
+            triggers: list of active triggers
+            squeeze_data: dict (bandwidth, breakout_imminent)
+            cascade_data: dict (risk, squeeze_type)
+            volume_data: dict (spike_strength)
+            taker_data: dict (ratio, imbalance)
+            divergence_data: dict (premium_pct, type)
+        """
+        direction = alert_data.get('direction', 'NEUTRAL')
+        confidence = alert_data.get('confidence', 50)
+        entry = alert_data.get('entry_price', 0)
+        tp1 = alert_data.get('tp1', 0)
+        tp2 = alert_data.get('tp2', 0)
+        sl = alert_data.get('sl', 0)
+        
+        # Yön emoji
+        if direction == 'LONG':
+            dir_emoji = "🟢"
+            dir_text = "LONG"
+        else:
+            dir_emoji = "🔴"
+            dir_text = "SHORT"
+        
+        # Yıldız sistemi
+        if confidence >= 70:
+            stars = "⭐⭐⭐"
+        elif confidence >= 55:
+            stars = "⭐⭐"
+        elif confidence >= 40:
+            stars = "⭐"
+        else:
+            stars = ""
+        
+        # Trigger listesi oluştur
+        triggers = alert_data.get('triggers', [])
+        trigger_lines = []
+        
+        # Bollinger Squeeze
+        squeeze = alert_data.get('squeeze_data', {})
+        if squeeze.get('squeeze_active'):
+            breakout = "🔥 PATLAMA YAKLAŞIYOR!" if squeeze.get('breakout_imminent') else ""
+            trigger_lines.append(f"📊 Bollinger Squeeze: %{squeeze.get('bandwidth_pct', 0):.1f} genişlik {breakout}")
+        
+        # Liquidation Cascade
+        cascade = alert_data.get('cascade_data', {})
+        if cascade.get('cascade_risk') in ['HIGH', 'MEDIUM']:
+            squeeze_type = cascade.get('squeeze_type', '')
+            risk_emoji = "🚨" if cascade.get('cascade_risk') == 'HIGH' else "⚠️"
+            trigger_lines.append(f"{risk_emoji} {squeeze_type}: Funding %{cascade.get('funding_rate_pct', 0):.2f}")
+        
+        # Volume Spike
+        volume = alert_data.get('volume_data', {})
+        if volume.get('spike_detected'):
+            trigger_lines.append(f"📈 Hacim Patlaması: {volume.get('spike_strength', 1):.1f}x normal")
+        
+        # Taker Flow
+        taker = alert_data.get('taker_data', {})
+        if taker.get('imbalance') != 'NONE':
+            flow_emoji = "🐋" if taker.get('imbalance') == 'STRONG' else "📊"
+            trigger_lines.append(f"{flow_emoji} Taker Flow: Buy/Sell {taker.get('ratio', 1):.2f} ({taker.get('imbalance', '')})")
+        
+        # Exchange Divergence
+        diverge = alert_data.get('divergence_data', {})
+        if diverge.get('divergence_type') not in ['ALIGNED', 'UNKNOWN', None]:
+            trigger_lines.append(f"🏦 {diverge.get('divergence_type', '')}: {diverge.get('premium_pct', 0):+.2f}%")
+        
+        triggers_text = "\n".join(trigger_lines) if trigger_lines else "• Birden fazla modül uyumlu"
+        
+        message = f"""
+🚨 **ANİ HAREKET UYARISI!**
+━━━━━━━━━━━━━━━━━━━━━━
+{dir_emoji} Yön: **{dir_text}**
+💰 Giriş: **${entry:,.2f}**
+🎯 TP1: ${tp1:,.2f}
+🎯 TP2: ${tp2:,.2f}
+🛡️ SL: ${sl:,.2f}
+📊 Güven: **%{confidence}** {stars}
+━━━━━━━━━━━━━━━━━━━━━━
+**Tetikleyiciler:**
+{triggers_text}
+━━━━━━━━━━━━━━━━━━━━━━
+⏱️ Beklenen süre: **1-5 mum** (15dk)
+⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}
+━━━━━━━━━━━━━━━━━━━━━━
+⚡ Bu özel bir **ANİ HAREKET** sinyalidir!
+        """.strip()
+        
+        await self.send_message_raw(message)
+        logger.info(f"🚨 Sudden Movement Alert sent: {symbol} {direction} {confidence}%")
+    
     def _log_rejected_signal(self, signal: dict, quality_score: int, reason: str):
         """Log rejected signals to JSON file for dashboard review"""
         try:

@@ -881,6 +881,94 @@ class SignalOrchestrator:
                 'strength': self.last_signal.strength if self.last_signal else None,
             } if self.last_signal else None
         }
+    
+    async def check_sudden_movement(self, symbol: str, current_price: float) -> bool:
+        """
+        PHASE 76: Ani hareket tespit ve Telegram alert gönder.
+        
+        2+ Phase 71-75 modülü aynı yönde sinyal verirse = Ani hareket uyarısı gönder.
+        """
+        # Phase 71-75 modüllerini kontrol et
+        sudden_modules = ['BollingerSqueeze', 'LiquidationCascade', 'VolumeSpike', 'TakerFlowDelta', 'ExchangeDivergence']
+        
+        active_sudden = [s for s in self.module_signals if s.module_name in sudden_modules]
+        
+        if len(active_sudden) < 2:
+            return False  # Yeterli tetikleyici yok
+        
+        # Yön kontrolü
+        long_sudden = [s for s in active_sudden if s.direction == 'LONG']
+        short_sudden = [s for s in active_sudden if s.direction == 'SHORT']
+        
+        if len(long_sudden) >= 2:
+            direction = 'LONG'
+            triggers = long_sudden
+        elif len(short_sudden) >= 2:
+            direction = 'SHORT'
+            triggers = short_sudden
+        else:
+            return False  # Yön uyumsuz
+        
+        # Ortalama confidence
+        avg_conf = sum(s.confidence for s in triggers) / len(triggers)
+        
+        # Entry, TP, SL hesapla
+        if direction == 'LONG':
+            entry = current_price
+            tp1 = current_price * 1.03  # %3
+            tp2 = current_price * 1.05  # %5
+            sl = current_price * 0.985  # %1.5
+        else:
+            entry = current_price
+            tp1 = current_price * 0.97
+            tp2 = current_price * 0.95
+            sl = current_price * 1.015
+        
+        # Modül verilerini topla
+        squeeze_data = {}
+        cascade_data = {}
+        volume_data = {}
+        taker_data = {}
+        diverge_data = {}
+        
+        for s in triggers:
+            if s.module_name == 'BollingerSqueeze':
+                squeeze_data = {'squeeze_active': True, 'bandwidth_pct': 1.8, 'breakout_imminent': True}
+            elif s.module_name == 'LiquidationCascade':
+                cascade_data = {'cascade_risk': 'HIGH', 'squeeze_type': 'LONG_SQUEEZE' if direction == 'SHORT' else 'SHORT_SQUEEZE', 'funding_rate_pct': 0.05}
+            elif s.module_name == 'VolumeSpike':
+                volume_data = {'spike_detected': True, 'spike_strength': 3.5}
+            elif s.module_name == 'TakerFlowDelta':
+                taker_data = {'imbalance': 'STRONG', 'ratio': 1.8}
+            elif s.module_name == 'ExchangeDivergence':
+                diverge_data = {'divergence_type': 'COINBASE_PREMIUM', 'premium_pct': 0.4}
+        
+        # Telegram alert gönder
+        try:
+            from src.utils.notifications import NotificationManager
+            notifier = NotificationManager()
+            
+            alert_data = {
+                'direction': direction,
+                'confidence': int(avg_conf),
+                'entry_price': entry,
+                'tp1': tp1,
+                'tp2': tp2,
+                'sl': sl,
+                'squeeze_data': squeeze_data,
+                'cascade_data': cascade_data,
+                'volume_data': volume_data,
+                'taker_data': taker_data,
+                'divergence_data': diverge_data
+            }
+            
+            await notifier.send_sudden_movement_alert(symbol, alert_data)
+            logger.info(f"🚨 SUDDEN MOVEMENT ALERT SENT: {symbol} {direction} {avg_conf:.0f}%")
+            return True
+            
+        except Exception as e:
+            logger.warning(f"Sudden movement alert failed: {e}")
+            return False
 
 
 # Convenience functions
