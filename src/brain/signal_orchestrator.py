@@ -240,22 +240,21 @@ class SignalOrchestrator:
         except Exception as e:
             logger.warning(f"Liquidation signal failed: {e}")
         
-        # 7. NEWS SENTIMENT (YENİ)
+        # 7. NEWS SENTIMENT - Always add signal
         try:
             from src.brain.news_scraper import CryptoNewsScraper
             scraper = CryptoNewsScraper()
             scraper.fetch_all_news(max_age_hours=4)
             sentiment = scraper.get_market_sentiment()
             
-            if sentiment['overall'] != 'NEUTRAL':
-                dir_map = {'BULLISH': 'LONG', 'BEARISH': 'SHORT'}
-                self.module_signals.append(ModuleSignal(
-                    module_name='NewsSentiment',
-                    direction=dir_map.get(sentiment['overall'], 'NEUTRAL'),
-                    confidence=sentiment.get('confidence', 50),
-                    weight=self.weights['NewsSentiment'],
-                    reasoning=f"{sentiment['bullish_count']} bullish, {sentiment['bearish_count']} bearish haber"
-                ))
+            dir_map = {'BULLISH': 'LONG', 'BEARISH': 'SHORT', 'NEUTRAL': 'NEUTRAL'}
+            self.module_signals.append(ModuleSignal(
+                module_name='NewsSentiment',
+                direction=dir_map.get(sentiment['overall'], 'NEUTRAL'),
+                confidence=sentiment.get('confidence', 40),
+                weight=self.weights['NewsSentiment'],
+                reasoning=f"{sentiment['bullish_count']} bullish, {sentiment['bearish_count']} bearish haber"
+            ))
         except Exception as e:
             logger.warning(f"News signal failed: {e}")
         
@@ -276,42 +275,36 @@ class SignalOrchestrator:
         except Exception as e:
             logger.warning(f"CME Gap signal failed: {e}")
         
-        # 9. OPTIONS FLOW (YENİ)
+        # 9. OPTIONS FLOW - Always add signal
         try:
             from src.brain.options_flow import OptionsFlowAnalyzer
             analyzer = OptionsFlowAnalyzer()
             options = analyzer.get_signal_for_orchestrator()
             
-            if options.get('direction') != 'NEUTRAL':
-                self.module_signals.append(ModuleSignal(
-                    module_name='OptionsFlow',
-                    direction=options['direction'],
-                    confidence=options.get('confidence', 50),
-                    weight=self.weights['OptionsFlow'],
-                    reasoning=options.get('reason', 'Options flow analizi')
-                ))
+            self.module_signals.append(ModuleSignal(
+                module_name='OptionsFlow',
+                direction=options.get('direction', 'NEUTRAL'),
+                confidence=options.get('confidence', 40),
+                weight=self.weights['OptionsFlow'],
+                reasoning=options.get('reason', 'Options flow analizi')
+            ))
         except Exception as e:
             logger.warning(f"Options signal failed: {e}")
         
-        # 10. ON-CHAIN INTEL (YENİ)
+        # 10. ON-CHAIN INTEL - Sync version (avoid async issues)
         try:
-            from src.brain.onchain_intel import OnChainIntelligence
-            onchain = OnChainIntelligence()
-            analysis = await onchain.get_full_onchain_analysis(symbol)
+            from src.brain.whale_intelligence import WhaleIntelligence
+            onchain = WhaleIntelligence()  # Use Binance API instead
+            analysis = onchain.get_full_whale_analysis(symbol)
             
-            if analysis:
-                bias = analysis.get('overall_bias', 'NEUTRAL')
-                if bias != 'NEUTRAL':
-                    dir_map = {'BULLISH': 'LONG', 'BEARISH': 'SHORT'}
-                    self.module_signals.append(ModuleSignal(
-                        module_name='OnChainIntel',
-                        direction=dir_map.get(bias, 'NEUTRAL'),
-                        confidence=analysis.get('confidence', 50),
-                        weight=self.weights['OnChainIntel'],
-                        reasoning=f"Whale: {analysis.get('whale_bias', 'N/A')}, Flow: {analysis.get('netflow_bias', 'N/A')}"
-                    ))
-            
-            await onchain.close()
+            if analysis.get('available'):
+                self.module_signals.append(ModuleSignal(
+                    module_name='OnChainIntel',
+                    direction=analysis.get('whale_bias', 'NEUTRAL'),
+                    confidence=analysis.get('confidence', 40),
+                    weight=self.weights['OnChainIntel'],
+                    reasoning=f"L/S: {analysis.get('long_short_ratio', 1):.2f}, Funding: {analysis.get('funding_rate_pct', 0):.3f}%"
+                ))
         except Exception as e:
             logger.warning(f"OnChain signal failed: {e}")
         
