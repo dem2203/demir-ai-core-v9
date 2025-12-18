@@ -109,6 +109,12 @@ class SignalOrchestrator:
         'CGTopTraderLS': 0.04,        # PHASE 82 - Top trader oranı
         'CGOrderbookDelta': 0.03,     # PHASE 83 - Likidite delta
         'CGExchangeBalance': 0.03,    # PHASE 84 - Borsa bakiyesi
+        # PHASE 86-90: ADVANCED MOVEMENT DETECTION 🎯
+        'CandlePatterns': 0.03,       # PHASE 86 - Mum formasyonları
+        'VolatilityPredictor': 0.03,  # PHASE 87 - Volatilite tahmini
+        'CrossAssetCorr': 0.03,       # PHASE 88 - BTC.D, ETH/BTC
+        'CVDAnalyzer': 0.04,          # PHASE 89 - Cumulative Volume Delta
+        'CompositeAlert': 0.03,       # PHASE 90 - Birleşik skor
     }
     
     # Minimum sinyal gereksinimleri
@@ -865,7 +871,98 @@ class SignalOrchestrator:
         except Exception as e:
             logger.warning(f"CG Exchange Balance failed: {e}")
         
-        # PHASE 67: Correlation Filter Warning (updated for 30 modules)
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 86-90: ADVANCED MOVEMENT DETECTION 🎯
+        # ═══════════════════════════════════════════════════════════════════
+        
+        # 30. CANDLE PATTERNS (PHASE 86)
+        try:
+            from src.brain.candle_patterns import CandlePatternRecognizer
+            pattern_rec = CandlePatternRecognizer()
+            result = pattern_rec.analyze_patterns(symbol, '15m')
+            
+            if result.get('available') and result.get('pattern_count', 0) > 0:
+                self.module_signals.append(ModuleSignal(
+                    module_name='CandlePatterns',
+                    direction=result['direction'],
+                    confidence=result.get('confidence', 50),
+                    weight=self.weights['CandlePatterns'],
+                    reasoning=f"{result.get('latest_pattern', '')} ({result.get('pattern_count', 0)} pattern)"
+                ))
+        except Exception as e:
+            logger.warning(f"Candle Patterns failed: {e}")
+        
+        # 31. VOLATILITY PREDICTOR (PHASE 87)
+        try:
+            from src.brain.volatility_predictor import VolatilityPredictor
+            vol_pred = VolatilityPredictor()
+            result = vol_pred.predict_volatility(symbol)
+            
+            if result.get('available') and result.get('state') in ['SQUEEZE', 'EXPANSION']:
+                self.module_signals.append(ModuleSignal(
+                    module_name='VolatilityPredictor',
+                    direction=result['direction'],
+                    confidence=result.get('confidence', 50),
+                    weight=self.weights['VolatilityPredictor'],
+                    reasoning=f"{result.get('state', '')} Breakout:{result.get('breakout_probability', 0)}%"
+                ))
+        except Exception as e:
+            logger.warning(f"Volatility Predictor failed: {e}")
+        
+        # 32. CROSS-ASSET CORRELATION (PHASE 88)
+        try:
+            from src.brain.cross_asset_correlation import CrossAssetCorrelation
+            cross_corr = CrossAssetCorrelation()
+            result = cross_corr.analyze_correlations()
+            
+            if result.get('available'):
+                self.module_signals.append(ModuleSignal(
+                    module_name='CrossAssetCorr',
+                    direction=result['direction'],
+                    confidence=result.get('confidence', 50),
+                    weight=self.weights['CrossAssetCorr'],
+                    reasoning=f"BTC.D:{result.get('btc_dom_trend', '')} ETH/BTC:{result.get('eth_btc_trend', '')}"
+                ))
+        except Exception as e:
+            logger.warning(f"Cross-Asset Correlation failed: {e}")
+        
+        # 33. CVD ANALYZER (PHASE 89)
+        try:
+            from src.brain.cvd_analyzer import CVDAnalyzer
+            cvd = CVDAnalyzer()
+            result = cvd.analyze_cvd(symbol)
+            
+            if result.get('available') and result.get('pressure') not in ['NEUTRAL', 'UNKNOWN']:
+                self.module_signals.append(ModuleSignal(
+                    module_name='CVDAnalyzer',
+                    direction=result['direction'],
+                    confidence=result.get('confidence', 50),
+                    weight=self.weights['CVDAnalyzer'],
+                    reasoning=f"{result.get('pressure', '')} Ratio:{result.get('cvd_ratio', 1):.2f}"
+                ))
+        except Exception as e:
+            logger.warning(f"CVD Analyzer failed: {e}")
+        
+        # 34. COMPOSITE ALERT (PHASE 90) - Uses collected signals
+        try:
+            from src.brain.composite_alert import CompositeAlertScore
+            composite = CompositeAlertScore()
+            result = composite.calculate_composite_score(self.module_signals)
+            
+            if result.get('trigger_alert'):
+                # Add as a meta-signal
+                self.module_signals.append(ModuleSignal(
+                    module_name='CompositeAlert',
+                    direction=result['direction'],
+                    confidence=result.get('confidence', 50),
+                    weight=self.weights['CompositeAlert'],
+                    reasoning=f"{result.get('alert_level', '')} Score:{result.get('composite_score', 0):.0%}"
+                ))
+                logger.warning(f"🚨 COMPOSITE ALERT: {result['alert_level']} {result['direction']}")
+        except Exception as e:
+            logger.warning(f"Composite Alert failed: {e}")
+        
+        # PHASE 67: Correlation Filter Warning (updated for 35 modules)
         long_count = sum(1 for s in self.module_signals if s.direction == 'LONG')
         short_count = sum(1 for s in self.module_signals if s.direction == 'SHORT')
         total = len(self.module_signals)
