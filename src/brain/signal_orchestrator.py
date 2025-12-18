@@ -145,26 +145,63 @@ class SignalOrchestrator:
         except Exception as e:
             logger.warning(f"Markov signal failed: {e}")
         
-        # 2. LSTM Trend (with trained model)
+        # 2. LSTM Trend - EMA Crossover (replaces broken TF model)
         try:
-            from src.brain.models.lstm_trend import LSTMTrendPredictor
             import pandas as pd
             
-            lstm = LSTMTrendPredictor()
-            
-            resp = requests.get(f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1h&limit=24", timeout=5)
+            resp = requests.get(f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1h&limit=50", timeout=5)
             if resp.status_code == 200:
                 klines = resp.json()
-                df = pd.DataFrame({'close': [float(k[4]) for k in klines]})
-                pred = lstm.predict(df)
+                closes = [float(k[4]) for k in klines]
                 
-                dir_map = {'UP': 'LONG', 'DOWN': 'SHORT', 'NEUTRAL': 'NEUTRAL'}
+                # Calculate EMA9 and EMA21 crossover
+                def ema(data, period):
+                    multiplier = 2 / (period + 1)
+                    ema_val = data[0]
+                    for price in data[1:]:
+                        ema_val = (price * multiplier) + (ema_val * (1 - multiplier))
+                    return ema_val
+                
+                ema9 = ema(closes[-20:], 9)
+                ema21 = ema(closes[-30:], 21)
+                ema50 = ema(closes, 50) if len(closes) >= 50 else ema(closes, len(closes))
+                
+                current = closes[-1]
+                prev = closes[-2]
+                momentum = ((current / prev) - 1) * 100
+                
+                # Trend detection via EMA alignment
+                if ema9 > ema21 > ema50:
+                    direction = 'LONG'
+                    confidence = 60
+                    reason = 'EMA9 > EMA21 > EMA50 (Strong uptrend)'
+                elif ema9 > ema21:
+                    direction = 'LONG'
+                    confidence = 55
+                    reason = 'EMA9 > EMA21 (Uptrend)'
+                elif ema9 < ema21 < ema50:
+                    direction = 'SHORT'
+                    confidence = 60
+                    reason = 'EMA9 < EMA21 < EMA50 (Strong downtrend)'
+                elif ema9 < ema21:
+                    direction = 'SHORT'
+                    confidence = 55
+                    reason = 'EMA9 < EMA21 (Downtrend)'
+                else:
+                    direction = 'NEUTRAL'
+                    confidence = 45
+                    reason = 'EMAs tangled (No clear trend)'
+                
+                # Momentum boost
+                if abs(momentum) > 0.5:
+                    confidence += 5
+                
                 self.module_signals.append(ModuleSignal(
                     module_name='LSTMTrend',
-                    direction=dir_map.get(pred['direction'], 'NEUTRAL'),
-                    confidence=pred['confidence'],
+                    direction=direction,
+                    confidence=confidence,
                     weight=self.weights['LSTMTrend'],
-                    reasoning=f"Model: {pred.get('model', 'trained')}"
+                    reasoning=reason
                 ))
         except Exception as e:
             logger.warning(f"LSTM signal failed: {e}")
@@ -256,15 +293,16 @@ class SignalOrchestrator:
                 long_ma = sum(closes) / 6
                 momentum = ((short_ma / long_ma) - 1) * 100
                 
-                if momentum > 0.3:
+                # BOOSTED thresholds - lower threshold for signal
+                if momentum > 0.1:
                     direction = 'LONG'
-                    confidence = min(60, 40 + momentum * 10)
-                elif momentum < -0.3:
+                    confidence = min(65, 50 + momentum * 15)  # Base 50, boost by momentum
+                elif momentum < -0.1:
                     direction = 'SHORT'
-                    confidence = min(60, 40 + abs(momentum) * 10)
+                    confidence = min(65, 50 + abs(momentum) * 15)
                 else:
                     direction = 'NEUTRAL'
-                    confidence = 35
+                    confidence = 45  # Higher neutral confidence
                 
                 self.module_signals.append(ModuleSignal(
                     module_name='PredictiveAnalyzer',
@@ -332,10 +370,11 @@ class SignalOrchestrator:
             sentiment = scraper.get_market_sentiment()
             
             dir_map = {'BULLISH': 'LONG', 'BEARISH': 'SHORT', 'NEUTRAL': 'NEUTRAL'}
+            news_conf = max(45, sentiment.get('confidence', 45))  # Min 45% confidence
             self.module_signals.append(ModuleSignal(
                 module_name='NewsSentiment',
                 direction=dir_map.get(sentiment['overall'], 'NEUTRAL'),
-                confidence=sentiment.get('confidence', 40),
+                confidence=news_conf,
                 weight=self.weights['NewsSentiment'],
                 reasoning=f"{sentiment['bullish_count']} bullish, {sentiment['bearish_count']} bearish haber"
             ))
