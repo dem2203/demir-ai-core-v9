@@ -158,22 +158,54 @@ class BotEngine:
                 await self.notifier.check_and_update_signals()  # TP/SL vuruldu mu?
                 await self.notifier.check_active_position_risks()  # Risk var mı?
                 
-                # Phase 102: AI PREDICTOR ENGINE - Gerçek AI ile ani hareket tahmini
-                # 8 leading indicator kombinasyonu: whale, liq, OI, funding, CVD, orderflow, volume, mempool
+                # Phase 103-107: LIVING AI BRAIN - Canlı yapay zeka karar sistemi
+                # LSTM + RL Agent + Pattern Recognition + Self-Evaluation
                 try:
-                    from src.brain.ai_predictor_engine import get_predictor
-                    predictor = get_predictor()
+                    from src.brain.living_ai_brain import get_brain
+                    from src.brain.signal_gate import get_gate
+                    
+                    brain = get_brain()
+                    gate = get_gate()
+                    
+                    # Update market regime
+                    await brain.update_regime()
                     
                     for symbol in ['BTCUSDT', 'ETHUSDT']:
-                        prediction = await predictor.predict(symbol)
+                        # Gate kontrolü
+                        if not gate.can_send_signal(symbol):
+                            continue
                         
-                        if prediction:
-                            msg = predictor.format_prediction_alert(prediction, symbol)
+                        # Market data topla
+                        market_data = {
+                            'current_price': self.latest_prices.get(symbol, 0),
+                            'rsi': 50,  # Will be calculated from actual data
+                            'funding_rate': self.derivatives_data.get('funding_rate', 0),
+                            'long_short_ratio': self.derivatives_data.get('long_short_ratio', 1),
+                        }
+                        
+                        # AI DÜŞÜNSÜN
+                        decision = await brain.think(symbol, market_data)
+                        
+                        # Sadece yüksek güvenli kararları gönder
+                        if decision.confidence >= 65 and decision.action != 'HOLD':
+                            msg = brain.format_decision_for_telegram(decision, symbol)
                             await self.notifier.send_message_raw(msg)
-                            logger.warning(f"🧠 AI PREDICTION: {symbol} {prediction.direction} {prediction.confidence:.0f}%")
                             
-                except Exception as pred_err:
-                    logger.debug(f"AI Predictor check skipped: {pred_err}")
+                            # Gate'i kapat
+                            gate.open_gate(symbol, {
+                                'direction': decision.action,
+                                'entry': market_data['current_price'],
+                                'confidence': decision.confidence
+                            })
+                            
+                            logger.warning(f"🧠 LIVING AI: {symbol} {decision.action} {decision.confidence:.0f}%")
+                    
+                    # Periyodik strateji adaptasyonu
+                    if brain.performance_stats.get('total_decisions', 0) % 10 == 0:
+                        await brain.adapt_strategy()
+                        
+                except Exception as brain_err:
+                    logger.debug(f"Living AI Brain skipped: {brain_err}")
                 
                 # Phase 21: Daily Heartbeat (was hourly - PHASE 100: reduced spam)
                 if (datetime.now() - self.last_heartbeat_time).total_seconds() > 86400:  # 24 hours
