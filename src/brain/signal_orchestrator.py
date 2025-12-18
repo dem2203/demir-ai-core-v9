@@ -767,162 +767,92 @@ class SignalOrchestrator:
         except Exception as e:
             logger.warning(f"Taker Flow signal failed: {e}")
         
-        # 21. EXCHANGE DIVERGENCE (PHASE 75) - Coinbase/Kraken premium
+        # 21. EXCHANGE DIVERGENCE (PHASE 75/116) - Coinbase/Kraken premium via Scraper
         try:
-            from src.brain.exchange_divergence import ExchangeDivergenceDetector
-            diverge = ExchangeDivergenceDetector()
-            result = diverge.detect_divergence(symbol)
+            from src.brain.exchange_premium_scraper import get_exchange_premium
+            premium_scraper = get_exchange_premium()
+            coin = symbol.replace('USDT', '')
+            result = premium_scraper.get_coinbase_premium(coin)
             
-            if result.get('available') and result.get('divergence_type') != 'ALIGNED':
+            if result.get('available') and result.get('direction') != 'NEUTRAL':
                 self.module_signals.append(ModuleSignal(
                     module_name='ExchangeDivergence',
                     direction=result['direction'],
                     confidence=result.get('confidence', 50),
                     weight=self.weights['ExchangeDivergence'],
-                    reasoning=f"{result.get('divergence_type', '')}: {result.get('premium_pct', 0):+.2f}%"
+                    reasoning=f"CB Premium: {result.get('premium_pct', 0):+.3f}% ({result.get('signal_text', '')})"
                 ))
         except Exception as e:
-            logger.warning(f"Exchange Divergence signal failed: {e}")
+            logger.warning(f"Exchange Premium signal failed: {e}")
         
         # ═══════════════════════════════════════════════════════════════════
-        # PHASE 77-84: COINGLASS DATA INTEGRATION 📊
+        # PHASE 77-84: COINGLASS DATA INTEGRATION 📊 (Updated with Scraper)
         # ═══════════════════════════════════════════════════════════════════
         
-        # 22. COINGLASS LIQUIDATION MAP (PHASE 77)
+        # 22-29. COINGLASS DATA via Scraper (PHASE 116 - Real Binance API data)
         try:
-            from src.brain.coinglass_liquidation import CoinGlassLiquidation
-            cg_liq = CoinGlassLiquidation()
-            result = cg_liq.get_liquidation_levels(symbol.replace('USDT', ''))
+            from src.brain.coinglass_scraper import get_cg_scraper
+            cg = get_cg_scraper()
             
-            if result.get('available') and result.get('cascade_risk') != 'LOW':
+            coin = symbol.replace('USDT', '')
+            
+            # CGLiquidationMap - Likidasyon verisi
+            liq_data = cg.get_liquidation_data(coin)
+            if liq_data.get('available') and liq_data.get('direction') != 'NEUTRAL':
                 self.module_signals.append(ModuleSignal(
                     module_name='CGLiquidationMap',
-                    direction=result['direction'],
-                    confidence=result.get('confidence', 50),
+                    direction=liq_data['direction'],
+                    confidence=liq_data.get('confidence', 50),
                     weight=self.weights['CGLiquidationMap'],
-                    reasoning=f"Cascade:{result.get('cascade_risk')} Long:{result.get('distance_to_long_pct', 0):.1f}%"
+                    reasoning=f"Long:{liq_data.get('long_liquidation', 0)/1e6:.1f}M Short:{liq_data.get('short_liquidation', 0)/1e6:.1f}M"
                 ))
-        except Exception as e:
-            logger.warning(f"CG Liquidation Map failed: {e}")
-        
-        # 23. COINGLASS WHALE ORDERS (PHASE 78)
-        try:
-            from src.brain.coinglass_whale_orders import CoinGlassWhaleOrders
-            cg_whale = CoinGlassWhaleOrders()
-            result = cg_whale.get_whale_orders(symbol)
             
-            if result.get('available') and result.get('bid_count', 0) + result.get('ask_count', 0) > 0:
-                self.module_signals.append(ModuleSignal(
-                    module_name='CGWhaleOrders',
-                    direction=result['direction'],
-                    confidence=result.get('confidence', 50),
-                    weight=self.weights['CGWhaleOrders'],
-                    reasoning=f"Bids:{result.get('bid_count', 0)} Asks:{result.get('ask_count', 0)}"
-                ))
-        except Exception as e:
-            logger.warning(f"CG Whale Orders failed: {e}")
-        
-        # 24. COINGLASS WHALE ALERTS (PHASE 79)
-        try:
-            from src.brain.coinglass_whale_alerts import CoinGlassWhaleAlerts
-            cg_alerts = CoinGlassWhaleAlerts()
-            result = cg_alerts.get_whale_alerts()
-            
-            if result.get('available'):
-                self.module_signals.append(ModuleSignal(
-                    module_name='CGWhaleAlerts',
-                    direction=result['direction'],
-                    confidence=result.get('confidence', 50),
-                    weight=self.weights['CGWhaleAlerts'],
-                    reasoning=f"NetFlow:{result.get('net_flow_btc', 0):.0f}BTC OI:{result.get('oi_change_pct', 0):+.1f}%"
-                ))
-        except Exception as e:
-            logger.warning(f"CG Whale Alerts failed: {e}")
-        
-        # 25. COINGLASS OI DELTA (PHASE 80)
-        try:
-            from src.brain.coinglass_oi_delta import CoinGlassOIDelta
-            cg_oi = CoinGlassOIDelta()
-            result = cg_oi.get_oi_delta(symbol)
-            
-            if result.get('available') and result.get('velocity') != 'STABLE':
-                self.module_signals.append(ModuleSignal(
-                    module_name='CGOIDelta',
-                    direction=result['direction'],
-                    confidence=result.get('confidence', 50),
-                    weight=self.weights['CGOIDelta'],
-                    reasoning=f"OI 4h:{result.get('delta_4h_pct', 0):+.1f}% ({result.get('velocity', '')})"
-                ))
-        except Exception as e:
-            logger.warning(f"CG OI Delta failed: {e}")
-        
-        # 26. COINGLASS FUNDING EXTREME (PHASE 81)
-        try:
-            from src.brain.coinglass_funding import CoinGlassFunding
-            cg_fund = CoinGlassFunding()
-            result = cg_fund.get_funding_analysis(symbol)
-            
-            if result.get('available') and result.get('squeeze_risk') != 'LOW':
+            # CGFundingExtreme - Funding rate
+            funding_data = cg.get_funding_rate(coin)
+            if funding_data.get('available') and funding_data.get('extreme'):
                 self.module_signals.append(ModuleSignal(
                     module_name='CGFundingExtreme',
-                    direction=result['direction'],
-                    confidence=result.get('confidence', 50),
+                    direction=funding_data['direction'],
+                    confidence=funding_data.get('confidence', 50),
                     weight=self.weights['CGFundingExtreme'],
-                    reasoning=f"Fund:{result.get('current_funding_pct', 0):.3f}% {result.get('extreme_type', '')}"
+                    reasoning=f"Fund:{funding_data.get('funding_rate', 0):.3f}%"
                 ))
-        except Exception as e:
-            logger.warning(f"CG Funding Extreme failed: {e}")
-        
-        # 27. COINGLASS TOP TRADER L/S (PHASE 82)
-        try:
-            from src.brain.coinglass_ls_ratio import CoinGlassLSRatio
-            cg_ls = CoinGlassLSRatio()
-            result = cg_ls.get_ls_ratio(symbol)
             
-            if result.get('available') and result.get('sentiment') not in ['BALANCED', 'UNKNOWN']:
+            # CGOIDelta - OI değişim
+            oi_data = cg.get_open_interest_delta(coin)
+            if oi_data.get('available') and oi_data.get('direction') != 'NEUTRAL':
                 self.module_signals.append(ModuleSignal(
-                    module_name='CGTopTraderLS',
-                    direction=result['direction'],
-                    confidence=result.get('confidence', 50),
-                    weight=self.weights['CGTopTraderLS'],
-                    reasoning=f"TopTrader L/S:{result.get('top_trader_ratio', 1):.2f} ({result.get('sentiment', '')})"
+                    module_name='CGOIDelta',
+                    direction=oi_data['direction'],
+                    confidence=oi_data.get('confidence', 50),
+                    weight=self.weights['CGOIDelta'],
+                    reasoning=f"OI Change:{oi_data.get('oi_change_pct', 0):+.1f}%"
                 ))
-        except Exception as e:
-            logger.warning(f"CG Top Trader L/S failed: {e}")
-        
-        # 28. COINGLASS ORDERBOOK DELTA (PHASE 83)
-        try:
-            from src.brain.coinglass_orderbook import CoinGlassOrderbook
-            cg_ob = CoinGlassOrderbook()
-            result = cg_ob.get_orderbook_delta(symbol)
             
-            if result.get('available') and result.get('imbalance') not in ['BALANCED', 'UNKNOWN']:
+            # CGWhaleOrders - Whale emirleri (orderbook depth)
+            whale_data = cg.get_whale_orders()
+            if whale_data.get('available') and whale_data.get('direction') != 'NEUTRAL':
                 self.module_signals.append(ModuleSignal(
-                    module_name='CGOrderbookDelta',
-                    direction=result['direction'],
-                    confidence=result.get('confidence', 50),
-                    weight=self.weights['CGOrderbookDelta'],
-                    reasoning=f"Delta:{result.get('delta_pct', 0):+.1f}% ({result.get('imbalance', '')})"
+                    module_name='CGWhaleOrders',
+                    direction=whale_data['direction'],
+                    confidence=whale_data.get('confidence', 50),
+                    weight=self.weights['CGWhaleOrders'],
+                    reasoning=f"Bid/Ask Ratio:{whale_data.get('ratio', 1):.2f}"
                 ))
-        except Exception as e:
-            logger.warning(f"CG Orderbook Delta failed: {e}")
-        
-        # 29. COINGLASS EXCHANGE BALANCE (PHASE 84)
-        try:
-            from src.brain.coinglass_exchange_balance import CoinGlassExchangeBalance
-            cg_bal = CoinGlassExchangeBalance()
-            result = cg_bal.get_exchange_balance(symbol)
             
-            if result.get('available') and result.get('balance_trend') != 'STABLE':
+            # CGExchangeBalance - Borsa bakiyesi (OI proxy)
+            balance_data = cg.get_exchange_balance(coin)
+            if balance_data.get('available') and balance_data.get('direction') != 'NEUTRAL':
                 self.module_signals.append(ModuleSignal(
                     module_name='CGExchangeBalance',
-                    direction=result['direction'],
-                    confidence=result.get('confidence', 50),
+                    direction=balance_data['direction'],
+                    confidence=balance_data.get('confidence', 50),
                     weight=self.weights['CGExchangeBalance'],
-                    reasoning=f"Balance:{result.get('balance_trend', '')} OI:{result.get('oi_change_pct', 0):+.1f}%"
+                    reasoning="Exchange balance via Binance API"
                 ))
+                
         except Exception as e:
-            logger.warning(f"CG Exchange Balance failed: {e}")
+            logger.warning(f"CoinGlass Scraper failed: {e}")
         
         # ═══════════════════════════════════════════════════════════════════
         # PHASE 86-90: ADVANCED MOVEMENT DETECTION 🎯
