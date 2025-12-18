@@ -158,6 +158,29 @@ class BotEngine:
                 await self.notifier.check_and_update_signals()  # TP/SL vuruldu mu?
                 await self.notifier.check_active_position_risks()  # Risk var mı?
                 
+                # Phase 101: Market Alert System - Ani hareket ve fırsat tespiti
+                try:
+                    from src.brain.market_alert_system import get_alert_system
+                    alert_system = get_alert_system()
+                    
+                    # Her coin için kontrol
+                    for symbol in ['BTCUSDT', 'ETHUSDT']:
+                        # Ani hareket kontrolü
+                        sudden_alert = await alert_system.check_sudden_movement(symbol)
+                        if sudden_alert:
+                            msg = alert_system.format_sudden_move_alert(sudden_alert)
+                            await self.notifier.send_message_raw(msg)
+                            logger.warning(f"🚨 SUDDEN MOVE ALERT: {symbol} {sudden_alert['type']}")
+                        
+                        # Fırsat kontrolü
+                        opp_alert = await alert_system.check_opportunity(symbol)
+                        if opp_alert:
+                            msg = alert_system.format_opportunity_alert(opp_alert)
+                            await self.notifier.send_message_raw(msg)
+                            logger.info(f"🟢 OPPORTUNITY ALERT: {symbol} {opp_alert['type']}")
+                except Exception as alert_err:
+                    logger.debug(f"Market alert check skipped: {alert_err}")
+                
                 # Phase 21: Daily Heartbeat (was hourly - PHASE 100: reduced spam)
                 if (datetime.now() - self.last_heartbeat_time).total_seconds() > 86400:  # 24 hours
                     await self.notifier.send_heartbeat(self.latest_prices)
