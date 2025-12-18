@@ -369,11 +369,48 @@ class BotEngine:
             predictive_signal = await self.predictive_analyzer.analyze_predictive_signals(symbol, current_price)
             
             if predictive_signal.get('has_signal'):
-                # Format and send predictive signal
-                formatted_msg = self.predictive_analyzer.format_predictive_signal(predictive_signal)
-                if formatted_msg:
-                    await self.notifier.send_message_raw(formatted_msg)
-                    logger.info(f"🔮 PREDICTIVE SIGNAL: {symbol} {predictive_signal['direction']} - {len(predictive_signal.get('reasons', []))} confirmations")
+                direction = predictive_signal['direction']
+                entry = predictive_signal.get('entry', current_price)
+                confidence = predictive_signal.get('confidence', 50)
+                
+                # PHASE 93: Signal Gate Check - Only 1 active signal per coin
+                try:
+                    from src.brain.signal_gate import get_gate
+                    gate = get_gate()
+                    
+                    # Gate kontrolü - aktif sinyal varsa gönderme
+                    if not gate.can_send_signal(symbol):
+                        active = gate.get_active_signals().get(symbol, {})
+                        logger.info(f"🚫 BLOCKED: {symbol} {direction} - Active signal: {active.get('direction')} @ ${active.get('entry', 0):,.0f}")
+                    
+                    # Minimum confidence filter - %65 altı spam
+                    elif confidence < 65:
+                        logger.debug(f"🔇 LOW CONF: {symbol} {direction} {confidence}% - not sent")
+                    
+                    else:
+                        # Gate açık ve confidence yeterli - gönder
+                        formatted_msg = self.predictive_analyzer.format_predictive_signal(predictive_signal)
+                        if formatted_msg:
+                            await self.notifier.send_message_raw(formatted_msg)
+                            logger.info(f"🔮 PREDICTIVE SIGNAL: {symbol} {direction} - {len(predictive_signal.get('reasons', []))} confirmations")
+                            
+                            # Gate'i kapat - TP/SL gelene kadar yeni sinyal yok
+                            gate.open_gate(symbol, {
+                                'direction': direction,
+                                'entry': entry,
+                                'tp1': predictive_signal.get('take_profit_1', entry * 1.02),
+                                'tp2': predictive_signal.get('take_profit_2', entry * 1.04),
+                                'sl': predictive_signal.get('stop_loss', entry * 0.97),
+                                'confidence': confidence
+                            })
+                            logger.info(f"🔒 Gate CLOSED for {symbol} - waiting for TP/SL")
+                
+                except Exception as gate_err:
+                    logger.warning(f"Signal gate error: {gate_err}")
+                    # Fallback: Eski davranış
+                    formatted_msg = self.predictive_analyzer.format_predictive_signal(predictive_signal)
+                    if formatted_msg:
+                        await self.notifier.send_message_raw(formatted_msg)
         except Exception as e:
             logger.warning(f"Predictive analysis failed for {symbol}: {e}")
         
