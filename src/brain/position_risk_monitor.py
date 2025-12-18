@@ -277,7 +277,7 @@ class PositionRiskMonitor:
         self.last_warnings[symbol] = datetime.now()
     
     def format_risk_warning(self, symbol: str, position: Dict, risks: List[Dict]) -> str:
-        """Telegram için risk uyarısı formatla."""
+        """Telegram için risk uyarısı formatla - ANLAŞILIR TÜRKÇE."""
         if not risks:
             return ""
         
@@ -285,36 +285,56 @@ class PositionRiskMonitor:
         entry = position.get('entry', 0)
         current_price = self._get_price(symbol)
         
-        dir_emoji = "📈" if direction == 'LONG' else "📉"
+        # Türkçe çeviriler
+        dir_tr = 'AL' if direction == 'LONG' else 'SAT'
+        dir_emoji = "🟢" if direction == 'LONG' else "🔴"
+        
+        # Kar/zarar hesapla
+        if direction == 'LONG':
+            pnl_pct = ((current_price - entry) / entry) * 100
+        else:
+            pnl_pct = ((entry - current_price) / entry) * 100
+        
+        pnl_emoji = "📈" if pnl_pct > 0 else "📉"
+        pnl_text = f"+{pnl_pct:.2f}%" if pnl_pct > 0 else f"{pnl_pct:.2f}%"
         
         # En yüksek severity'yi bul
         severities = {'HIGH': 3, 'MEDIUM': 2, 'LOW': 1}
         max_severity = max(risks, key=lambda x: severities.get(x['severity'], 0))['severity']
         
         if max_severity == 'HIGH':
-            header = "🚨🚨 **KRİTİK RİSK UYARISI** 🚨🚨"
+            header = "🚨 RİSK UYARISI"
         elif max_severity == 'MEDIUM':
-            header = "⚠️ **RİSK UYARISI**"
+            header = "⚠️ RİSK UYARISI"
         else:
-            header = "📊 **Pozisyon Bilgilendirmesi**"
+            header = "📊 RİSK UYARISI"
         
+        # Risk mesajlarını düzenle
         risks_text = ""
+        recommendations = []
         for risk in risks:
             risks_text += f"• {risk['message']}\n"
-            risks_text += f"  _{risk['recommendation']}_\n"
+            recommendations.append(risk['recommendation'])
         
         msg = f"""
 {header}
 ━━━━━━━━━━━━━━━━━━━━━━
-{dir_emoji} **{symbol}** {direction}
-💰 Giriş: ${entry:,.2f}
-📊 Şimdi: ${current_price:,.2f}
+{dir_emoji} {symbol}: {dir_tr} pozisyonunuz tehlikede!
+
+📊 Durum:
+• Giriş Fiyatı: ${entry:,.2f}
+• Şu Anki Fiyat: ${current_price:,.2f}
+• Kar/Zarar: {pnl_emoji} {pnl_text}
 ━━━━━━━━━━━━━━━━━━━━━━
-**Tespit Edilen Riskler:**
+Tespit Edilen Riskler:
 {risks_text.strip()}
 ━━━━━━━━━━━━━━━━━━━━━━
+💡 Öneriler:
+• Zarar kesmeyi daraltın
+• Pozisyonu küçültün
+• Piyasayı yakından takip edin
+━━━━━━━━━━━━━━━━━━━━━━
 ⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}
-🔔 Sonraki uyarı: 30dk sonra
 """.strip()
         
         return msg

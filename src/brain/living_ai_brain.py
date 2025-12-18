@@ -588,36 +588,134 @@ class LivingAIBrain:
         except Exception as e:
             logger.debug(f"Regime update failed: {e}")
     
-    def format_decision_for_telegram(self, decision: AIDecision, symbol: str) -> str:
-        """Telegram formatında karar."""
+    def format_decision_for_telegram(self, decision: AIDecision, symbol: str, current_price: float = 0) -> str:
+        """Telegram formatında karar - ANLAŞILIR TÜRKÇE."""
+        
+        # Türkçe çeviriler
+        action_tr = {
+            'LONG': 'AL',
+            'SHORT': 'SAT',
+            'HOLD': 'BEKLE'
+        }
+        
         action_emoji = {
             'LONG': '🟢',
             'SHORT': '🔴',
             'HOLD': '🟡'
         }
         
+        regime_tr = {
+            'BULL': 'Yükseliş',
+            'BEAR': 'Düşüş',
+            'RANGE': 'Yatay',
+            'VOLATILE': 'Dalgalı',
+            'UNKNOWN': 'Belirsiz'
+        }
+        
+        lstm_tr = {
+            'UP': 'Yukarı',
+            'DOWN': 'Aşağı',
+            'NEUTRAL': 'Nötr'
+        }
+        
+        # Pattern Türkçe çevirisi
+        pattern_tr = {
+            'bullish_engulfing': 'Yutan Boğa',
+            'bearish_engulfing': 'Yutan Ayı',
+            'hammer': 'Çekiç',
+            'shooting_star': 'Kayan Yıldız',
+            'doji': 'Doji',
+            'morning_star': 'Sabah Yıldızı',
+            'evening_star': 'Akşam Yıldızı'
+        }
+        
         emoji = action_emoji.get(decision.action, '⚪')
+        action_text = action_tr.get(decision.action, decision.action)
+        
+        # Risk seviyesi
+        if decision.risk_score < 40:
+            risk_text = "Düşük"
+        elif decision.risk_score < 60:
+            risk_text = "Orta"
+        else:
+            risk_text = "Yüksek"
+        
+        # TP/SL hesapla
+        if current_price > 0:
+            if decision.action == 'LONG':
+                tp_price = current_price * 1.035  # +3.5%
+                sl_price = current_price * 0.985  # -1.5%
+                tp_pct = "+3.5%"
+                sl_pct = "-1.5%"
+            elif decision.action == 'SHORT':
+                tp_price = current_price * 0.965  # -3.5%
+                sl_price = current_price * 1.015  # +1.5%
+                tp_pct = "+3.5%"
+                sl_pct = "-1.5%"
+            else:
+                tp_price = 0
+                sl_price = 0
+                tp_pct = ""
+                sl_pct = ""
+        else:
+            tp_price = 0
+            sl_price = 0
+            tp_pct = ""
+            sl_pct = ""
         
         # Confidence stars
         stars = '⭐' * min(5, int(decision.confidence / 20))
         
+        # LSTM direction
+        lstm_dir = decision.lstm_prediction.get('direction', 'NEUTRAL')
+        lstm_text = lstm_tr.get(lstm_dir, lstm_dir)
+        lstm_conf = decision.lstm_prediction.get('confidence', 0)
+        
+        # RL action
+        if decision.rl_action == 0:
+            rl_text = "AL"
+        elif decision.rl_action == 2:
+            rl_text = "SAT"
+        elif decision.rl_action == 1:
+            rl_text = "BEKLE"
+        else:
+            rl_text = "Yok"
+        
+        # Pattern
+        pattern = decision.pattern_match
+        if pattern:
+            pattern_text = pattern_tr.get(pattern.lower(), pattern.replace('_', ' ').title())
+        else:
+            pattern_text = "Yok"
+        
+        # Regime
+        regime_text = regime_tr.get(self.current_regime, self.current_regime)
+        
+        # TP/SL bölümü
+        tp_sl_section = ""
+        if tp_price > 0 and sl_price > 0:
+            tp_sl_section = f"""
+🎯 Kar Al: ${tp_price:,.0f} ({tp_pct})
+🛑 Zarar Kes: ${sl_price:,.0f} ({sl_pct})
+━━━━━━━━━━━━━━━━━━━━━━"""
+        
         msg = f"""
-🧠 **YAPAY ZEKA KARARI**
+🧠 YAPAY ZEKA KARARI
 ━━━━━━━━━━━━━━━━━━━━━━
-{emoji} **{symbol}**: **{decision.action}**
-📊 Güven: **%{decision.confidence:.0f}** {stars}
-⚠️ Risk: %{decision.risk_score:.0f}
+{emoji} {symbol}: {action_text}
+📊 Güven: %{decision.confidence:.0f} {stars}
+⚠️ Risk Seviyesi: %{decision.risk_score:.0f} ({risk_text})
 ━━━━━━━━━━━━━━━━━━━━━━
-**Beyin Analizi:**
-• LSTM: {decision.lstm_prediction.get('direction', 'N/A')} ({decision.lstm_prediction.get('confidence', 0):.0f}%)
-• RL Agent: {'LONG' if decision.rl_action == 0 else 'SHORT' if decision.rl_action == 2 else 'HOLD' if decision.rl_action else 'N/A'}
-• Pattern: {decision.pattern_match or 'Yok'}
-• Regime: {self.current_regime}
+Beyin Analizi:
+• Fiyat Tahmini: {lstm_text} (%{lstm_conf:.0f})
+• Bot Kararı: {rl_text}
+• Mum Formasyonu: {pattern_text}
+• Piyasa Trendi: {regime_text}
+━━━━━━━━━━━━━━━━━━━━━━{tp_sl_section}
+📈 Geçmiş Doğruluk: %{self.performance_stats.get('accuracy', 0):.1f}
+📊 Toplam Karar: {self.performance_stats.get('total_decisions', 0)}
 ━━━━━━━━━━━━━━━━━━━━━━
-📈 Doğruluk: %{self.performance_stats.get('accuracy', 0):.1f}
-📊 Toplam karar: {self.performance_stats.get('total_decisions', 0)}
-━━━━━━━━━━━━━━━━━━━━━━
-_Bu bir canlı yapay zeka kararıdır_
+Bu bir canlı yapay zeka kararıdır
 ⏰ {decision.timestamp.strftime('%d.%m.%Y %H:%M')}
 """.strip()
         

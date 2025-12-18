@@ -188,7 +188,8 @@ class BotEngine:
                         
                         # Sadece yüksek güvenli kararları gönder
                         if decision.confidence >= 65 and decision.action != 'HOLD':
-                            msg = brain.format_decision_for_telegram(decision, symbol)
+                            current_price = market_data['current_price']
+                            msg = brain.format_decision_for_telegram(decision, symbol, current_price)
                             await self.notifier.send_message_raw(msg)
                             
                             # Gate'i kapat
@@ -206,6 +207,22 @@ class BotEngine:
                         
                 except Exception as brain_err:
                     logger.debug(f"Living AI Brain skipped: {brain_err}")
+                
+                # Phase 108: AI GÖZLEM - Erken piyasa gözlemleri (sinyal değil)
+                try:
+                    from src.brain.ai_observation import get_observer
+                    observer = get_observer()
+                    
+                    for symbol in ['BTCUSDT', 'ETHUSDT']:
+                        obs = await observer.observe(symbol)
+                        
+                        if obs:
+                            msg = observer.format_observation(obs)
+                            await self.notifier.send_message_raw(msg)
+                            logger.info(f"👁️ AI GÖZLEM: {symbol} {obs['direction']}")
+                            
+                except Exception as obs_err:
+                    logger.debug(f"AI Observation skipped: {obs_err}")
                 
                 # Phase 21: Daily Heartbeat (was hourly - PHASE 100: reduced spam)
                 if (datetime.now() - self.last_heartbeat_time).total_seconds() > 86400:  # 24 hours
