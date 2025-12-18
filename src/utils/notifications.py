@@ -79,6 +79,20 @@ class NotificationManager:
         if signal.get('quality') != 'STRONG':
             return
         
+        # 1.5 SIGNAL GATE CHECK (Phase 93)
+        # Only 1 active signal per coin - must wait for TP/SL before new signal
+        try:
+            from src.brain.signal_gate import get_gate
+            gate = get_gate()
+            symbol = signal['symbol']
+            
+            if not gate.can_send_signal(symbol):
+                active = gate.get_active_signals().get(symbol, {})
+                logger.info(f"🚫 Signal BLOCKED for {symbol} - Active signal exists: {active.get('direction')} @ ${active.get('entry', 0):,.2f}")
+                return
+        except Exception as e:
+            logger.warning(f"Signal gate check failed: {e}")
+        
         # 2. DEDUP CHECK
         price = signal.get('entry_price', signal.get('price', 0))
         if self.dedup_cache.is_duplicate(signal['symbol'], signal['side'], price):
@@ -277,6 +291,22 @@ class NotificationManager:
                 'timestamp': datetime.now()
             }
             logger.info(f"📊 Position registered: {signal['symbol']} {signal['side']} Entry=${entry:,.2f} SL=${sl:,.2f} TP1=${tp1:,.2f}")
+            
+            # Phase 93: Close the gate - no new signal until TP/SL hit
+            try:
+                from src.brain.signal_gate import get_gate
+                gate = get_gate()
+                gate.open_gate(signal['symbol'], {
+                    'direction': 'LONG' if signal['side'] == 'BUY' else 'SHORT',
+                    'entry': entry,
+                    'tp1': tp1,
+                    'tp2': tp2,
+                    'sl': sl,
+                    'confidence': signal.get('confidence', 50)
+                })
+                logger.info(f"🔒 Signal Gate CLOSED for {signal['symbol']} - waiting for TP/SL")
+            except Exception as gate_err:
+                logger.warning(f"Gate registration failed: {gate_err}")
             
         except Exception as e:
             logger.error(f"Telegram Error: {e}")
