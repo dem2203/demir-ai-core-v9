@@ -460,6 +460,110 @@ class NotificationManager:
         except Exception as e:
             logger.error(f"Telegram Error: {e}")
     
+    # ==========================================
+    # PHASE 50 METHODS - MERGED FROM TelegramNotifier
+    # ==========================================
+    
+    async def send_result(self, symbol: str, direction: str, result_type: str,
+                   entry: float, exit_price: float, profit_pct: float,
+                   duration_hours: float, signal_id: str):
+        """
+        TP veya SL sonuç bildirimi.
+        
+        result_type: TP1_HIT, TP2_HIT, SL_HIT
+        """
+        if 'TP' in result_type:
+            emoji = "✅"
+            result_text = "TP VURULDU! 🎉"
+            profit_emoji = "📊"
+        else:
+            emoji = "❌"
+            result_text = "SL VURULDU 😔"
+            profit_emoji = "📉"
+        
+        dir_emoji = "📈" if direction == "LONG" else "📉"
+        
+        message = f"""
+{emoji} **DEMIR AI - {result_text}**
+
+{dir_emoji} **{symbol} {direction}**
+
+💰 Entry: `${entry:,.2f}`
+🏁 Çıkış: `${exit_price:,.2f}`
+{profit_emoji} Sonuç: **{profit_pct:+.2f}%**
+
+⏱️ Süre: {duration_hours:.1f} saat
+🔔 ID: `{signal_id}`
+
+⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}
+        """.strip()
+        
+        await self.send_message_raw(message)
+    
+    async def send_warning(self, symbol: str, warning_type: str,
+                    description: str, potential_signal: str = None,
+                    timeframe: str = None):
+        """
+        Risk veya fırsat uyarısı.
+        
+        warning_type: WHALE_ALERT, HIGH_VOLATILITY, LIQUIDATION_RISK, OPPORTUNITY
+        """
+        type_emojis = {
+            'WHALE_ALERT': '🐋',
+            'HIGH_VOLATILITY': '⚡',
+            'LIQUIDATION_RISK': '⚠️',
+            'OPPORTUNITY': '💡',
+            'NEWS': '📰'
+        }
+        
+        emoji = type_emojis.get(warning_type, '⚠️')
+        
+        message = f"""
+{emoji} **DEMIR AI - UYARI**
+
+**{warning_type.replace('_', ' ')}**
+📍 {symbol}
+
+{description}
+        """.strip()
+        
+        if potential_signal:
+            message += f"\n\n📊 _Potansiyel sinyal:_ {potential_signal}"
+        
+        if timeframe:
+            message += f"\n⏰ _Tahmini:_ {timeframe}"
+        
+        message += f"\n\n🕐 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+        
+        await self.send_message_raw(message)
+    
+    async def send_news(self, headline: str, source: str,
+                 market_impact: str, sentiment: str):
+        """
+        Önemli haber bildirimi.
+        
+        sentiment: BULLISH, BEARISH, NEUTRAL
+        """
+        sentiment_emoji = {
+            'BULLISH': '🟢 YÜKSELİŞ',
+            'BEARISH': '🔴 DÜŞÜŞ',
+            'NEUTRAL': '⚪ NÖTR'
+        }
+        
+        message = f"""
+📰 **DEMIR AI - ÖNEMLİ HABER**
+
+📢 **{headline}**
+
+📊 Piyasa Etkisi: **{market_impact}**
+🎯 Tahmin: **{sentiment_emoji.get(sentiment, sentiment)}**
+
+🔗 Kaynak: {source}
+⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}
+        """.strip()
+        
+        await self.send_message_raw(message)
+    
     def _log_rejected_signal(self, signal: dict, quality_score: int, reason: str):
         """Log rejected signals to JSON file for dashboard review"""
         try:

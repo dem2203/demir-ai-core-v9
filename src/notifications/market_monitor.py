@@ -65,10 +65,10 @@ class MarketMonitor:
             self.tracker = None
         
         try:
-            from src.notifications.telegram_notifier import TelegramNotifier
-            self.notifier = TelegramNotifier()
+            from src.utils.notifications import NotificationManager
+            self.notifier = NotificationManager()
         except Exception as e:
-            logger.warning(f"TelegramNotifier init failed: {e}")
+            logger.warning(f"NotificationManager init failed: {e}")
             self.notifier = None
     
     async def check_for_signals(self):
