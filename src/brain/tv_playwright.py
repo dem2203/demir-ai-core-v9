@@ -139,6 +139,9 @@ class TradingViewPlaywright:
             
             # Technical recommendation interpretation
             rec_all = result.get('Recommend.All', 0) or 0
+            rsi = result.get('RSI', 50) or 50
+            adx = result.get('ADX', 20) or 20
+            
             if rec_all > 0.3:
                 recommendation = 'STRONG_BUY'
                 direction = 'LONG'
@@ -155,9 +158,32 @@ class TradingViewPlaywright:
                 recommendation = 'NEUTRAL'
                 direction = 'NEUTRAL'
             
-            # Confidence based on recommendation strength
-            confidence = abs(rec_all) * 100  # 0-100 scale
-            confidence = max(30, min(85, confidence))  # Clamp to 30-85
+            # BOOSTED Confidence calculation
+            # Base: recommendation strength (0-50)
+            base_confidence = abs(rec_all) * 100
+            
+            # RSI boost: extreme values add confidence
+            rsi_boost = 0
+            if rsi < 30 or rsi > 70:
+                rsi_boost = 15  # Oversold/overbought zones
+            elif rsi < 35 or rsi > 65:
+                rsi_boost = 10
+            
+            # ADX boost: strong trend adds confidence
+            adx_boost = 0
+            if adx > 25:
+                adx_boost = 15  # Strong trend
+            elif adx > 20:
+                adx_boost = 10
+            
+            # Bollinger boost: extreme positions
+            bb_boost = 0
+            if bb_position < 0.2 or bb_position > 0.8:
+                bb_boost = 10
+            
+            # Total confidence
+            confidence = base_confidence + rsi_boost + adx_boost + bb_boost
+            confidence = max(40, min(90, confidence))  # Clamp to 40-90
             
             parsed = {
                 'available': True,

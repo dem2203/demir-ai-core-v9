@@ -106,25 +106,42 @@ class SignalOrchestrator:
         self.module_signals = []
         import requests
         
-        # 1. Markov Predictor
+        # 1. Markov Predictor - TRAINED on historical data
         try:
             from src.brain.markov_predictor import MarkovPredictor
+            import pandas as pd
+            
             markov = MarkovPredictor()
             
-            resp = requests.get(f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1h&limit=2", timeout=5)
+            # Fetch 100h of data for training
+            resp = requests.get(f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1h&limit=100", timeout=5)
             if resp.status_code == 200:
                 klines = resp.json()
-                if len(klines) >= 2:
-                    pct_change = ((float(klines[-1][4]) / float(klines[-2][4])) - 1) * 100
-                    pred = markov.predict_1_2_hours(pct_change)
-                    
-                    self.module_signals.append(ModuleSignal(
-                        module_name='MarkovPredictor',
-                        direction=pred['combined_signal'].replace('WAIT', 'NEUTRAL'),
-                        confidence=pred['signal_strength'],
-                        weight=self.weights['MarkovPredictor'],
-                        reasoning=f"1h: {pred['1_hour']['direction']}, 2h: {pred['2_hour']['direction']}"
-                    ))
+                
+                # Train Markov on historical data
+                df = pd.DataFrame({
+                    'close': [float(k[4]) for k in klines]
+                })
+                markov.train(df, interval_hours=1)
+                
+                # Get prediction with trained model
+                pct_change = ((float(klines[-1][4]) / float(klines[-2][4])) - 1) * 100
+                pred = markov.predict_1_2_hours(pct_change)
+                
+                # Boost confidence for non-WAIT signals
+                raw_strength = pred['signal_strength']
+                if pred['combined_signal'] != 'WAIT':
+                    boosted_strength = max(50, raw_strength + 20)  # Min 50% for actionable signals
+                else:
+                    boosted_strength = max(40, raw_strength + 10)  # Min 40% for all
+                
+                self.module_signals.append(ModuleSignal(
+                    module_name='MarkovPredictor',
+                    direction=pred['combined_signal'].replace('WAIT', 'NEUTRAL'),
+                    confidence=boosted_strength,
+                    weight=self.weights['MarkovPredictor'],
+                    reasoning=f"1h: {pred['1_hour']['direction']}, 2h: {pred['2_hour']['direction']} (trained)"
+                ))
         except Exception as e:
             logger.warning(f"Markov signal failed: {e}")
         
@@ -259,36 +276,51 @@ class SignalOrchestrator:
         except Exception as e:
             logger.warning(f"Predictive signal failed: {e}")
         
-        # 7. Liquidation Hunter
+        # 7. Liquidation Hunter - Sync Binance API based
         try:
-            from src.brain.liquidation_hunter import LiquidationHunter
-            hunter = LiquidationHunter()
+            # Use Binance Futures Open Interest change as proxy for liquidation pressure
+            resp = requests.get(
+                f"https://fapi.binance.com/fapi/v1/openInterest",
+                params={'symbol': symbol},
+                timeout=5
+            )
             
-            liq_data = await hunter.get_full_liquidation_analysis(symbol)
+            # Also get OI stats for change
+            oi_stats_resp = requests.get(
+                f"https://fapi.binance.com/futures/data/openInterestHist",
+                params={'symbol': symbol, 'period': '5m', 'limit': 12},
+                timeout=5
+            )
             
-            if liq_data:
-                long_liq = liq_data.get('long_liquidations', 0)
-                short_liq = liq_data.get('short_liquidations', 0)
+            if resp.status_code == 200 and oi_stats_resp.status_code == 200:
+                current_oi = float(resp.json().get('openInterest', 0))
+                oi_history = oi_stats_resp.json()
                 
-                if long_liq > short_liq * 1.5:
-                    direction = 'SHORT'
-                    confidence = 55
-                elif short_liq > long_liq * 1.5:
-                    direction = 'LONG'
-                    confidence = 55
-                else:
-                    direction = 'NEUTRAL'
-                    confidence = 30
-                
-                self.module_signals.append(ModuleSignal(
-                    module_name='LiquidationHunter',
-                    direction=direction,
-                    confidence=confidence,
-                    weight=self.weights['LiquidationHunter'],
-                    reasoning=liq_data.get('interpretation', 'Likidasyon analizi')
-                ))
-            
-            await hunter.close()
+                if len(oi_history) >= 2:
+                    prev_oi = float(oi_history[0].get('sumOpenInterest', current_oi))
+                    oi_change_pct = ((current_oi - prev_oi) / prev_oi) * 100 if prev_oi > 0 else 0
+                    
+                    # OI decrease = liquidations happening
+                    if oi_change_pct < -2:
+                        direction = 'NEUTRAL'  # Major liquidations, wait
+                        confidence = 50
+                        reasoning = f"OI düştü ({oi_change_pct:.1f}%) - Likidasyonlar devam ediyor"
+                    elif oi_change_pct > 3:
+                        direction = 'LONG'  # Fresh positions opening, trend continuation
+                        confidence = 55
+                        reasoning = f"OI arttı ({oi_change_pct:.1f}%) - Yeni pozisyonlar açılıyor"
+                    else:
+                        direction = 'NEUTRAL'
+                        confidence = 45
+                        reasoning = f"OI stabil ({oi_change_pct:.1f}%)"
+                    
+                    self.module_signals.append(ModuleSignal(
+                        module_name='LiquidationHunter',
+                        direction=direction,
+                        confidence=confidence,
+                        weight=self.weights['LiquidationHunter'],
+                        reasoning=reasoning
+                    ))
         except Exception as e:
             logger.warning(f"Liquidation signal failed: {e}")
         

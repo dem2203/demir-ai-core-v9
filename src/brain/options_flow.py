@@ -241,46 +241,68 @@ class OptionsFlowAnalyzer:
         
         cp_ratio = options['call_put_ratio']
         
-        # Sinyal belirle
+        # Sinyal belirle - BOOSTED with Max Pain analysis
+        confidence = 40  # Base confidence
+        signal = 'NEUTRAL'
+        bias = 'NEUTRAL'
+        
+        # C/P Ratio signal
         if cp_ratio > 1.5:
             signal = 'LONG'
             bias = 'BULLISH'
-            confidence = min(70, 50 + (cp_ratio - 1) * 20)
+            confidence += (cp_ratio - 1) * 15  # +15 for each 0.1 above 1
         elif cp_ratio < 0.67:  # Put/Call > 1.5
             signal = 'SHORT'
             bias = 'BEARISH'
-            confidence = min(70, 50 + ((1/cp_ratio) - 1) * 20)
-        else:
-            signal = 'NEUTRAL'
-            bias = 'NEUTRAL'
-            confidence = 30
+            confidence += ((1/cp_ratio) - 1) * 15
         
-        # Max Pain etkisi
+        # Max Pain etkisi - MAJOR BOOST
         max_pain_distance = 0
         max_pain_direction = 'NEUTRAL'
         if max_pain > 0 and current_price > 0:
             max_pain_distance = ((max_pain - current_price) / current_price) * 100
-            if max_pain_distance > 2:
-                max_pain_direction = 'UP'  # Fiyat max pain'e çekilecek (yukarı)
+            
+            # Max Pain çok farklıysa güçlü sinyal
+            if max_pain_distance > 5:
+                max_pain_direction = 'LONG'
+                confidence += 20  # Strong pull up
+                if signal == 'NEUTRAL':
+                    signal = 'LONG'
+                    bias = 'BULLISH'
+            elif max_pain_distance > 2:
+                max_pain_direction = 'LONG'
+                confidence += 10
+                if signal == 'NEUTRAL':
+                    signal = 'LONG'
+                    bias = 'BULLISH'
+            elif max_pain_distance < -5:
+                max_pain_direction = 'SHORT'
+                confidence += 20  # Strong pull down
+                if signal == 'NEUTRAL':
+                    signal = 'SHORT'
+                    bias = 'BEARISH'
             elif max_pain_distance < -2:
-                max_pain_direction = 'DOWN'  # Fiyat max pain'e çekilecek (aşağı)
+                max_pain_direction = 'SHORT'
+                confidence += 10
+                if signal == 'NEUTRAL':
+                    signal = 'SHORT'
+                    bias = 'BEARISH'
         
-        # IV değerlendirmesi
-        if iv_rank > 80:
-            iv_status = 'VERY_HIGH'
-            iv_note = 'Volatilite çok yüksek - opsiyon satışı avantajlı'
-        elif iv_rank > 60:
+        # IV Rank boost - high IV = confidence boost
+        if iv_rank > 60:
+            confidence += 10
             iv_status = 'HIGH'
             iv_note = 'Volatilite yüksek'
         elif iv_rank < 20:
-            iv_status = 'VERY_LOW'
-            iv_note = 'Volatilite çok düşük - büyük hareket bekleniyor olabilir'
-        elif iv_rank < 40:
+            confidence += 5  # Low IV = potential breakout
             iv_status = 'LOW'
-            iv_note = 'Volatilite düşük'
+            iv_note = 'Volatilite düşük - büyük hareket bekleniyor'
         else:
             iv_status = 'NORMAL'
             iv_note = 'Volatilite normal seviyede'
+        
+        # Clamp confidence
+        confidence = max(45, min(80, confidence))
         
         return {
             'available': True,
