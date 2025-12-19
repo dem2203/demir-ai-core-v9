@@ -179,6 +179,67 @@ class BotEngine:
                                 logger.info(f"🧠 AI REASONING: {symbol} → {prediction.direction} %{prediction.confidence:.0f}")
                         
                         self.last_reasoning_time = datetime.now()
+                    
+                    # PHASE 128: ADVANCED AI INTELLIGENCE FEATURES
+                    now = datetime.now()
+                    
+                    # 1. Daily Briefing - 09:00 ve 21:00
+                    if not hasattr(self, 'last_briefing_date'):
+                        self.last_briefing_date = None
+                        self.morning_briefing_sent = False
+                        self.evening_briefing_sent = False
+                    
+                    if self.last_briefing_date != now.date():
+                        self.last_briefing_date = now.date()
+                        self.morning_briefing_sent = False
+                        self.evening_briefing_sent = False
+                    
+                    if now.hour >= 9 and now.hour < 10 and not self.morning_briefing_sent:
+                        briefing = await reasoning.generate_daily_briefing(morning=True)
+                        await self.notifier.send_message_raw(briefing)
+                        self.morning_briefing_sent = True
+                        logger.info("🌅 Morning briefing sent")
+                    
+                    if now.hour >= 21 and now.hour < 22 and not self.evening_briefing_sent:
+                        briefing = await reasoning.generate_daily_briefing(morning=False)
+                        await self.notifier.send_message_raw(briefing)
+                        self.evening_briefing_sent = True
+                        logger.info("🌙 Evening briefing sent")
+                    
+                    # 2. Weekly Outlook - Pazartesi 10:00
+                    if not hasattr(self, 'weekly_outlook_sent'):
+                        self.weekly_outlook_sent = False
+                    
+                    if now.weekday() == 0 and now.hour >= 10 and now.hour < 11:
+                        if not self.weekly_outlook_sent:
+                            outlook = await reasoning.generate_weekly_outlook()
+                            await self.notifier.send_message_raw(outlook)
+                            self.weekly_outlook_sent = True
+                            logger.info("📅 Weekly outlook sent")
+                    elif now.weekday() != 0:
+                        self.weekly_outlook_sent = False
+                    
+                    # 3. Risk Alerts - Her saat başı
+                    if not hasattr(self, 'last_risk_check'):
+                        self.last_risk_check = datetime.now() - timedelta(hours=2)
+                    
+                    if (now - self.last_risk_check).total_seconds() >= 3600:
+                        for symbol in ['BTCUSDT', 'ETHUSDT']:
+                            risk_alert = await reasoning.generate_risk_alerts(symbol)
+                            if risk_alert:  # Sadece risk varsa gönder
+                                await self.notifier.send_message_raw(risk_alert)
+                                logger.info(f"🚨 Risk alert sent for {symbol}")
+                        self.last_risk_check = now
+                    
+                    # 4. Whale Commentary - Her 4 saatte bir
+                    if not hasattr(self, 'last_whale_comment'):
+                        self.last_whale_comment = datetime.now() - timedelta(hours=5)
+                    
+                    if (now - self.last_whale_comment).total_seconds() >= 14400:  # 4 saat
+                        whale_msg = await reasoning.generate_whale_commentary('BTCUSDT')
+                        await self.notifier.send_message_raw(whale_msg)
+                        self.last_whale_comment = now
+                        logger.info("🐋 Whale commentary sent")
                         
                 except Exception as reasoning_err:
                     logger.debug(f"AI Reasoning skipped: {reasoning_err}")
