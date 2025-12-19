@@ -109,6 +109,9 @@ class BotEngine:
         self.market_intelligence = MarketIntelligence()
         self.all_snapshots = {}  # Store all coin snapshots for intelligence
         
+        # 14. PHASE 129: Continuous Monitor - 4 coin, WebSocket, anti-spam
+        self.continuous_monitor = None  # Lazy init after notifier is ready
+        
         logger.info("✅ All Sub-systems Initialized Successfully.")
 
     async def start(self):
@@ -132,6 +135,26 @@ class BotEngine:
         # Ensure AI Brain is Trained (Non-Blocking Background Task)
         # Fixes 502 Error: Training takes time, so we don't block startup.
         asyncio.create_task(self.analyzer.ensure_active_brain())
+        
+        # PHASE 129: Start Continuous Monitor (WebSocket + 4-coin scanning)
+        try:
+            from src.brain.continuous_monitor import get_continuous_monitor
+            
+            # Callback for notifications
+            async def notify_callback(msg):
+                await self.notifier.send_message_raw(msg)
+            
+            self.continuous_monitor = get_continuous_monitor(callback=notify_callback)
+            
+            # Start WebSocket streams (background)
+            asyncio.create_task(self.continuous_monitor.start_websocket())
+            
+            # Start continuous scanning (background)
+            asyncio.create_task(self.continuous_monitor.run_continuous_scan())
+            
+            logger.info("🔌 Continuous Monitor started (4 coins + WebSocket)")
+        except Exception as e:
+            logger.warning(f"Continuous Monitor start failed: {e}")
         
         self.is_running = True
         await self.run_forever()
