@@ -25,6 +25,7 @@ class WebSocketStream:
     Binance WebSocket Real-Time Stream
     
     Anlık trade akışını izler ve büyük hareketleri tespit eder.
+    Hem SPOT hem FUTURES piyasalarını takip eder.
     """
     
     BINANCE_WS = "wss://stream.binance.com:9443/ws"
@@ -39,37 +40,45 @@ class WebSocketStream:
         self.trade_buffer = deque(maxlen=1000)
         self.large_trades = deque(maxlen=100)
         
-        # Thresholds
-        self.large_trade_btc = 5  # 5+ BTC = Large trade
+        # Thresholds - Futures için daha düşük (kaldıraç nedeniyle)
+        self.large_trade_btc_spot = 5  # Spot: 5+ BTC
+        self.large_trade_btc_futures = 10  # Futures: 10+ BTC (kaldıraçlı)
         self.volume_spike_multiplier = 3.0  # 3x normal = spike
         self.price_move_threshold = 0.3  # %0.3 = ani hareket
         
         # State
-        self.last_price = 0
-        self.avg_volume_per_min = 0
+        self.last_price = {}  # {symbol: price}
+        self.avg_volume_per_min = {}  # {symbol: volume}
         self.last_alert_time = None
         self.alert_cooldown = timedelta(seconds=30)  # 30 saniye cooldown
         
-        logger.info("✅ WebSocket Stream initialized")
+        logger.info("✅ WebSocket Stream initialized (Spot + Futures)")
     
-    async def start(self, symbol: str = "btcusdt"):
-        """WebSocket stream başlat."""
+    async def start(self, symbol: str = "btcusdt", market: str = "spot"):
+        """WebSocket stream başlat (Spot veya Futures)."""
         self.running = True
-        self.current_symbol = symbol.upper()  # Track current symbol
+        self.current_symbol = symbol.upper()
+        self.current_market = market.upper()
         stream_name = f"{symbol.lower()}@aggTrade"
-        url = f"{self.BINANCE_WS}/{stream_name}"
         
-        logger.info(f"🔌 Connecting to WebSocket: {stream_name}")
+        if market.lower() == "futures":
+            url = f"{self.BINANCE_FUTURES_WS}/{stream_name}"
+            threshold = self.large_trade_btc_futures
+        else:
+            url = f"{self.BINANCE_WS}/{stream_name}"
+            threshold = self.large_trade_btc_spot
+        
+        logger.info(f"🔌 Connecting to {market.upper()} WebSocket: {symbol}")
         
         try:
             async with websockets.connect(url) as ws:
                 self.ws = ws
-                logger.info(f"✅ WebSocket connected for {self.current_symbol}!")
+                logger.info(f"✅ {market.upper()} WebSocket connected for {self.current_symbol}!")
                 
                 while self.running:
                     try:
                         message = await asyncio.wait_for(ws.recv(), timeout=30)
-                        await self._process_trade(json.loads(message))
+                        await self._process_trade(json.loads(message), market, threshold)
                     except asyncio.TimeoutError:
                         # Heartbeat
                         await ws.ping()
@@ -81,14 +90,14 @@ class WebSocketStream:
             logger.error(f"WebSocket connection failed: {e}")
             self.running = False
     
-    async def _process_trade(self, data: dict):
+    async def _process_trade(self, data: dict, market: str = "spot", threshold: float = 5):
         """Her trade'i işle ve büyük hareketleri tespit et."""
         try:
             price = float(data.get('p', 0))
             qty = float(data.get('q', 0))
             is_buyer_maker = data.get('m', False)  # True = seller, False = buyer
             trade_time = data.get('T', 0)
-            symbol = data.get('s', getattr(self, 'current_symbol', 'BTCUSDT'))  # Get symbol from data or use tracked
+            symbol = data.get('s', getattr(self, 'current_symbol', 'BTCUSDT'))
             
             trade_value_btc = qty
             trade_value_usd = price * qty
@@ -100,49 +109,56 @@ class WebSocketStream:
                 'value_usd': trade_value_usd,
                 'is_sell': is_buyer_maker,
                 'time': trade_time,
-                'symbol': symbol
+                'symbol': symbol,
+                'market': market.upper()
             })
             
             # 1. BÜYÜK TRADE TESPİTİ
-            if trade_value_btc >= self.large_trade_btc:
+            if trade_value_btc >= threshold:
                 side = "SELL" if is_buyer_maker else "BUY"
                 self.large_trades.append({
                     'price': price,
                     'qty': qty,
                     'side': side,
                     'time': datetime.now(),
-                    'symbol': symbol
+                    'symbol': symbol,
+                    'market': market.upper()
                 })
                 
-                logger.info(f"🐋 LARGE TRADE: {symbol} {side} {qty:.2f} @ ${price:,.0f} (${trade_value_usd:,.0f})")
+                market_emoji = "🔶" if market.upper() == "FUTURES" else "🔵"
+                logger.info(f"🐋 {market_emoji} {market.upper()} LARGE TRADE: {symbol} {side} {qty:.2f} @ ${price:,.0f} (${trade_value_usd:,.0f})")
                 
-                # Alert gönder - with symbol and amount
+                # Alert gönder - with symbol, amount, and market type
                 await self._trigger_alert({
                     'type': f'WHALE_{side}',
                     'symbol': symbol,
                     'side': side,
                     'qty': qty,
                     'price': price,
-                    'amount_usd': trade_value_usd
+                    'amount_usd': trade_value_usd,
+                    'market': market.upper()
                 })
             
             # 2. ANİ FİYAT HAREKETİ TESPİTİ
-            if self.last_price > 0:
-                price_change_pct = abs(price - self.last_price) / self.last_price * 100
+            last_price = self.last_price.get(symbol, 0)
+            if last_price > 0:
+                price_change_pct = abs(price - last_price) / last_price * 100
                 
                 if price_change_pct >= self.price_move_threshold:
-                    direction = "UP" if price > self.last_price else "DOWN"
-                    logger.warning(f"⚡ SUDDEN MOVE: {direction} {price_change_pct:.2f}%")
+                    direction = "UP" if price > last_price else "DOWN"
+                    logger.warning(f"⚡ SUDDEN MOVE: {symbol} {direction} {price_change_pct:.2f}%")
                     
                     await self._trigger_alert({
                         'type': 'SUDDEN_MOVE',
+                        'symbol': symbol,
                         'direction': direction,
                         'change_pct': price_change_pct,
                         'price': price,
-                        'prev_price': self.last_price
+                        'prev_price': last_price,
+                        'market': market.upper()
                     })
             
-            self.last_price = price
+            self.last_price[symbol] = price
             
             # 3. HACİM SPIKE TESPİTİ (son 1 dakika)
             await self._check_volume_spike()

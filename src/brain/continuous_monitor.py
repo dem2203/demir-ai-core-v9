@@ -97,7 +97,7 @@ class ContinuousMonitor:
         logger.info(f"✅ Continuous Monitor initialized for {len(self.SYMBOLS)} coins")
     
     async def start_websocket(self):
-        """WebSocket stream başlat."""
+        """WebSocket stream başlat - Hem SPOT hem FUTURES."""
         try:
             from src.brain.websocket_stream import get_websocket_stream
             
@@ -108,11 +108,17 @@ class ContinuousMonitor:
             self.ws_stream = get_websocket_stream(callback=on_large_trade)
             self.ws_running = True
             
-            # Her coin için stream başlat (arka planda)
+            # Her coin için SPOT ve FUTURES stream başlat
             for symbol in self.SYMBOLS:
-                asyncio.create_task(self.ws_stream.start(symbol.lower()))
+                # SPOT stream
+                asyncio.create_task(self.ws_stream.start(symbol.lower(), market="spot"))
+                await asyncio.sleep(0.5)  # Rate limit için
+                
+                # FUTURES stream
+                asyncio.create_task(self.ws_stream.start(symbol.lower(), market="futures"))
+                await asyncio.sleep(0.5)
             
-            logger.info("🔌 WebSocket streams started for all coins")
+            logger.info(f"🔌 WebSocket streams started: {len(self.SYMBOLS)} coins x 2 markets (SPOT + FUTURES)")
             
         except Exception as e:
             logger.warning(f"WebSocket start failed: {e}")
@@ -125,6 +131,7 @@ class ContinuousMonitor:
         amount_usd = data.get('amount_usd', 0)
         price = data.get('price', 0)
         qty = data.get('qty', 0)
+        market = data.get('market', 'SPOT')  # SPOT veya FUTURES
         
         # Minimum miktar kontrolü - $100K altındaki işlemleri gösterme
         if amount_usd < 100000:
@@ -149,10 +156,13 @@ class ContinuousMonitor:
             size = "ORTA"
         
         side = "ALIŞ" if 'BUY' in trade_type else "SATIŞ"
+        market_emoji = "🔶" if market == "FUTURES" else "🔵"
+        market_name = "VADELİ" if market == "FUTURES" else "SPOT"
         
         msg = f"""
 {emoji} {size} İŞLEM TESPİTİ - {symbol}
 ━━━━━━━━━━━━━━━━━━━━━━
+{market_emoji} Piyasa: {market_name}
 💰 Miktar: ${amount_usd:,.0f}
 📊 Yön: {side}
 💵 Fiyat: ${price:,.2f}
@@ -164,7 +174,7 @@ class ContinuousMonitor:
         
         await self.send_notification(msg)
         self.cooldown.mark_sent(symbol, 'whale_trade')
-        logger.info(f"🐋 Whale alert sent: {symbol} {side} ${amount_usd:,.0f}")
+        logger.info(f"🐋 Whale alert sent: {symbol} {market} {side} ${amount_usd:,.0f}")
     
     async def scan_opportunities(self):
         """Fırsat taraması - tüm coinler için."""
