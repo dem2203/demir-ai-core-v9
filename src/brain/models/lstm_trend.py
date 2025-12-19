@@ -83,8 +83,13 @@ class LSTMTrendPredictor:
                 logger.warning(f"⚠️ No trained model found at {model_path}")
         except Exception as e:
             logger.error(f"Model load failed: {e}")
+    
+    def build_model(self, input_shape: tuple):
+        """Build LSTM model with specified input shape."""
+        if not TF_AVAILABLE:
+            logger.warning("Cannot build model - TensorFlow not available")
             return
-        
+            
         self.model = Sequential([
             # First LSTM layer with return sequences
             LSTM(64, return_sequences=True, input_shape=input_shape),

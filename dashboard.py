@@ -2826,6 +2826,14 @@ if page == "🎯 AI Module Monitor":
         
         # Modül kategorileri
         st.markdown("### 📋 Modül Listesi (Ağırlıklar)")
+        st.caption("""
+_**📊 Ağırlık % Ne Demek?**_
+• Her modülün yüzdesi = **Toplam sinyale katkı oranı** (güven değil!)
+• Örnek: %6 = Bu modül nihai kararda %6 ağırlık taşır
+• Yüksek ağırlık (>5%) = Daha etkili modül
+• Düşük ağırlık (<3%) = Destekleyici modül
+• Toplam ağırlık = %100 (tüm modüller birlikte)
+        """)
         
         # Phase bazlı gruplandırma
         phases = {
