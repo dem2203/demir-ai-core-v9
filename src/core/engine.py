@@ -193,7 +193,7 @@ class BotEngine:
                         self.last_reasoning_time = datetime.now() - timedelta(hours=1)
                     
                     if (datetime.now() - self.last_reasoning_time).total_seconds() >= 900:
-                        for symbol in ['BTCUSDT', 'ETHUSDT']:
+                        for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:  # All 4 coins
                             prediction = await reasoning.think(symbol)
                             
                             if prediction and prediction.confidence >= 55:
@@ -247,7 +247,7 @@ class BotEngine:
                         self.last_risk_check = datetime.now() - timedelta(hours=2)
                     
                     if (now - self.last_risk_check).total_seconds() >= 3600:
-                        for symbol in ['BTCUSDT', 'ETHUSDT']:
+                        for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:  # All 4 coins
                             risk_alert = await reasoning.generate_risk_alerts(symbol)
                             if risk_alert:  # Sadece risk varsa gönder
                                 await self.notifier.send_message_raw(risk_alert)
