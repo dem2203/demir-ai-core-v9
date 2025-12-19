@@ -2973,10 +2973,10 @@ elif page == "🔮 AI Predictions":
 # ==========================================
 if page == "🎯 AI Module Monitor":
     st.sidebar.markdown("---")
-    st.sidebar.info("**35 AI Modül Monitörü**")
+    st.sidebar.info("**42 AI Modül Monitörü**")
     
     st.markdown("## 🧠 AI Module Status Dashboard")
-    st.caption("_SignalOrchestrator'dan canlı modül durumları - 35 aktif modül_")
+    st.caption("_SignalOrchestrator'dan canlı modül durumları - 42 aktif modül_")
     
     if st.button("🔄 Modülleri Yeniden Tara"):
         st.cache_data.clear()
@@ -3004,7 +3004,7 @@ if page == "🎯 AI Module Monitor":
             st.metric("📊 Ağırlık Toplamı", f"{sum(orchestrator.weights.values()):.0%}")
         
         with col4:
-            st.metric("🔧 Version", "v35.0")
+            st.metric("🔧 Version", "v42.0")
         
         st.markdown("---")
         
@@ -3066,6 +3066,15 @@ _**📊 Ağırlık % Ne Demek?**_
                 ('CVDAnalyzer', 'CVD analizi'),
                 ('CompositeAlert', 'Birleşik alarm'),
             ],
+            "🆕 Self-Learning (Phase 115-121)": [
+                ('FibonacciAnalyzer', 'Fibonacci seviyeleri'),
+                ('PivotPoints', 'Pivot noktaları'),
+                ('SignalDatabase', 'Sinyal veritabanı'),
+                ('ModuleLearner', 'Modül öğrenici'),
+                ('TemporalOptimizer', 'Zaman optimizasyonu'),
+                ('AIObservation', 'AI gözlem'),
+                ('PredictorEngine', 'Tahmin motoru'),
+            ],
         }
         
         for phase_name, modules in phases.items():
@@ -3074,11 +3083,21 @@ _**📊 Ağırlık % Ne Demek?**_
                 for i, (mod_name, mod_desc) in enumerate(modules):
                     weight = orchestrator.weights.get(mod_name, 0)
                     with cols[i % 4]:
-                        if weight > 0:
-                            st.success(f"**{mod_name}**\n{weight:.0%}")
-                            st.caption(mod_desc)
+                        if weight > 0.05:  # High weight = primary module
+                            st.success(f"**{mod_name}**")
+                            st.metric("Ağırlık", f"🟢 {weight:.0%}", "Yüksek")
+                            st.caption(f"_{mod_desc} (Ana modül)_")
+                        elif weight > 0.03:  # Medium weight
+                            st.info(f"**{mod_name}**")
+                            st.metric("Ağırlık", f"🟡 {weight:.0%}", "Orta")
+                            st.caption(f"_{mod_desc}_")
+                        elif weight > 0:  # Low weight
+                            st.warning(f"**{mod_name}**")
+                            st.metric("Ağırlık", f"⚪ {weight:.0%}", "Düşük")
+                            st.caption(f"_{mod_desc} (Destekleyici)_")
                         else:
-                            st.warning(f"**{mod_name}**\n❌ Kayıtlı değil")
+                            st.error(f"**{mod_name}**")
+                            st.caption(f"❌ Kayıtlı değil - {mod_desc}")
         
         st.markdown("---")
         
