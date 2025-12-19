@@ -159,11 +159,11 @@ class AIReasoningEngine:
         
         # 3. Funding Rate (Contrarian)
         try:
-            from src.brain.coinglass_funding import get_funding_rate
-            funding = await get_funding_rate(symbol)
+            from src.brain.coinglass_funding import get_funding_analysis
+            funding = get_funding_analysis(symbol)  # Sync function, no await
             
-            if funding:
-                ctx.funding_rate = funding.get('rate', 0)
+            if funding and funding.get('available'):
+                ctx.funding_rate = funding.get('current_funding_pct', 0)  # Already in percentage
                 
                 # Contrarian logic
                 if ctx.funding_rate > 0.02:
@@ -193,21 +193,29 @@ class AIReasoningEngine:
         except Exception as e:
             logger.debug(f"Fear/Greed fetch failed: {e}")
         
-        # 5. Fibonacci Levels
+        # 5. Fibonacci Levels (with fallback)
         try:
             from src.brain.fibonacci_analyzer import FibonacciAnalyzer
             fib = FibonacciAnalyzer()
-            fib_data = await fib.calculate_levels(symbol)
+            fib_data = await fib.analyze(symbol)  # Fixed: was calculate_levels
             
-            if fib_data:
-                ctx.nearest_support = fib_data.get('nearest_support', {}).get('price', 0)
-                ctx.nearest_resistance = fib_data.get('nearest_resistance', {}).get('price', 0)
+            if fib_data and 'error' not in fib_data:
+                ns = fib_data.get('nearest_support')
+                nr = fib_data.get('nearest_resistance')
+                ctx.nearest_support = ns.get('price', 0) if ns else 0
+                ctx.nearest_resistance = nr.get('price', 0) if nr else 0
                 
                 # Position description
-                if fib_data.get('nearest_support', {}).get('level'):
-                    ctx.fib_position = f"Fib {fib_data['nearest_support']['level']} desteğinde"
+                if ns and ns.get('ratio'):
+                    ctx.fib_position = f"Fib {ns['ratio']} desteğinde"
         except Exception as e:
             logger.debug(f"Fibonacci failed: {e}")
+        
+        # Fallback: If no support/resistance, calculate from price
+        if ctx.nearest_support == 0 and ctx.current_price > 0:
+            ctx.nearest_support = ctx.current_price * 0.97  # -3%
+        if ctx.nearest_resistance == 0 and ctx.current_price > 0:
+            ctx.nearest_resistance = ctx.current_price * 1.03  # +3%
         
         # 6. Liquidation Magnet
         try:

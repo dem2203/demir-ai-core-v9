@@ -230,13 +230,15 @@ class BotEngine:
                         self.morning_briefing_sent = False
                         self.evening_briefing_sent = False
                     
-                    if now.hour >= 9 and now.hour < 10 and not self.morning_briefing_sent:
+                    # Morning: Only at exactly 09:XX (not after restart)
+                    if now.hour == 9 and now.minute < 30 and not self.morning_briefing_sent:
                         briefing = await reasoning.generate_daily_briefing(morning=True)
                         await self.notifier.send_message_raw(briefing)
                         self.morning_briefing_sent = True
                         logger.info("🌅 Morning briefing sent")
                     
-                    if now.hour >= 21 and now.hour < 22 and not self.evening_briefing_sent:
+                    # Evening: Only at exactly 21:XX (not after restart) 
+                    if now.hour == 21 and now.minute < 30 and not self.evening_briefing_sent:
                         briefing = await reasoning.generate_daily_briefing(morning=False)
                         await self.notifier.send_message_raw(briefing)
                         self.evening_briefing_sent = True
