@@ -158,6 +158,31 @@ class BotEngine:
                 await self.notifier.check_and_update_signals()  # TP/SL vuruldu mu?
                 await self.notifier.check_active_position_risks()  # Risk var mı?
                 
+                # PHASE 127: AI REASONING ENGINE - Gerçek Akıl Yürütme
+                # Tüm modülleri birleştirip DÜŞÜNEN bir AI
+                try:
+                    from src.brain.ai_reasoning_engine import get_reasoning_engine
+                    
+                    reasoning = get_reasoning_engine()
+                    
+                    # Her 15 dakikada bir akıl yürüt (900 saniye)
+                    if not hasattr(self, 'last_reasoning_time'):
+                        self.last_reasoning_time = datetime.now() - timedelta(hours=1)
+                    
+                    if (datetime.now() - self.last_reasoning_time).total_seconds() >= 900:
+                        for symbol in ['BTCUSDT', 'ETHUSDT']:
+                            prediction = await reasoning.think(symbol)
+                            
+                            if prediction and prediction.confidence >= 55:
+                                msg = reasoning.format_for_telegram(prediction, symbol)
+                                await self.notifier.send_message_raw(msg)
+                                logger.info(f"🧠 AI REASONING: {symbol} → {prediction.direction} %{prediction.confidence:.0f}")
+                        
+                        self.last_reasoning_time = datetime.now()
+                        
+                except Exception as reasoning_err:
+                    logger.debug(f"AI Reasoning skipped: {reasoning_err}")
+                
                 # Phase 103-107: LIVING AI BRAIN - Canlı yapay zeka karar sistemi
                 # LSTM + RL Agent + Pattern Recognition + Self-Evaluation
                 try:

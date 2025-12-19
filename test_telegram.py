@@ -1,68 +1,109 @@
-"""Test Telegram Signal - v5 Backtest Report"""
+# -*- coding: utf-8 -*-
+"""
+Telegram Test Messages - Send examples of all notification types
+"""
+import asyncio
 import sys
 sys.path.insert(0, '.')
-import asyncio
-import os
 
-# Check if TELEGRAM_TOKEN exists
-if not os.environ.get('TELEGRAM_TOKEN'):
-    print("ERROR: TELEGRAM_TOKEN not set in environment")
-    print("Please set TELEGRAM_TOKEN and TELEGRAM_CHAT_ID")
-    exit(1)
+async def send_test_messages():
+    """Send test messages for all notification types."""
+    from src.utils.notifications import NotificationManager
+    from datetime import datetime
+    
+    notifier = NotificationManager()
+    
+    if not notifier.telegram_token or not notifier.telegram_chat_id:
+        print("❌ Telegram not configured!")
+        return
+    
+    print("✅ Telegram configured, sending test messages...")
+    
+    # 1. AI OBSERVATION (from ai_observation.py format)
+    observation_msg = """
+🧠 AI TRADER ANALİZİ - BTCUSDT
+━━━━━━━━━━━━━━━━━━━━━━
+🌍 Avrupa Session | ORTA volatilite
+💰 Fiyat: $97,250.00
+📊 15dk: +0.38% | Hacim: 4.6x
+💹 Order Flow: 🟢 ALICI BASKISI
 
-from src.utils.notifications import Notifier
+📋 5 MODÜL ANALİZİ:
+  📈 Fiyat: +0.38%
+  🐋 Whale: LONG (%65)
+  😱 Fear&Greed: 25 (Korku = ALIM FIRSATI!)
+  📐 Fib: $96,500 desteğinde
+  🎯 Liq Magnet: Yukarı ($98,500)
 
-async def send_test():
-    notifier = Notifier()
+🟢 KOMBİNE SİNYAL: LONG
+🟢 Güven: %72 (YÜKSEK)
+━━━━━━━━━━━━━━━━━━━━━━
+🎯 İŞLEM DETAYLARI:
+▸ Giriş: $97,250
+▸ Hedef: $99,400 (+2.2%)
+▸ Stop: $96,150 (-1.1%)
+▸ R:R = 1:2.0
+━━━━━━━━━━━━━━━━━━━━━━
+📝 TRADER YORUMU:
+🌍 Avrupa session'ındayız. Orta hacim.
+📈 BTC yukarı yönlü sinyal veriyor.
+💹 Order flow: Taker alımları güçlü.
+━━━━━━━━━━━━━━━━━━━━━━
+⏰ """ + datetime.now().strftime('%d.%m.%Y %H:%M') + """
+🔬 TEST MESAJI - Phase 126
+"""
+    await notifier.send_message_raw(observation_msg.strip())
+    print("✅ 1/3 AI Observation sent")
+    await asyncio.sleep(2)
     
-    # Test signal - v5 Backtest Report
-    test_signal = {
-        'symbol': 'BTC/USDT',
-        'signal': 'BUY',
-        'ai_decision': 'BUY',
-        'ai_confidence': 85.0,
-        'reason': 'v5 Backtest: +9.24% ROI, 54.5% Win Rate, Sharpe 4.63'
-    }
+    # 2. FULL SIGNAL
+    signal_msg = """
+🚀 DEMIR AI SİNYAL - ETHUSDT
+━━━━━━━━━━━━━━━━━━━━━━
+🟢 YÖN: LONG ⭐⭐⭐
+━━━━━━━━━━━━━━━━━━━━━━
+📍 GİRİŞ: $3,420.00
+🛡️ STOP: $3,350.00 (2.0% risk)
+━━━ HEDEFLER ━━━
+🎯 TP1: $3,490.00 (R:R 2.0)
+🎯 TP2: $3,560.00 (R:R 4.0)
+🎯 TP3: $3,650.00 (R:R 6.5)
+━━━━━━━━━━━━━━━━━━━━━━
+🧠 MODÜLLER:
+• LSTM: UP (%68)
+• Whale: LONG
+• SMC: Bullish OB
+• MTF: 3/3 BULLISH
+━━━━━━━━━━━━━━━━━━━━━━
+📊 Güven: %78
+💰 Size: 3.5%
+⏰ """ + datetime.now().strftime('%d.%m.%Y %H:%M') + """
+🔬 TEST MESAJI - Phase 126
+"""
+    await notifier.send_message_raw(signal_msg.strip())
+    print("✅ 2/3 Full Signal sent")
+    await asyncio.sleep(2)
     
-    # Snapshot with advanced data
-    test_snapshot = {
-        'price': 101500,
-        'smart_sltp': {
-            'valid': True,
-            'direction': 'LONG',
-            'stop_loss': 98000,
-            'take_profit_1': 105000,
-            'take_profit_2': 110000,
-            'take_profit_3': 115000,
-            'risk_pct': 3.4,
-            'risk_reward_1': '1:1',
-            'risk_reward_2': '1:2.5',
-            'risk_reward_3': '1:4',
-            'quality': 'GOOD'
-        },
-        'mtf': {
-            'confluence_score': 75,
-            'trends': {
-                '1h': {'trend': 'BULLISH'},
-                '4h': {'trend': 'BULLISH'},
-                '1d': {'trend': 'NEUTRAL'}
-            }
-        },
-        'smc': {
-            'smc_bias': 'BULLISH'
-        }
-    }
+    # 3. WHALE ALERT
+    alert_msg = """
+🐋 WHALE ALERT - BTCUSDT
+━━━━━━━━━━━━━━━━━━━━━━
+💰 $85M Long pozisyon açıldı!
+
+📊 Detaylar:
+• Exchange: Binance
+• Leverage: 10x tahmini
+• Fiyat: $97,200
+
+🎯 Olası etki: Yükseliş baskısı
+⏰ """ + datetime.now().strftime('%d.%m.%Y %H:%M') + """
+🔬 TEST MESAJI - Phase 126
+"""
+    await notifier.send_message_raw(alert_msg.strip())
+    print("✅ 3/3 Whale Alert sent")
     
-    print("Sending test signal to Telegram...")
-    
-    try:
-        result = await notifier.send_signal(test_signal, test_snapshot)
-        if result:
-            print("SUCCESS: Test signal sent!")
-        else:
-            print("FAILED: Signal returned False")
-    except Exception as e:
-        print(f"ERROR: {e}")
+    print("\n✅ TÜM TEST MESAJLARI GÖNDERİLDİ!")
+    print("Telegram'ı kontrol et!")
 
 if __name__ == "__main__":
-    asyncio.run(send_test())
+    asyncio.run(send_test_messages())
