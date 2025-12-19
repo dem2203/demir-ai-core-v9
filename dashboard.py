@@ -728,6 +728,129 @@ if page == "📡 Live Market Intelligence":
                 st.caption('_"Binance Futures verisi bekleniyor"_')
 
         # ======================================
+        # PHASE 122: FUNDING RATE & FEAR GREED
+        # New panels with dynamic Turkish comments
+        # ======================================
+        st.markdown("---")
+        st.markdown("### 💰 Funding Rate & Piyasa Duygusu")
+        st.caption("_Contrarian trading sinyalleri - aşırı kalabalığın tersi kazandırır_")
+        
+        fg_col1, fg_col2 = st.columns(2)
+        
+        # Funding Rate Panel
+        with fg_col1:
+            try:
+                funding = deriv_data.get('funding_rate', 0)
+                funding_pct = funding * 100 if funding else 0
+                
+                if funding_pct > 0.05:
+                    st.metric("💰 Funding Rate", f"🔴 {funding_pct:.4f}%", "EXTREME LONG")
+                    st.caption('_"⚠️ Herkes LONG! Counter-trade: SHORT düşün"_')
+                elif funding_pct > 0.01:
+                    st.metric("💰 Funding Rate", f"🟡 {funding_pct:.4f}%", "Bullish")
+                    st.caption('_"📈 Long ağırlıklı piyasa"_')
+                elif funding_pct < -0.05:
+                    st.metric("💰 Funding Rate", f"🟢 {funding_pct:.4f}%", "EXTREME SHORT")
+                    st.caption('_"✅ Herkes SHORT! Counter-trade: LONG düşün"_')
+                elif funding_pct < -0.01:
+                    st.metric("💰 Funding Rate", f"🟡 {funding_pct:.4f}%", "Bearish")
+                    st.caption('_"📉 Short ağırlıklı piyasa"_')
+                else:
+                    st.metric("💰 Funding Rate", f"⚪ {funding_pct:.4f}%", "Neutral")
+                    st.caption('_"↔️ Dengeli piyasa - net sinyal yok"_')
+            except:
+                st.metric("💰 Funding Rate", "N/A")
+                st.caption('_"Binance Futures verisi bekleniyor"_')
+        
+        # Fear & Greed Panel
+        with fg_col2:
+            try:
+                from src.brain.web_scrapers import get_fear_greed_index
+                fng = get_fear_greed_index()
+                fng_value = fng.get('value', 50)
+                fng_class = fng.get('classification', 'Neutral')
+                
+                if fng_value <= 25:
+                    st.metric("😱 Fear & Greed", f"🟢 {fng_value}", "EXTREME FEAR")
+                    st.caption('_"✅ Aşırı korku = ALIM FIRSATI! Kalabalık satıyor, sen al."_')
+                elif fng_value <= 40:
+                    st.metric("😱 Fear & Greed", f"🟡 {fng_value}", "Fear")
+                    st.caption('_"📉 Korku var - dikkatli alım yapılabilir"_')
+                elif fng_value >= 75:
+                    st.metric("😱 Fear & Greed", f"🔴 {fng_value}", "EXTREME GREED")
+                    st.caption('_"⚠️ Aşırı açgözlülük = RİSK! Herkes alıyor, sen dikkatli ol."_')
+                elif fng_value >= 60:
+                    st.metric("😱 Fear & Greed", f"🟡 {fng_value}", "Greed")
+                    st.caption('_"📈 Açgözlülük var - kar realizasyonu düşün"_')
+                else:
+                    st.metric("😱 Fear & Greed", f"⚪ {fng_value}", "Neutral")
+                    st.caption('_"↔️ Nötr piyasa - yön bekleniyor"_')
+                
+                st.progress(fng_value / 100)
+            except Exception as e:
+                st.metric("😱 Fear & Greed", "N/A")
+                st.caption(f'_"Alternative.me verisi bekleniyor"_')
+
+        # ======================================
+        # PHASE 122: FIBONACCI LEVELS
+        # Technical analysis support/resistance
+        # ======================================
+        st.markdown("---")
+        st.markdown("### 📐 Fibonacci Seviyeleri")
+        st.caption("_Önemli destek ve direnç noktaları - Fib 0.382/0.5/0.618_")
+        
+        try:
+            from src.brain.fibonacci_analyzer import get_fibonacci
+            import asyncio
+            
+            fib = get_fibonacci()
+            
+            # Run async function
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            fib_data = loop.run_until_complete(fib.analyze(symbol='BTCUSDT', timeframe='4h'))
+            loop.close()
+            
+            if fib_data and 'error' not in fib_data:
+                fib_col1, fib_col2, fib_col3 = st.columns(3)
+                
+                with fib_col1:
+                    trend = fib_data.get('trend', 'UNKNOWN')
+                    trend_emoji = "📈" if trend == 'UPTREND' else "📉" if trend == 'DOWNTREND' else "↔️"
+                    st.metric("📐 Trend", f"{trend_emoji} {trend}")
+                    if trend == 'UPTREND':
+                        st.caption('_"Yükseliş trendi - fib desteklerinden al"_')
+                    elif trend == 'DOWNTREND':
+                        st.caption('_"Düşüş trendi - fib dirençlerinden sat"_')
+                
+                with fib_col2:
+                    support = fib_data.get('nearest_support')
+                    if support:
+                        st.metric("🟢 En Yakın Destek", f"${support['price']:,.0f}", f"Fib {support['ratio']}")
+                        st.caption(f'_"Bu seviye altına düşerse {support["distance_pct"]:.1f}% kayıp"_')
+                    else:
+                        st.metric("🟢 En Yakın Destek", "N/A")
+                
+                with fib_col3:
+                    resistance = fib_data.get('nearest_resistance')
+                    if resistance:
+                        st.metric("🔴 En Yakın Direnç", f"${resistance['price']:,.0f}", f"Fib {resistance['ratio']}")
+                        st.caption(f'_"Bu seviyeyi geçerse {abs(resistance["distance_pct"]):.1f}% potansiyel"_')
+                    else:
+                        st.metric("🔴 En Yakın Direnç", "N/A")
+                
+                # Fib signal
+                signal = fib_data.get('signal', {})
+                if signal.get('direction') != 'NEUTRAL':
+                    dir_emoji = "📈" if signal['direction'] == 'LONG' else "📉"
+                    st.info(f"{dir_emoji} **Fib Sinyal:** {signal['direction']} - {signal.get('reason', '')} ({signal.get('confidence', 0)}% güven)")
+            else:
+                st.warning("📐 Fibonacci analizi yapılamadı")
+                
+        except Exception as e:
+            st.warning(f"Fibonacci analizi kullanılamıyor: {e}")
+
+        # ======================================
         # PHASE 43: DOMINANCE METRICS
         # Comprehensive market dominance tracking
         # ======================================
