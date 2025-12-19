@@ -123,6 +123,13 @@ class ContinuousMonitor:
         symbol = data.get('symbol', 'UNKNOWN')
         trade_type = data.get('type', 'UNKNOWN')  # WHALE_BUY, WHALE_SELL, etc.
         amount_usd = data.get('amount_usd', 0)
+        price = data.get('price', 0)
+        qty = data.get('qty', 0)
+        
+        # Minimum miktar kontrolü - $100K altındaki işlemleri gösterme
+        if amount_usd < 100000:
+            logger.debug(f"Trade too small: ${amount_usd:,.0f}")
+            return
         
         # Cooldown kontrolü
         if not self.cooldown.can_send(symbol, 'whale_trade'):
@@ -148,6 +155,8 @@ class ContinuousMonitor:
 ━━━━━━━━━━━━━━━━━━━━━━
 💰 Miktar: ${amount_usd:,.0f}
 📊 Yön: {side}
+💵 Fiyat: ${price:,.2f}
+📈 Adet: {qty:.4f}
 ⏰ {datetime.now().strftime('%H:%M:%S')}
 ━━━━━━━━━━━━━━━━━━━━━━
 💡 {side} baskısı artabilir!
@@ -155,6 +164,7 @@ class ContinuousMonitor:
         
         await self.send_notification(msg)
         self.cooldown.mark_sent(symbol, 'whale_trade')
+        logger.info(f"🐋 Whale alert sent: {symbol} {side} ${amount_usd:,.0f}")
     
     async def scan_opportunities(self):
         """Fırsat taraması - tüm coinler için."""

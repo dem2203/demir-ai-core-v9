@@ -55,6 +55,7 @@ class WebSocketStream:
     async def start(self, symbol: str = "btcusdt"):
         """WebSocket stream başlat."""
         self.running = True
+        self.current_symbol = symbol.upper()  # Track current symbol
         stream_name = f"{symbol.lower()}@aggTrade"
         url = f"{self.BINANCE_WS}/{stream_name}"
         
@@ -63,7 +64,7 @@ class WebSocketStream:
         try:
             async with websockets.connect(url) as ws:
                 self.ws = ws
-                logger.info("✅ WebSocket connected!")
+                logger.info(f"✅ WebSocket connected for {self.current_symbol}!")
                 
                 while self.running:
                     try:
@@ -87,6 +88,7 @@ class WebSocketStream:
             qty = float(data.get('q', 0))
             is_buyer_maker = data.get('m', False)  # True = seller, False = buyer
             trade_time = data.get('T', 0)
+            symbol = data.get('s', getattr(self, 'current_symbol', 'BTCUSDT'))  # Get symbol from data or use tracked
             
             trade_value_btc = qty
             trade_value_usd = price * qty
@@ -97,7 +99,8 @@ class WebSocketStream:
                 'qty': qty,
                 'value_usd': trade_value_usd,
                 'is_sell': is_buyer_maker,
-                'time': trade_time
+                'time': trade_time,
+                'symbol': symbol
             })
             
             # 1. BÜYÜK TRADE TESPİTİ
@@ -107,18 +110,20 @@ class WebSocketStream:
                     'price': price,
                     'qty': qty,
                     'side': side,
-                    'time': datetime.now()
+                    'time': datetime.now(),
+                    'symbol': symbol
                 })
                 
-                logger.info(f"🐋 LARGE TRADE: {side} {qty:.2f} BTC @ ${price:,.0f}")
+                logger.info(f"🐋 LARGE TRADE: {symbol} {side} {qty:.2f} @ ${price:,.0f} (${trade_value_usd:,.0f})")
                 
-                # Alert gönder
+                # Alert gönder - with symbol and amount
                 await self._trigger_alert({
-                    'type': 'LARGE_TRADE',
+                    'type': f'WHALE_{side}',
+                    'symbol': symbol,
                     'side': side,
                     'qty': qty,
                     'price': price,
-                    'value_usd': trade_value_usd
+                    'amount_usd': trade_value_usd
                 })
             
             # 2. ANİ FİYAT HAREKETİ TESPİTİ
