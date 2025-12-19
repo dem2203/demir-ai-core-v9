@@ -89,8 +89,57 @@ class SmartSLTPCalculator:
         rr2 = abs(tp2 - entry_price) / risk if risk > 0 else 0
         rr3 = abs(tp3 - entry_price) / risk if risk > 0 else 0
         
+        # PHASE 126: ENFORCE MINIMUM R:R 1:2
+        MIN_RR = 2.0  # Minimum acceptable R:R
+        
+        # If TP1 R:R is below minimum, recalculate using ATR
+        if rr1 < MIN_RR:
+            logger.info(f"⚠️ Initial R:R {rr1:.2f} < {MIN_RR} - adjusting targets")
+            
+            # Use ATR-based targets for better R:R
+            if atr > 0:
+                if direction == 'LONG':
+                    tp1 = entry_price + (atr * MIN_RR)  # 2x ATR target
+                    tp2 = entry_price + (atr * 3.0)     # 3x ATR target
+                    tp3 = entry_price + (atr * 4.0)     # 4x ATR target
+                else:
+                    tp1 = entry_price - (atr * MIN_RR)
+                    tp2 = entry_price - (atr * 3.0)
+                    tp3 = entry_price - (atr * 4.0)
+                
+                tp1_reason = f"ATR-based R:R {MIN_RR}"
+                tp2_reason = "ATR-based 3x"
+                tp3_reason = "ATR-based 4x"
+            else:
+                # Fallback: percentage-based with min R:R
+                min_target_pct = risk / entry_price * MIN_RR * 100  # At least 2x risk
+                min_target_pct = max(min_target_pct, 2.0)  # Minimum 2%
+                
+                if direction == 'LONG':
+                    tp1 = entry_price * (1 + min_target_pct / 100)
+                    tp2 = entry_price * (1 + min_target_pct * 1.5 / 100)
+                    tp3 = entry_price * (1 + min_target_pct * 2 / 100)
+                else:
+                    tp1 = entry_price * (1 - min_target_pct / 100)
+                    tp2 = entry_price * (1 - min_target_pct * 1.5 / 100)
+                    tp3 = entry_price * (1 - min_target_pct * 2 / 100)
+                
+                tp1_reason = f"Adjusted for R:R {MIN_RR}"
+                tp2_reason = "Adjusted 1.5x"
+                tp3_reason = "Adjusted 2x"
+            
+            # Recalculate R:R
+            rr1 = abs(tp1 - entry_price) / risk if risk > 0 else 0
+            rr2 = abs(tp2 - entry_price) / risk if risk > 0 else 0
+            rr3 = abs(tp3 - entry_price) / risk if risk > 0 else 0
+            
+            logger.info(f"✅ Adjusted R:R: {rr1:.2f} / {rr2:.2f} / {rr3:.2f}")
+        
         # Calculate risk percentage
         risk_pct = (risk / entry_price) * 100
+        
+        # PHASE 126: Final R:R validation - reject if still below minimum
+        is_valid_rr = rr1 >= MIN_RR
         
         return {
             'direction': direction,
@@ -107,8 +156,9 @@ class SmartSLTPCalculator:
             'tp1_reason': tp1_reason,
             'tp2_reason': tp2_reason,
             'tp3_reason': tp3_reason,
-            'valid': risk_pct <= 5.0,  # Max 5% risk
-            'quality': self._assess_setup_quality(rr1, mtf_data)
+            'valid': risk_pct <= 5.0 and is_valid_rr,  # PHASE 126: Must have R:R >= 2
+            'quality': self._assess_setup_quality(rr1, mtf_data),
+            'rr_adjusted': rr1 >= MIN_RR  # Flag if we had to adjust
         }
     
     def _calculate_sl(self, direction: str, entry: float, 

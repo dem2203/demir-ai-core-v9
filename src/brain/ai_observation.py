@@ -35,10 +35,10 @@ class AIObservationSystem:
     
     STATE_FILE = "ai_observations.json"
     
-    # Thresholds - Phase 124: Daha duyarlı
+    # Thresholds - Phase 126: Kalite filtresi güçlendirildi
     PRICE_CHANGE_THRESHOLD = 0.8  # %0.8 hareket
     VOLUME_SPIKE_THRESHOLD = 1.8  # 1.8x normal hacim
-    MIN_CONFIDENCE_THRESHOLD = 50  # Sadece %50+ güvenli gözlemler
+    MIN_CONFIDENCE_THRESHOLD = 60  # PHASE 126: %60+ güvenli gözlemler (önceki: 50)
     
     # Cooldown
     COOLDOWN_MINUTES = 30  # Daha sık gözlem
