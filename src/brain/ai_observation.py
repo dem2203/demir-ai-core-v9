@@ -122,6 +122,20 @@ class AIObservationSystem:
             logger.debug(f"Basic data fetch failed: {e}")
             return None
     
+    async def _get_klines_raw(self, symbol: str) -> Optional[list]:
+        """Raw klines verisi al (TraderMindset için)."""
+        try:
+            resp = requests.get(
+                "https://api.binance.com/api/v3/klines",
+                params={'symbol': symbol, 'interval': '5m', 'limit': 20},
+                timeout=10
+            )
+            if resp.status_code == 200:
+                return resp.json()
+        except:
+            pass
+        return None
+    
     async def _get_whale_intel(self, symbol: str) -> Dict:
         """Whale Intelligence verisi al."""
         try:
@@ -390,6 +404,46 @@ class AIObservationSystem:
             self.last_observations[symbol] = datetime.now()
             self._save_state()
             
+            # 6. PHASE 125: Trader Mindset Context
+            try:
+                from src.brain.trader_mindset import get_trader_mindset
+                
+                mindset = get_trader_mindset()
+                
+                # Session bilgisi
+                session = mindset.get_current_session()
+                
+                # Stop hunt tespiti (klines'dan)
+                klines = await self._get_klines_raw(symbol)
+                stop_hunt = mindset.detect_stop_hunt(klines) if klines else {'detected': False}
+                
+                # Order flow
+                order_flow = mindset.analyze_order_flow(symbol)
+                
+                # Manipülasyon kontrolü
+                manipulation = mindset.detect_market_manipulation(klines, volume_ratio) if klines else {'detected': False}
+                
+                # Narrative oluştur
+                narrative_data = {
+                    'symbol': symbol,
+                    'direction': direction,
+                    'confidence': min(95, confidence),
+                    'reasons': reasons,
+                    'session': session,
+                    'stop_hunt': stop_hunt,
+                    'order_flow': order_flow,
+                    'manipulation': manipulation
+                }
+                narrative = mindset.generate_narrative(narrative_data)
+                
+            except Exception as e:
+                logger.debug(f"Trader mindset failed: {e}")
+                session = {}
+                stop_hunt = {'detected': False}
+                order_flow = {'available': False}
+                manipulation = {'detected': False}
+                narrative = ""
+            
             return {
                 'symbol': symbol,
                 'current_price': current_price,
@@ -408,7 +462,13 @@ class AIObservationSystem:
                 'funding': funding,
                 'fear_greed': fng,
                 'fibonacci': fib,
-                'liquidation': liq
+                'liquidation': liq,
+                # PHASE 125: Trader Mindset
+                'session': session,
+                'stop_hunt': stop_hunt,
+                'order_flow': order_flow,
+                'manipulation': manipulation,
+                'narrative': narrative
             }
             
         except Exception as e:
@@ -461,11 +521,39 @@ class AIObservationSystem:
         # Modül detayları
         reasons_text = "\n".join([f"  {r}" for r in reasons[:6]])  # Max 6 sebep
         
+        # PHASE 125: Trader Mindset sections
+        session = obs.get('session', {})
+        stop_hunt = obs.get('stop_hunt', {})
+        order_flow = obs.get('order_flow', {})
+        manipulation = obs.get('manipulation', {})
+        narrative = obs.get('narrative', '')
+        
+        # Session header
+        session_line = ""
+        if session.get('name'):
+            session_line = f"{session['emoji']} {session['name']} Session | {session.get('volatility_expected', 'ORTA')} volatilite"
+        
+        # Warnings
+        warnings = []
+        if stop_hunt.get('detected'):
+            warnings.append(f"⚠️ {stop_hunt.get('description', 'Stop hunt!')}")
+        if manipulation.get('detected'):
+            warnings.append(f"🚨 {manipulation.get('description', 'Dikkat!')}")
+        
+        warnings_text = "\n".join(warnings) if warnings else ""
+        
+        # Order flow
+        order_flow_line = ""
+        if order_flow.get('available'):
+            order_flow_line = f"💹 Order Flow: {order_flow['flow_emoji']} {order_flow['flow']}"
+        
         msg = f"""
-🧠 AI KAPSAMLI ANALİZ - {symbol}
+🧠 AI TRADER ANALİZİ - {symbol}
 ━━━━━━━━━━━━━━━━━━━━━━
+{session_line}
 💰 Fiyat: ${current_price:,.2f}
 📊 15dk: {change_pct:+.2f}% | Hacim: {volume_ratio:.1f}x
+{order_flow_line}
 
 📋 {modules_used} MODÜL ANALİZİ:
 {reasons_text}
@@ -478,9 +566,20 @@ class AIObservationSystem:
 ▸ Hedef: ${target_price:,.2f} (+{profit_pct:.1f}%)
 ▸ Stop: ${stop_loss:,.2f} (-{loss_pct:.1f}%)
 ▸ R:R = 1:{rr_ratio:.1f}
-━━━━━━━━━━━━━━━━━━━━━━
-⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}
 """.strip()
+        
+        # Add warnings if any
+        if warnings_text:
+            msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n{warnings_text}"
+        
+        # Add brief narrative
+        if narrative:
+            # Kısa tut - max 3 satır
+            narrative_lines = narrative.split('\n')[:3]
+            brief_narrative = '\n'.join(narrative_lines)
+            msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📝 TRADER YORUMU:\n{brief_narrative}"
+        
+        msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}"
         
         return msg
     
