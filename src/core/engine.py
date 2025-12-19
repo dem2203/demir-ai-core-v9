@@ -201,6 +201,19 @@ class BotEngine:
                                 await self.notifier.send_message_raw(msg)
                                 logger.info(f"🧠 AI REASONING: {symbol} → {prediction.direction} %{prediction.confidence:.0f}")
                         
+                        # PHASE 131: TECHNICAL SCANNER - 4 coin x 14 modül
+                        try:
+                            from src.brain.technical_scanner import get_technical_scanner
+                            scanner = get_technical_scanner()
+                            scans = await scanner.scan_all_coins()
+                            
+                            for scan in scans:
+                                msg = scanner.format_scan_message(scan)
+                                await self.notifier.send_message_raw(msg)
+                                logger.info(f"📊 TECH SCAN: {scan.symbol} → {scan.direction} %{scan.overall_confidence:.0f}")
+                        except Exception as scan_err:
+                            logger.debug(f"Technical scan skipped: {scan_err}")
+                        
                         self.last_reasoning_time = datetime.now()
                     
                     # PHASE 128: ADVANCED AI INTELLIGENCE FEATURES
