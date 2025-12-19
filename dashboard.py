@@ -851,6 +851,65 @@ if page == "📡 Live Market Intelligence":
             st.warning(f"Fibonacci analizi kullanılamıyor: {e}")
 
         # ======================================
+        # PHASE 122: SIGNAL DATABASE STATS
+        # AI learning and performance tracking
+        # ======================================
+        st.markdown("---")
+        st.markdown("### 🗄️ Sinyal Veritabanı & Öğrenme")
+        st.caption("_AI performans takibi - geçmiş sinyallerden öğreniyor_")
+        
+        try:
+            from src.brain.signal_database import get_signal_database
+            
+            db = get_signal_database()
+            stats = db.get_statistics()
+            
+            db_col1, db_col2, db_col3, db_col4 = st.columns(4)
+            
+            with db_col1:
+                st.metric("📊 Toplam Sinyal", stats['total_signals'])
+                st.caption(f"_{stats['active_signals']} aktif, {stats['closed_signals']} kapalı_")
+            
+            with db_col2:
+                wr = stats['win_rate']
+                wr_emoji = "🏆" if wr >= 60 else "📈" if wr >= 50 else "📉"
+                st.metric("🎯 Win Rate", f"{wr_emoji} %{wr:.1f}")
+                if wr >= 60:
+                    st.caption('_"Mükemmel! AI başarılı öğreniyor"_')
+                elif wr >= 50:
+                    st.caption('_"İyi! Karlı strateji"_')
+                else:
+                    st.caption('_"Dikkat! AI öğrenmeye devam ediyor"_')
+            
+            with db_col3:
+                pnl = stats['total_pnl_pct']
+                pnl_emoji = "📈" if pnl > 0 else "📉"
+                st.metric("💰 Toplam PnL", f"{pnl_emoji} %{pnl:+.2f}")
+                if pnl > 10:
+                    st.caption('_"Güçlü kar! Strateji çalışıyor"_')
+                elif pnl > 0:
+                    st.caption('_"Pozitif! Devam"_')
+                else:
+                    st.caption('_"Geçici kayıp - öğrenme süreci"_')
+            
+            with db_col4:
+                learning = stats['learning_ready']
+                if learning:
+                    st.metric("🧠 AI Öğrenme", "✅ HAZIR")
+                    st.caption('_"50+ sinyal = ML eğitime hazır"_')
+                else:
+                    remaining = 50 - stats['closed_signals']
+                    st.metric("🧠 AI Öğrenme", f"📚 {remaining} kaldı")
+                    st.caption(f'_"{remaining} sinyal daha gerekli"_')
+            
+            # Weekly performance
+            if stats['weekly_signals'] > 0:
+                st.info(f"📅 **Haftalık:** {stats['weekly_signals']} sinyal, %{stats['weekly_win_rate']:.1f} win rate")
+                
+        except Exception as e:
+            st.warning(f"Signal Database kullanılamıyor: {e}")
+
+        # ======================================
         # PHASE 43: DOMINANCE METRICS
         # Comprehensive market dominance tracking
         # ======================================
@@ -1236,14 +1295,14 @@ elif page == "🧠 AI Reasoning":
 # 3. NEURAL BRAIN MONITOR (Visual Intelligence)
 # ==========================================
 elif page == "🧠 Neural Brain Monitor":
-    st.header("🧠 Neural Brain Monitor")
-    st.caption("Visualizing the internal state of the Reinforcement Learning Agent.")
+    st.header("🧠 Neural Brain Monitor (Sinirsel Beyin Monitörü)")
+    st.caption("_RL Ajanının iç durumunu görselleştirme - AI'ın karar verme süreci_")
     
-    if st.button('🔄 Refresh Brain State'): st.rerun()
+    if st.button('🔄 Beyin Durumunu Yenile'): st.rerun()
     
     data = load_json("dashboard_data.json")
     if not data:
-        st.warning("Waiting for Brain Data...")
+        st.warning("🧠 Beyin verisi bekleniyor... / Waiting for Brain Data...")
         st.stop()
         
     import plotly.graph_objects as go
@@ -1459,7 +1518,8 @@ elif page == "🧠 Neural Brain Monitor":
 # 3. LIVE TRADING CHART (Phase 14)
 # ==========================================
 elif page == "📈 Live Trading Chart":
-    st.title("📈 Live Paper Trading Chart")
+    st.title("📈 Canlı İşlem Grafiği (Live Trading Chart)")
+    st.caption("_Gerçek zamanlı fiyat hareketleri ve işlem takibi_")
     
     # Import chart visualizer
     from src.core.chart_visualizer import ChartVisualizer
@@ -1548,16 +1608,16 @@ elif page == "📈 Live Trading Chart":
 # 4. ADVISORY PORTFOLIO
 # ==========================================
 elif page == "💼 Advisory Portfolio":
-    st.header("💼 Advisory Portfolio Tracker")
-    st.caption("Simulated execution of AI signals. No real funds at risk.")
+    st.header("💼 Tavsiye Portföy (Advisory Portfolio)")
+    st.caption("_AI sinyallerinin simüle edilmiş uygulaması - Gerçek para riski yok!_")
     
-    if st.button('🔄 Refresh Portfolio'): st.rerun()
+    if st.button('🔄 Portföyü Yenile'): st.rerun()
     
     portfolio = load_json("portfolio.json")
     market_data = load_json("dashboard_data.json")
     
     if not portfolio:
-        st.info("Waiting for the first AI signal execution...")
+        st.info("🕐 İlk AI sinyal uygulaması bekleniyor... / Waiting for first AI signal...")
     else:
         balance = portfolio.get('balance', 0)
         equity = balance
@@ -1619,13 +1679,14 @@ elif page == "💼 Advisory Portfolio":
 # 3. BACKTEST LAB
 # ==========================================
 elif page == "🧪 Backtest Lab":
-    st.header("⏳ Historical Simulation")
+    st.header("⏳ Geçmiş Test Laboratuvarı (Backtest Lab)")
+    st.caption("_Geçmiş verilerle strateji simülasyonu - Performans testi_")
     c1, c2 = st.columns(2)
-    with c1: symbol = st.selectbox("Asset", Config.TARGET_COINS)
-    with c2: days = st.slider("Lookback Days", 7, 60, 30)
+    with c1: symbol = st.selectbox("Varlık / Asset", Config.TARGET_COINS)
+    with c2: days = st.slider("Geriye Bakış Günü", 7, 60, 30)
     
-    if st.button("🚀 Run Simulation"):
-        with st.spinner("Crunching numbers..."):
+    if st.button("🚀 Simülasyonu Başlat"):
+        with st.spinner("📊 Hesaplanıyor... / Crunching numbers..."):
             async def run():
                 from src.backtest.backtester import Backtester
                 bt = Backtester()
@@ -1650,13 +1711,13 @@ elif page == "🧪 Backtest Lab":
 # 4. OPTIMIZER
 # ==========================================
 elif page == "⚙️ Strategy Optimizer":
-    st.header("🧬 Genetic Strategy Optimizer")
-    st.info("Uses genetic algorithms to find optimal parameters for the current market regime.")
+    st.header("🧬 Strateji Optimizasyonu (Strategy Optimizer)")
+    st.caption("_Genetik algoritma ile mevcut piyasa rejimine en uygun parametreleri bul_")
     
-    target_sym = st.selectbox("Target Asset", Config.TARGET_COINS, key="opt_sym")
+    target_sym = st.selectbox("Hedef Varlık / Target Asset", Config.TARGET_COINS, key="opt_sym")
     
-    if st.button("🧬 Start Optimization"):
-        with st.spinner("Optimizing... This may take a while."):
+    if st.button("🧬 Optimizasyonu Başlat"):
+        with st.spinner("🧠 Optimize ediliyor... Bu biraz zaman alabilir."):
             async def run_opt():
                 from src.brain.optimizer import StrategyOptimizer
                 opt = StrategyOptimizer()
