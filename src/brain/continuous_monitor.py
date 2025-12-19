@@ -33,6 +33,7 @@ class AlertCooldown:
         'whale_trade': 15,      # Büyük işlem: 15dk
         'direction_change': 60, # Yön değişimi: 1 saat
         'reasoning': 15,        # AI Reasoning: 15dk
+        'sudden_move': 20,      # Ani hareket: 20dk
         'default': 30           # Varsayılan: 30dk
     }
     
@@ -282,6 +283,126 @@ class ContinuousMonitor:
         except Exception as e:
             logger.error(f"Direction check failed: {e}")
     
+    async def detect_sudden_movements(self):
+        """
+        ANİ HAREKET TESPİTİ
+        
+        Coinglass + Binance verileri ile ani hareket tespit:
+        1. Volume Spike (3x+ hacim)
+        2. OI Delta (hızlı değişim)
+        3. Liquidation Cascade riski
+        4. Anomaly Detection (ML)
+        5. Whale Flow (borsa akışı)
+        """
+        try:
+            for symbol in self.SYMBOLS:
+                # Cooldown kontrolü
+                if not self.cooldown.can_send(symbol, 'sudden_move'):
+                    continue
+                
+                clean_symbol = symbol.replace('USDT', '')
+                alerts = []
+                severity = 0  # 0-100
+                
+                # 1. VOLUME SPIKE
+                try:
+                    from src.brain.volume_spike import detect_volume_spike
+                    spike = detect_volume_spike(symbol)
+                    if spike.get('spike_detected'):
+                        severity += 25
+                        alerts.append(f"📊 Hacim Spike: {spike['spike_strength']:.1f}x normal")
+                except Exception:
+                    pass
+                
+                # 2. OI DELTA (Ani değişim)
+                try:
+                    from src.brain.coinglass_oi_delta import get_oi_delta
+                    oi = get_oi_delta(symbol)
+                    if oi.get('velocity') == 'INCREASING' and oi.get('delta_1h_pct', 0) > 3:
+                        severity += 20
+                        alerts.append(f"📈 OI Artışı: +%{oi['delta_1h_pct']:.1f} (1h)")
+                    elif oi.get('velocity') == 'DECREASING' and oi.get('delta_1h_pct', 0) < -3:
+                        severity += 20
+                        alerts.append(f"📉 OI Düşüşü: %{oi['delta_1h_pct']:.1f} (1h)")
+                except Exception:
+                    pass
+                
+                # 3. LIQUIDATION CASCADE RİSKİ
+                try:
+                    from src.brain.coinglass_liquidation import get_liquidation_levels
+                    liq = get_liquidation_levels(clean_symbol)
+                    if liq.get('cascade_risk') == 'HIGH':
+                        severity += 30
+                        alerts.append(f"🎯 Cascade Risk: YÜKSEK! Liq %{liq.get('distance_to_long_pct', 0):.1f} uzakta")
+                    elif liq.get('cascade_risk') == 'MEDIUM':
+                        severity += 15
+                        alerts.append(f"⚠️ Cascade Risk: ORTA")
+                except Exception:
+                    pass
+                
+                # 4. WHALE FLOW (Borsa akışı)
+                try:
+                    from src.brain.coinglass_whale_alerts import get_whale_alerts
+                    whale = get_whale_alerts()
+                    if whale.get('oi_change_pct', 0) > 5:
+                        severity += 15
+                        alerts.append(f"🐋 Whale Giriş: OI +%{whale['oi_change_pct']:.1f}")
+                    elif whale.get('oi_change_pct', 0) < -3:
+                        severity += 15
+                        alerts.append(f"🐋 Whale Çıkış: OI %{whale['oi_change_pct']:.1f}")
+                except Exception:
+                    pass
+                
+                # 5. FİYAT DEĞİŞİMİ KONTROLÜ
+                try:
+                    import requests
+                    resp = requests.get(
+                        "https://api.binance.com/api/v3/ticker/24hr",
+                        params={'symbol': symbol},
+                        timeout=5
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        price = float(data['lastPrice'])
+                        change_1h = float(data.get('priceChangePercent', 0))
+                        
+                        if abs(change_1h) > 3:
+                            severity += 25
+                            direction = "📈 YUKARI" if change_1h > 0 else "📉 AŞAĞI"
+                            alerts.append(f"{direction}: %{change_1h:.1f} (24h)")
+                except Exception:
+                    pass
+                
+                # ANİ HAREKET TESPİT EDİLDİ Mİ?
+                if severity >= 40 and len(alerts) >= 2:
+                    try:
+                        current_price = float(data['lastPrice']) if 'data' in dir() else 0
+                    except:
+                        current_price = 0
+                    
+                    msg = f"""
+⚡ ANİ HAREKET TESPİTİ - {symbol}
+━━━━━━━━━━━━━━━━━━━━━━
+💰 Fiyat: ${current_price:,.2f}
+📊 Şiddet: %{severity}
+━━━━━━━━━━━━━━━━━━━━━━
+🔍 TESPİTLER:
+"""
+                    for alert in alerts:
+                        msg += f"  • {alert}\n"
+                    
+                    msg += f"""
+━━━━━━━━━━━━━━━━━━━━━━
+⚠️ Volatilite artabilir!
+⏰ {datetime.now().strftime('%H:%M:%S')}
+"""
+                    await self.send_notification(msg)
+                    self.cooldown.mark_sent(symbol, 'sudden_move')
+                    logger.info(f"⚡ Sudden movement detected: {symbol} severity={severity}")
+                    
+        except Exception as e:
+            logger.error(f"Sudden movement detection failed: {e}")
+    
     async def run_continuous_scan(self):
         """
         ANA TARAMA DÖNGÜSÜ
@@ -290,12 +411,22 @@ class ContinuousMonitor:
         - Fırsat taraması
         - Risk taraması
         - Yön değişimi kontrolü
+        
+        Her 1 dakikada bir:
+        - Ani hareket taraması
         """
         scan_interval = 300  # 5 dakika
+        sudden_check_interval = 60  # 1 dakika
+        last_sudden_check = datetime.now() - timedelta(minutes=2)
         
         while True:
             try:
                 now = datetime.now()
+                
+                # Her dakika ani hareket kontrolü
+                if (now - last_sudden_check).total_seconds() >= sudden_check_interval:
+                    await self.detect_sudden_movements()
+                    last_sudden_check = now
                 
                 # 5dk'da bir tam tarama
                 if (now - self.last_scan_time).total_seconds() >= scan_interval:
@@ -311,7 +442,7 @@ class ContinuousMonitor:
                     self.last_scan_time = now
                     logger.info("✅ Continuous scan complete")
                 
-                await asyncio.sleep(60)  # Her dakika kontrol
+                await asyncio.sleep(30)  # Her 30 saniye kontrol
                 
             except Exception as e:
                 logger.error(f"Continuous scan error: {e}")
