@@ -42,6 +42,7 @@ from src.brain.unified_brain import get_unified_brain
 from src.brain.early_warning import get_warning_system
 from src.brain.auto_trainer import get_trainer, start_training_background
 from src.brain.signal_performance import get_performance_tracker
+from src.brain.predictive_engine import get_predictive_engine
 
 logger = logging.getLogger("DEMIR_AI_CORE_ENGINE")
 
@@ -219,23 +220,23 @@ class BotEngine:
                         
                         self.last_warning_scan = datetime.now()
                     
-                    # Her 15 dakikada bir Unified Brain analizi
+                    # Her 15 dakikada bir PREDICTIVE ENGINE analizi (GERÇEK AI)
                     if not hasattr(self, 'last_unified_analysis'):
                         self.last_unified_analysis = datetime.now() - timedelta(minutes=20)
                     
                     performance_tracker = get_performance_tracker()
+                    predictive_engine = get_predictive_engine()
                     
                     if (datetime.now() - self.last_unified_analysis).total_seconds() >= 900:
                         for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:
-                            signal = await unified_brain.analyze(symbol)
+                            # Predictive Engine: Gerçek AI tahmin (yön + hedef + neden)
+                            prediction = await predictive_engine.predict(symbol)
                             
-                            if signal:
-                                # Sinyali kaydet (performance tracking)
-                                performance_tracker.record_signal(signal)
-                                
-                                msg = unified_brain.format_for_telegram(signal)
+                            if prediction:
+                                # Telegram'a gönder
+                                msg = predictive_engine.format_telegram(prediction)
                                 await self.notifier.send_message_raw(msg)
-                                logger.info(f"🧠 UNIFIED BRAIN: {symbol} {signal.direction} %{signal.confidence:.0f}")
+                                logger.info(f"🎯 PREDICTION: {symbol} {prediction.direction} -> ${prediction.target_price:,.0f} ({prediction.confidence:.0f}%)")
                         
                         self.last_unified_analysis = datetime.now()
                     
