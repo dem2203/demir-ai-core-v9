@@ -66,17 +66,38 @@ class LSTMTrendPredictor:
         import os
         import joblib
         
-        model_path = f"src/brain/models/storage/lstm_v11_{self.symbol}.h5"
+        # Try v12 first (newly trained with current TensorFlow)
+        model_path_v12 = f"src/brain/models/storage/lstm_v12_{self.symbol}.h5"
+        model_path_v11 = f"src/brain/models/storage/lstm_v11_{self.symbol}.h5"
         scaler_path = f"src/brain/models/storage/scaler_{self.symbol}.pkl"
+        
+        model_path = model_path_v12 if os.path.exists(model_path_v12) else model_path_v11
         
         try:
             if os.path.exists(model_path):
-                self.model = load_model(model_path)
-                logger.info(f"✅ LSTM model loaded: {model_path}")
+                # Try loading with compile=False to avoid optimizer issues
+                try:
+                    self.model = load_model(model_path, compile=False)
+                except Exception as e1:
+                    # Fallback: try without compile argument
+                    try:
+                        self.model = load_model(model_path)
+                    except Exception as e2:
+                        logger.warning(f"Model load failed with both methods: {e1}, {e2}")
+                        self.model = None
+                        return
+                
+                if self.model:
+                    logger.info(f"LSTM model loaded: {model_path}")
+                    self.trained = True
                 
                 if os.path.exists(scaler_path):
-                    self.scaler = joblib.load(scaler_path)
-                    logger.info(f"✅ Scaler loaded: {scaler_path}")
+                    try:
+                        self.scaler = joblib.load(scaler_path)
+                        logger.info(f"Scaler loaded: {scaler_path}")
+                    except Exception as e:
+                        logger.warning(f"Scaler load failed: {e}")
+                        self.scaler = MinMaxScaler()
                 
                 self.trained = True
             else:

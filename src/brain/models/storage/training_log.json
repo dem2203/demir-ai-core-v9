@@ -1,0 +1,15 @@
+{
+  "last_train": {
+    "BTCUSDT": "2025-12-20T12:58:13.526069"
+  },
+  "models": {
+    "BTCUSDT": {
+      "version": "v12",
+      "accuracy": 0.6286089420318604,
+      "loss": 0.8651112914085388,
+      "samples": 953,
+      "trained_at": "2025-12-20T12:58:13.526069"
+    }
+  },
+  "performance": {}
+}
