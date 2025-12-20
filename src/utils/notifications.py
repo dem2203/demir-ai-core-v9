@@ -221,6 +221,66 @@ class NotificationManager:
             elif snapshot.etf_flow_daily < -200:
                 bearish_signals.append((1.5, f"📊 ETF: *${abs(snapshot.etf_flow_daily):.0f}M OUTFLOW* ⚠️"))
             
+            # ═══════════════════════════════════════════════════════════════
+            # 11-15. MAKRO & MİKRO VERİLER (DXY, VIX, BTC.D, MVRV, NUPL)
+            # ═══════════════════════════════════════════════════════════════
+            try:
+                from src.brain.macro_micro_data import get_macro_micro_fetcher
+                mm_fetcher = get_macro_micro_fetcher()
+                combined = await mm_fetcher.get_combined_analysis(symbol)
+                
+                macro = combined.macro
+                micro = combined.micro
+                
+                # 11. DXY (Dollar Index) - Ters korelasyon
+                if macro.dxy > 0:
+                    if macro.dxy_trend == "DOWN":
+                        bullish_signals.append((1.5, f"💵 DXY: {macro.dxy:.1f} *DÜŞÜYOR* ({macro.dxy_change_24h:+.2f}%) - Crypto için BULLISH"))
+                    elif macro.dxy_trend == "UP":
+                        bearish_signals.append((1.5, f"💵 DXY: {macro.dxy:.1f} *YÜKSELİYOR* ({macro.dxy_change_24h:+.2f}%) - Crypto için BEARISH"))
+                
+                # 12. VIX (Volatility Index) - Risk Sentiment
+                if macro.vix > 0:
+                    if macro.vix_level == "EXTREME":
+                        bearish_signals.append((2.0, f"📈 VIX: *{macro.vix:.1f}* _(Extreme Fear - Risk-Off)_ ⚠️"))
+                    elif macro.vix_level == "HIGH":
+                        bearish_signals.append((1.0, f"📈 VIX: {macro.vix:.1f} (Yüksek volatilite)"))
+                    elif macro.vix_level == "LOW":
+                        bullish_signals.append((1.0, f"📈 VIX: {macro.vix:.1f} (Düşük - Risk-On ortamı)"))
+                
+                # 13. Stock Market Correlation
+                if macro.spx500_change_24h > 1:
+                    bullish_signals.append((0.5, f"📊 S&P500: +{macro.spx500_change_24h:.1f}% (Risk-On)"))
+                elif macro.spx500_change_24h < -1:
+                    bearish_signals.append((0.5, f"📊 S&P500: {macro.spx500_change_24h:.1f}% (Risk-Off)"))
+                
+                # 14. BTC Dominance
+                if micro.btc_dominance > 0:
+                    if micro.btc_dominance > 55:
+                        neutral_signals.append(f"₿ BTC.D: {micro.btc_dominance:.1f}% (Altcoin sezonu değil)")
+                    elif micro.btc_dominance < 45:
+                        bullish_signals.append((0.5, f"₿ BTC.D: {micro.btc_dominance:.1f}% (Altseason potansiyeli)"))
+                
+                # 15. On-Chain Metrics (MVRV + NUPL)
+                if micro.mvrv_zscore != 0:
+                    if micro.mvrv_zscore < 0:
+                        bullish_signals.append((1.5, f"🔗 MVRV: *{micro.mvrv_zscore:.1f}* _(Undervalued - ALIM FIRSATI)_"))
+                    elif micro.mvrv_zscore > 5:
+                        bearish_signals.append((1.5, f"🔗 MVRV: *{micro.mvrv_zscore:.1f}* _(Overvalued - DİKKAT)_ ⚠️"))
+                    
+                if micro.nupl != 0:
+                    if micro.nupl < 0:
+                        bullish_signals.append((1.0, f"📊 NUPL: {micro.nupl:.2f} (Capitulation zone - Dip olabilir)"))
+                    elif micro.nupl > 0.7:
+                        bearish_signals.append((1.0, f"📊 NUPL: {micro.nupl:.2f} (Euphoria zone - Tepe yakın)"))
+                
+                # Stablecoin Dominance
+                if micro.stablecoin_total_dominance > 8:
+                    bearish_signals.append((0.5, f"💵 Stablecoin D: {micro.stablecoin_total_dominance:.1f}% (Yüksek - Bekleme modu)"))
+                    
+            except Exception as mm_err:
+                logger.debug(f"Macro/Micro data error: {mm_err}")
+            
             # SONUÇ HESAPLA
             bullish_score = sum(s[0] for s in bullish_signals)
             bearish_score = sum(s[0] for s in bearish_signals)
