@@ -5,12 +5,10 @@ DEMIR AI - THINKING BRAIN
 Gercek dusunen yapay zeka.
 
 Kural tabanli degil, dusunce tabanli:
-- Gozlemler
-- Hatirlar
-- Celiskileri tespit eder
-- Mantik yurutur
+- Senaryo analizi yapar
+- Gelecegi kurgular
+- Hikayelestirir
 - Karar verir
-- Ogrendiklerini uygular
 
 Author: DEMIR AI Core Team
 Date: 2024-12
@@ -52,28 +50,27 @@ class Observation:
     squeeze: bool
     timestamp: datetime = field(default_factory=datetime.now)
 
-
 @dataclass
-class Thought:
-    """Tek bir dusunce adimi."""
-    step: str  # 'OBSERVE', 'REMEMBER', 'ANALYZE', 'CONFLICT', 'DECIDE'
-    content: str
-    confidence: float = 0.0
-
+class Scenario:
+    """Gelecek senaryosu."""
+    name: str
+    probability: float
+    description: str
+    invalidation_point: float
+    confirmation_point: float
 
 @dataclass
 class Decision:
     """Nihai karar."""
-    action: str  # 'LONG', 'SHORT', 'WAIT'
+    action: str  # LONG, SHORT, WAIT
     symbol: str
-    reasoning: List[Thought]
     confidence: float
-    entry_price: float = 0.0
-    target_price: float = 0.0
-    stop_loss: float = 0.0
-    conditions: List[str] = field(default_factory=list)  # "Eger X olursa Y yap"
-    timestamp: datetime = field(default_factory=datetime.now)
-
+    narrative: str  # Hikaye/Gerekce
+    scenarios: List[Scenario]
+    entry_price: float = 0
+    target_price: float = 0
+    stop_loss: float = 0
+    conditions: List[str] = field(default_factory=list)
 
 @dataclass 
 class Memory:
@@ -94,99 +91,222 @@ class Memory:
 
 class ThinkingBrain:
     """
-    Dusunen Yapay Zeka Beyni
+    GERCEK DUSUNEN AI BEYNI v3.0
     
-    Kural takip etmez, DUSUNUR:
-    1. GOZLEM: Piyasayi gozlemle
-    2. HAFIZA: Gecmisi hatirla
-    3. ANALIZ: Faktorleri analiz et
-    4. CELISKI: Celiskileri tespit et
-    5. KARAR: Dusunup karar ver
+    Kural tabanli degil, SENARYO ve HIKAYE tabanli calisir.
+    Bir insan trader gibi:
+    1. Hikayeyi kurar (Narrative Construction)
+    2. Senaryolari oynatir (Scenario Simulation)
+    3. Risk/Odul hesabi yapar (Risk Assessment)
+    4. Karar verir (Execution)
     """
     
     def __init__(self):
+        self.memory_path = Path(__file__).parent / 'memory_data'
+        self.memory_path.mkdir(exist_ok=True)
+        self.predictions_file = self.memory_path / 'predictions.json'
+        self.logger = logging.getLogger("THINKING_BRAIN")
         self.memories: List[Memory] = []
-        self.learnings: Dict = {}
-        self.factor_weights: Dict = {
-            'fear_greed': 1.0,
-            'whale_flow': 1.0,
-            'funding': 1.0,
-            'squeeze': 1.0,
-            'ema': 1.0,
-            'rsi': 1.0,
-            'volume': 1.0
-        }
         self._load_memory()
-        self._load_learnings()
-        logger.info("Thinking Brain initialized")
-    
-    # =========================================================================
-    # ANA FONKSIYON: DUSUN
-    # =========================================================================
-    
+        
     async def think(self, symbol: str = 'BTCUSDT') -> Decision:
         """
-        ANA DUSUNME FONKSIYONU
-        
-        Bir insan trader gibi dusunur ve karar verir.
+        INSAN GIBI DUSUNME SURECI
         """
-        thoughts: List[Thought] = []
+        self.logger.info(f"Thinking started for {symbol}")
         
-        # 1. GOZLEM - Piyasayi gozlemle
-        thoughts.append(Thought(step='OBSERVE', content='Piyasayi gozlemliyorum...'))
-        observation = await self._observe(symbol)
+        # 1. GOZLEM (Veri Toplama)
+        obs = await self._observe(symbol)
         
-        obs_text = self._describe_observation(observation)
-        thoughts.append(Thought(step='OBSERVE', content=obs_text, confidence=1.0))
+        # 2. KARAKTER ANALIZI (Piyasa Ruh Hali)
+        mood = self._analyze_mood(obs)
         
-        # 2. HAFIZA - Gecmisi hatirla
-        thoughts.append(Thought(step='REMEMBER', content='Gecmis deneyimlerimi hatirliyorum...'))
-        memories = self._remember_similar(observation)
+        # 3. SENARYO OLUSTURMA (Gelecegi Hayal Etme)
+        bull_case = self._construct_bull_case(obs)
+        bear_case = self._construct_bear_case(obs)
         
-        if memories:
-            mem_text = self._describe_memories(memories)
-            thoughts.append(Thought(step='REMEMBER', content=mem_text, confidence=0.8))
-        else:
-            thoughts.append(Thought(step='REMEMBER', content='Bu duruma benzer gecmis deneyimim yok.', confidence=0.5))
+        # 4. SENARYO CARPISTIRMA (Hangisi daha mantikli?)
+        winner, narrative = self._synthesize_narrative(obs, mood, bull_case, bear_case)
         
-        # 3. ANALIZ - Faktorleri analiz et
-        thoughts.append(Thought(step='ANALYZE', content='Faktorleri analiz ediyorum...'))
-        signals = self._analyze_factors(observation)
+        # 5. KARAR (Eylem Plani)
+        decision = self._formulate_plan(symbol, winner, narrative, obs)
         
-        analysis_text = self._describe_analysis(signals)
-        thoughts.append(Thought(step='ANALYZE', content=analysis_text, confidence=0.9))
-        
-        # 4. CELISKI - Celiskileri tespit et
-        conflicts = self._detect_conflicts(signals)
-        
-        if conflicts:
-            thoughts.append(Thought(
-                step='CONFLICT', 
-                content=f"DIKKAT: Celiskili sinyaller var! {conflicts}",
-                confidence=0.7
-            ))
-        else:
-            thoughts.append(Thought(
-                step='CONFLICT',
-                content='Sinyaller tutarli, celiski yok.',
-                confidence=0.9
-            ))
-        
-        # 5. KARAR - Mantik yuruterek karar ver
-        decision = self._make_decision(observation, signals, conflicts, memories)
-        decision.reasoning = thoughts
-        
-        # Karari acikla
-        decision_text = self._describe_decision(decision)
-        thoughts.append(Thought(step='DECIDE', content=decision_text, confidence=decision.confidence))
-        
-        # Hafizaya kaydet
+        # Hafizaya at
         self._save_prediction(decision)
         
+        self.logger.info(f"Decision made: {decision.action}")
         return decision
-    
+
+    def _analyze_mood(self, obs: Observation) -> str:
+        """Piyasanin ruh halini anla."""
+        factors = []
+        if obs.fear_greed <= 25: factors.append("PANIK")
+        elif obs.fear_greed >= 75: factors.append("COSKU")
+        else: factors.append("NOTR")
+        
+        if obs.funding_rate > 0.05: factors.append("ACGOZLU FONLAMA")
+        elif obs.funding_rate < 0: factors.append("KORKAK FONLAMA")
+        
+        if obs.whale_flow == 'BUYING' and obs.whale_volume > 50: factors.append("BALINA TOPLUYOR")
+        elif obs.whale_flow == 'SELLING' and obs.whale_volume > 50: factors.append("BALINA BOSALTIYOR")
+        
+        if obs.squeeze: factors.append("PATLAMAYA HAZIR")
+        
+        return ", ".join(factors)
+
+    def _construct_bull_case(self, obs: Observation) -> Scenario:
+        """Yukselis senaryosunu kurgula."""
+        prob_score = 10 # Base score
+        reasons = []
+        
+        # Teknik
+        if obs.ema_trend == 'BULLISH': 
+            prob_score += 30
+            reasons.append("Trend guclu (EMA)")
+        if obs.rsi < 35: 
+            prob_score += 20
+            reasons.append("Asiri satim tepkisi (RSI)")
+        
+        # Whale
+        if obs.whale_flow == 'BUYING':
+            prob_score += 25
+            reasons.append("Balinalar aliyor")
+            
+        # Sentiment (Contrarian)
+        if obs.fear_greed < 20: # Extreme fear
+            prob_score += 15
+            reasons.append("Herkes korkarken al (Extreme Fear)")
+            
+        # Funding
+        if obs.funding_rate < 0:
+            prob_score += 10
+            reasons.append("Short squeeze potansiyeli (Negatif Funding)")
+            
+        return Scenario(
+            name="BOĞA SENARYOSU 🚀",
+            probability=min(0.95, prob_score / 100),
+            description=", ".join(reasons),
+            invalidation_point=obs.price * 0.985,
+            confirmation_point=obs.price * 1.005
+        )
+
+    def _construct_bear_case(self, obs: Observation) -> Scenario:
+        """Dusus senaryosunu kurgula."""
+        prob_score = 10
+        reasons = []
+        
+        # Teknik
+        if obs.ema_trend == 'BEARISH':
+            prob_score += 30
+            reasons.append("Trend zayif (EMA)")
+        if obs.rsi > 65:
+            prob_score += 20
+            reasons.append("Asiri alim doygunlugu (RSI)")
+            
+        # Whale
+        if obs.whale_flow == 'SELLING':
+            prob_score += 25
+            reasons.append("Balinalar satiyor")
+            
+        # Sentiment
+        if obs.fear_greed > 80:
+            prob_score += 15
+            reasons.append("Herkes coskuluyken sat (Extreme Greed)")
+            
+        return Scenario(
+            name="AYI SENARYOSU 📉",
+            probability=min(0.95, prob_score / 100),
+            description=", ".join(reasons),
+            invalidation_point=obs.price * 1.015,
+            confirmation_point=obs.price * 0.995
+        )
+
+    def _synthesize_narrative(self, obs: Observation, mood: str, bull: Scenario, bear: Scenario) -> Tuple[Scenario, str]:
+        """Iki senaryoyu carpistir ve hikayeyi yaz."""
+        
+        # Probabilite farki
+        diff = abs(bull.probability - bear.probability)
+        is_confusing = diff < 0.15 # %15 farktan az ise kafa karisik
+        
+        winner = bull if bull.probability > bear.probability else bear
+        
+        # Hikayelestirme
+        narrative = f"Piyasa su an {mood} modunda. "
+        
+        if is_confusing:
+            narrative += f"Acikcasi kafam karisik. Bir yanda {bull.description} var, ama ote yanda {bear.description}. "
+            narrative += "Buyuk oyuncular ile teknik gostergeler kavga ediyor veya sinyaller net degil. "
+            narrative += "Bu ortamda islem acmak yazi tura atmak gibidir. En iyisi kenarda beklemek."
+        else:
+            narrative += f"Bence yon {winner.name.split(' ')[0]}. "
+            narrative += f"Neden bu kadar eminim? Cunku {winner.description}. "
+            loser = bear if winner == bull else bull
+            narrative += f"Karsi senaryo ({loser.name.split(' ')[0]}) su an cok daha zayif ({int(loser.probability*100)}%)."
+            
+        return winner, narrative
+
+    def _formulate_plan(self, symbol: str, winner: Scenario, narrative: str, obs: Observation) -> Decision:
+        """Nihai karari ver."""
+        
+        # Eger fark az ise BEKLE
+        if "kafam karisik" in narrative.lower() or winner.probability < 0.55:
+            return Decision(
+                action="WAIT",
+                symbol=symbol,
+                confidence=winner.probability,
+                narrative=narrative,
+                scenarios=[winner],
+                conditions=[f"Net kirilim bekliyorum (${winner.confirmation_point:,.0f} ustu)"]
+            )
+            
+        action = "LONG" if "BOĞA" in winner.name else "SHORT"
+        
+        # Dinamik TP/SL
+        atr_pct = 0.02 # Basitlik icin sabit, normalde ATR'den gelmeli
+        
+        target = obs.price * (1 + (atr_pct * 1.5)) if action == 'LONG' else obs.price * (1 - (atr_pct * 1.5))
+        stop = winner.invalidation_point
+        
+        return Decision(
+            action=action,
+            symbol=symbol,
+            confidence=winner.probability,
+            narrative=narrative,
+            scenarios=[winner],
+            entry_price=obs.price,
+            target_price=target,
+            stop_loss=stop
+        )
+
+    def format_telegram(self, d: Decision) -> str:
+        """Dogal dil ciktisi - Insan gibi konusur."""
+        emoji = "🟢" if d.action == "LONG" else "🔴" if d.action == "SHORT" else "👀"
+        
+        msg = f"{emoji} **DEMIR AI GÜNLÜĞÜ** - {d.symbol}\n"
+        msg += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        
+        # Hikaye kismi
+        msg += f"💭 **Düşüncelerim:**\n_{d.narrative}_\n\n"
+        
+        if d.action == "WAIT":
+            msg += f"⏳ **Kararım:** Şu an kenarda bekliyorum.\n"
+            msg += f"📊 **Güven:** %{int(d.confidence*100)} (Yetersiz)\n"
+            if d.conditions:
+                msg += f"🎯 **İzlediğim Seviye:** {d.conditions[0]}\n"
+        else:
+            msg += f"🚀 **Kararım:** {d.action} yönünde pozisyon alıyorum.\n"
+            msg += f"📊 **Güven:** %{int(d.confidence*100)}\n"
+            msg += f"💰 **Giriş:** ${d.entry_price:,.2f}\n"
+            msg += f"🎯 **Hedef:** ${d.target_price:,.2f}\n"
+            msg += f"🛑 **Stop:** ${d.stop_loss:,.2f}\n\n"
+            msg += f"📉 **Oyun Planı:** Eger fiyat ${d.stop_loss:,.2f} seviyesini ihlal ederse senaryom geçersiz olur ve çıkarım."
+            
+        msg += "\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        msg += f"⏰ {datetime.now().strftime('%H:%M')}"
+        return msg
+
     # =========================================================================
-    # GOZLEM
+    # YARDIMCI FONKSIYONLAR - DATA FETCHING
     # =========================================================================
     
     async def _observe(self, symbol: str) -> Observation:
@@ -244,284 +364,7 @@ class ThinkingBrain:
                 ema_trend='MIXED',
                 squeeze=False
             )
-    
-    def _describe_observation(self, obs: Observation) -> str:
-        """Gozlemi dogal dilde acikla."""
-        lines = [f"{obs.symbol} su an ${obs.price:,.0f} seviyesinde."]
-        
-        # Fear & Greed
-        if obs.fear_greed <= 20:
-            lines.append(f"Piyasa ASIRI KORKU modunda (Fear: {obs.fear_greed}).")
-        elif obs.fear_greed <= 35:
-            lines.append(f"Piyasada korku hakim (Fear: {obs.fear_greed}).")
-        elif obs.fear_greed >= 80:
-            lines.append(f"Piyasa ASIRI ACGOZLULUK modunda (Greed: {obs.fear_greed}).")
-        elif obs.fear_greed >= 65:
-            lines.append(f"Piyasada acgozluluk hakim (Greed: {obs.fear_greed}).")
-        else:
-            lines.append(f"Piyasa duygusu notr (Index: {obs.fear_greed}).")
-        
-        # Whale
-        if obs.whale_flow == 'BUYING':
-            lines.append(f"Whale'ler ALICI pozisyonunda ({obs.whale_volume:.0f} BTC).")
-        elif obs.whale_flow == 'SELLING':
-            lines.append(f"Whale'ler SATICI pozisyonunda ({obs.whale_volume:.0f} BTC).")
-        
-        # Squeeze
-        if obs.squeeze:
-            lines.append("Volatilite sikismis, patlama bekleniyor.")
-        
-        # EMA
-        if obs.ema_trend == 'BULLISH':
-            lines.append("EMA'lar yukari trendde.")
-        elif obs.ema_trend == 'BEARISH':
-            lines.append("EMA'lar asagi trendde.")
-        
-        return " ".join(lines)
-    
-    # =========================================================================
-    # HAFIZA
-    # =========================================================================
-    
-    def _remember_similar(self, obs: Observation) -> List[Memory]:
-        """Benzer gecmis durumları hatirla."""
-        similar = []
-        
-        for mem in self.memories[-50:]:  # Son 50 hafiza
-            # Benzerlik skoru
-            similarity = 0
             
-            # Ayni sembol
-            if mem.symbol == obs.symbol:
-                similarity += 1
-            
-            # Benzer fear/greed (+-10)
-            # (Bu bilgi memory'de kayitli degil, basitlestirdik)
-            
-            if similarity > 0:
-                similar.append(mem)
-        
-        return similar[-5:]  # Son 5 benzer
-    
-    def _describe_memories(self, memories: List[Memory]) -> str:
-        """Hatiralari acikla."""
-        if not memories:
-            return "Benzer gecmis deneyimim yok."
-        
-        wins = sum(1 for m in memories if m.result == 'WIN')
-        losses = sum(1 for m in memories if m.result == 'LOSS')
-        
-        lines = [f"Benzer {len(memories)} durum hatirliyorum:"]
-        lines.append(f"- {wins} kazanc, {losses} kayip")
-        
-        # Son ders
-        lessons = [m.lesson for m in memories if m.lesson]
-        if lessons:
-            lines.append(f"- Ogrendigim: {lessons[-1]}")
-        
-        return " ".join(lines)
-    
-    # =========================================================================
-    # ANALIZ
-    # =========================================================================
-    
-    def _analyze_factors(self, obs: Observation) -> Dict[str, str]:
-        """Her faktoru analiz et ve sinyal uret."""
-        signals = {}
-        
-        # Fear & Greed (contrarian)
-        if obs.fear_greed <= 25:
-            signals['fear_greed'] = 'LONG'
-        elif obs.fear_greed >= 75:
-            signals['fear_greed'] = 'SHORT'
-        else:
-            signals['fear_greed'] = 'NEUTRAL'
-        
-        # Whale
-        if obs.whale_flow == 'BUYING':
-            signals['whale'] = 'LONG'
-        elif obs.whale_flow == 'SELLING':
-            signals['whale'] = 'SHORT'
-        else:
-            signals['whale'] = 'NEUTRAL'
-        
-        # Funding (contrarian)
-        if obs.funding_rate > 0.05:
-            signals['funding'] = 'SHORT'  # Cok long var
-        elif obs.funding_rate < -0.03:
-            signals['funding'] = 'LONG'  # Cok short var
-        else:
-            signals['funding'] = 'NEUTRAL'
-        
-        # EMA
-        if obs.ema_trend == 'BULLISH':
-            signals['ema'] = 'LONG'
-        elif obs.ema_trend == 'BEARISH':
-            signals['ema'] = 'SHORT'
-        else:
-            signals['ema'] = 'NEUTRAL'
-        
-        # RSI
-        if obs.rsi < 30:
-            signals['rsi'] = 'LONG'
-        elif obs.rsi > 70:
-            signals['rsi'] = 'SHORT'
-        else:
-            signals['rsi'] = 'NEUTRAL'
-        
-        # Volume
-        if obs.volume_ratio > 2.0:
-            signals['volume'] = 'ATTENTION'  # Yuksek hacim = dikkat
-        else:
-            signals['volume'] = 'NEUTRAL'
-        
-        return signals
-    
-    def _describe_analysis(self, signals: Dict[str, str]) -> str:
-        """Analizi acikla."""
-        long_factors = [k for k, v in signals.items() if v == 'LONG']
-        short_factors = [k for k, v in signals.items() if v == 'SHORT']
-        
-        lines = []
-        
-        if long_factors:
-            lines.append(f"YUKARI isaret eden faktorler: {', '.join(long_factors)}")
-        
-        if short_factors:
-            lines.append(f"ASAGI isaret eden faktorler: {', '.join(short_factors)}")
-        
-        if not long_factors and not short_factors:
-            lines.append("Tum faktorler notr durumda.")
-        
-        return " ".join(lines)
-    
-    # =========================================================================
-    # CELISKI TESPITI
-    # =========================================================================
-    
-    def _detect_conflicts(self, signals: Dict[str, str]) -> Optional[str]:
-        """Celiskileri tespit et."""
-        long_factors = [k for k, v in signals.items() if v == 'LONG']
-        short_factors = [k for k, v in signals.items() if v == 'SHORT']
-        
-        # Kritik celiski: Fear vs Whale
-        fear_long = signals.get('fear_greed') == 'LONG'
-        whale_short = signals.get('whale') == 'SHORT'
-        
-        if fear_long and whale_short:
-            return "Fear LONG diyor ama Whale'ler SATIYOR - Bu ciddi bir celiski!"
-        
-        # Kritik celiski: EMA vs RSI
-        ema_long = signals.get('ema') == 'LONG'
-        rsi_short = signals.get('rsi') == 'SHORT'
-        
-        if ema_long and rsi_short:
-            return "EMA yukari ama RSI asiri alim bolgisinde - Dikkatli ol!"
-        
-        # Genel celiski
-        if long_factors and short_factors:
-            return f"{len(long_factors)} faktor LONG, {len(short_factors)} faktor SHORT diyor."
-        
-        return None
-    
-    # =========================================================================
-    # KARAR VERME
-    # =========================================================================
-    
-    def _make_decision(
-        self, 
-        obs: Observation, 
-        signals: Dict[str, str],
-        conflicts: Optional[str],
-        memories: List[Memory]
-    ) -> Decision:
-        """Dusunup karar ver."""
-        
-        long_count = sum(1 for v in signals.values() if v == 'LONG')
-        short_count = sum(1 for v in signals.values() if v == 'SHORT')
-        
-        # Agirlikli skorlar (ogrenmeden)
-        long_score = sum(
-            self.factor_weights.get(k.split('_')[0], 1.0)
-            for k, v in signals.items() if v == 'LONG'
-        )
-        short_score = sum(
-            self.factor_weights.get(k.split('_')[0], 1.0)
-            for k, v in signals.items() if v == 'SHORT'
-        )
-        
-        # Celiski varsa ve ciddi ise BEKLE
-        whale_against = (signals.get('whale') == 'SHORT' and long_count > short_count) or \
-                       (signals.get('whale') == 'LONG' and short_count > long_count)
-        
-        if conflicts and whale_against:
-            # Whale'e karsi gitme - BEKLE
-            conditions = []
-            
-            if signals.get('whale') == 'SHORT':
-                conditions.append("Whale'ler aliciya donerse LONG dusunurum")
-            else:
-                conditions.append("Whale'ler saticiya donerse SHORT dusunurum")
-            
-            conditions.append(f"${obs.price * 0.98:,.0f} altina duserse stop")
-            
-            return Decision(
-                action='WAIT',
-                symbol=obs.symbol,
-                reasoning=[],
-                confidence=0.6,
-                conditions=conditions
-            )
-        
-        # Karar ver
-        if long_score > short_score and long_count >= 2:
-            action = 'LONG'
-            confidence = min(0.85, 0.5 + (long_count * 0.1))
-            target = obs.price * 1.02  # %2 hedef
-            stop = obs.price * 0.985   # %1.5 stop
-        elif short_score > long_score and short_count >= 2:
-            action = 'SHORT'
-            confidence = min(0.85, 0.5 + (short_count * 0.1))
-            target = obs.price * 0.98
-            stop = obs.price * 1.015
-        else:
-            action = 'WAIT'
-            confidence = 0.5
-            target = 0
-            stop = 0
-        
-        return Decision(
-            action=action,
-            symbol=obs.symbol,
-            reasoning=[],
-            confidence=confidence,
-            entry_price=obs.price,
-            target_price=target,
-            stop_loss=stop,
-            conditions=[]
-        )
-    
-    def _describe_decision(self, decision: Decision) -> str:
-        """Karari acikla."""
-        if decision.action == 'WAIT':
-            lines = [f"KARARIM: BEKLIYORUM ({decision.confidence*100:.0f}% guven)"]
-            if decision.conditions:
-                lines.append("Sartlarim:")
-                for cond in decision.conditions:
-                    lines.append(f"  - {cond}")
-        else:
-            dir_tr = 'YUKARI (LONG)' if decision.action == 'LONG' else 'ASAGI (SHORT)'
-            lines = [f"KARARIM: {dir_tr} ({decision.confidence*100:.0f}% guven)"]
-            lines.append(f"Giris: ${decision.entry_price:,.0f}")
-            lines.append(f"Hedef: ${decision.target_price:,.0f}")
-            lines.append(f"Stop: ${decision.stop_loss:,.0f}")
-        
-        return "\n".join(lines)
-    
-    # =========================================================================
-    # YARDIMCI FONKSIYONLAR - VERI TOPLAMA
-    # =========================================================================
-    
     async def _get_price_data(self, symbol: str) -> Dict:
         """Fiyat verileri al."""
         try:
@@ -648,11 +491,7 @@ class ThinkingBrain:
         for price in data[period:]:
             ema = (price * multiplier) + (ema * (1 - multiplier))
         return ema
-    
-    # =========================================================================
-    # HAFIZA YONETIMI
-    # =========================================================================
-    
+
     def _load_memory(self):
         """Hafizayi yukle."""
         mem_file = MEMORY_DIR / "predictions.json"
@@ -663,27 +502,14 @@ class ThinkingBrain:
                     self.memories = [Memory(**m) for m in data]
             except:
                 self.memories = []
-    
-    def _load_learnings(self):
-        """Ogrenimleri yukle."""
-        learn_file = MEMORY_DIR / "learnings.json"
-        if learn_file.exists():
-            try:
-                with open(learn_file, 'r', encoding='utf-8') as f:
-                    self.learnings = json.load(f)
-                    # Agirlik guncellemesi
-                    if 'factor_weights' in self.learnings:
-                        self.factor_weights.update(self.learnings['factor_weights'])
-            except:
-                self.learnings = {}
-    
+
     def _save_prediction(self, decision: Decision):
         """Tahmini kaydet."""
         mem = Memory(
             id=f"pred_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
             symbol=decision.symbol,
             prediction=decision.action,
-            reasoning=decision.reasoning[-1].content if decision.reasoning else '',
+            reasoning=decision.narrative,
             result='PENDING',
             pnl_percent=0,
             lesson='',
@@ -691,54 +517,28 @@ class ThinkingBrain:
         )
         
         self.memories.append(mem)
-        
-        # Kaydet
-        mem_file = MEMORY_DIR / "predictions.json"
-        with open(mem_file, 'w', encoding='utf-8') as f:
-            json.dump([asdict(m) for m in self.memories[-100:]], f, indent=2)
-    
-    # =========================================================================
-    # TELEGRAM FORMATI
-    # =========================================================================
-    
-    def format_telegram(self, decision: Decision) -> str:
-        """Telegram icin formatla."""
-        lines = ["DEMIR AI DUSUNUYOR...", ""]
-        
-        # Dusunce zinciri
-        for thought in decision.reasoning:
-            if thought.step == 'OBSERVE':
-                lines.append(thought.content)
-            elif thought.step == 'REMEMBER' and 'yok' not in thought.content.lower():
-                lines.append("")
-                lines.append(thought.content)
-            elif thought.step == 'ANALYZE':
-                lines.append("")
-                lines.append(thought.content)
-            elif thought.step == 'CONFLICT' and 'Celiski' in thought.content:
-                lines.append("")
-                lines.append(thought.content)
-            elif thought.step == 'DECIDE':
-                lines.append("")
-                lines.append("---")
-                lines.append(thought.content)
-        
-        return "\n".join(lines)
-
+        # Sadece son 50yi sakla
+        if len(self.memories) > 50:
+            self.memories = self.memories[-50:]
+            
+        try:
+            with open(self.predictions_file, 'w', encoding='utf-8') as f:
+                json.dump([asdict(m) for m in self.memories], f, indent=2)
+        except Exception as e:
+            logger.error(f"Memory save failed: {e}")
 
 # =============================================================================
-# GLOBAL INSTANCE
+# SINGLETON INSTANCE
 # =============================================================================
 
-_brain: Optional[ThinkingBrain] = None
+_thinking_brain: Optional[ThinkingBrain] = None
 
 def get_thinking_brain() -> ThinkingBrain:
-    """Get or create brain instance."""
-    global _brain
-    if _brain is None:
-        _brain = ThinkingBrain()
-    return _brain
-
+    """Singleton instance dondur."""
+    global _thinking_brain
+    if _thinking_brain is None:
+        _thinking_brain = ThinkingBrain()
+    return _thinking_brain
 
 # =============================================================================
 # TEST
@@ -746,12 +546,23 @@ def get_thinking_brain() -> ThinkingBrain:
 
 if __name__ == "__main__":
     import asyncio
+    import sys
+    import io
+    
+    # Windows terminal encoding fix
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     
     logging.basicConfig(level=logging.INFO)
     
     async def test():
         brain = get_thinking_brain()
-        decision = await brain.think('BTCUSDT')
+        print("BEYIN BASLATILDI.")
+        print("DUSUNUYOR...")
+        
+        decision = await brain.think("BTCUSDT")
+        
+        print("\n" + "="*50)
         print(brain.format_telegram(decision))
+        print("="*50)
     
     asyncio.run(test())

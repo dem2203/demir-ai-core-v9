@@ -18,5 +18,15 @@
     "pnl_percent": 0,
     "lesson": "",
     "timestamp": "2025-12-20T13:51:07.414599"
+  },
+  {
+    "id": "pred_20251220_145058",
+    "symbol": "BTCUSDT",
+    "prediction": "LONG",
+    "reasoning": "Piyasa su an PANIK, PATLAMAYA HAZIR modunda. Bence yon BO\u011eA. Neden bu kadar eminim? Cunku Trend guclu (EMA), Balinalar aliyor. Karsi senaryo (AYI) su an cok daha zayif (10%).",
+    "result": "PENDING",
+    "pnl_percent": 0,
+    "lesson": "",
+    "timestamp": "2025-12-20T14:50:58.341647"
   }
 ]
