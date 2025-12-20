@@ -288,47 +288,114 @@ class BotEngine:
                             except Exception as pred_err:
                                 logger.debug(f"Live prediction error: {pred_err}")
                     
-                    # --- AI VİZYON ANALİZİ (15 dakika) - 3. bildirim tipi ---
+                    # ═══════════════════════════════════════════════════════════════
+                    # 1️⃣ TEKNİK SİNYAL (ANLIK - %70+ güven olunca hemen)
+                    # ═══════════════════════════════════════════════════════════════
+                    if not hasattr(self, 'last_technical_signal'):
+                        self.last_technical_signal = {}
+                    
+                    for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:
+                        try:
+                            # MarketAnalyzer'dan analiz al
+                            analysis = await self.analyzer.analyze_market(symbol)
+                            if analysis:
+                                confidence = analysis.get('confidence', 0)
+                                signal = analysis.get('signal', 'NEUTRAL')
+                                
+                                # %70+ güven VE sinyal varsa -> anında gönder
+                                if confidence >= 70 and signal in ['BUY', 'SELL', 'LONG', 'SHORT']:
+                                    # Debounce: aynı sinyal için 30 dakika bekle
+                                    last_sent = self.last_technical_signal.get(symbol, {})
+                                    last_signal = last_sent.get('signal', '')
+                                    last_time = last_sent.get('time', datetime.now() - timedelta(hours=1))
+                                    
+                                    if signal != last_signal or (datetime.now() - last_time).total_seconds() >= 1800:
+                                        # Teknik sinyal gönder
+                                        price = analysis.get('price', 0)
+                                        tp1 = analysis.get('tp1', price * 1.02)
+                                        tp2 = analysis.get('tp2', price * 1.04)
+                                        sl = analysis.get('sl', price * 0.98)
+                                        
+                                        # Get strong indicators
+                                        strong_indicators = []
+                                        if analysis.get('rsi_signal'):
+                                            strong_indicators.append({'name': 'RSI', 'value': analysis.get('rsi', 50)})
+                                        if analysis.get('macd_signal'):
+                                            strong_indicators.append({'name': 'MACD', 'value': 'Signal'})
+                                        if analysis.get('volume_spike'):
+                                            strong_indicators.append({'name': 'Volume', 'value': f"{analysis.get('volume_ratio', 1):.1f}x"})
+                                        
+                                        direction = 'LONG' if signal in ['BUY', 'LONG'] else 'SHORT'
+                                        
+                                        await self.notifier.send_technical_signal(
+                                            symbol=symbol,
+                                            direction=direction,
+                                            entry=price,
+                                            tp1=tp1,
+                                            tp2=tp2,
+                                            sl=sl,
+                                            strong_indicators=strong_indicators,
+                                            confidence=confidence
+                                        )
+                                        
+                                        self.last_technical_signal[symbol] = {
+                                            'signal': signal,
+                                            'time': datetime.now()
+                                        }
+                                        logger.info(f"🎯 Technical Signal: {symbol} {direction} %{confidence:.0f}")
+                        except Exception as tech_err:
+                            logger.debug(f"Technical signal error: {tech_err}")
+                    
+                    # ═══════════════════════════════════════════════════════════════
+                    # 4️⃣ AI GÖZ ANALİZİ (15 dakika - ThinkingBrain LONG/SHORT)
+                    # ═══════════════════════════════════════════════════════════════
                     if not hasattr(self, 'last_ai_vision'):
                         self.last_ai_vision = {}
                     
-                    for symbol in ['BTCUSDT', 'ETHUSDT']:  # Sadece BTC ve ETH için
+                    for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:  # 4 coin
                         if symbol not in self.last_ai_vision:
                             self.last_ai_vision[symbol] = datetime.now() - timedelta(minutes=20)
                         
                         if (datetime.now() - self.last_ai_vision[symbol]).total_seconds() >= 900:
                             try:
-                                # MarketAnalyzer'dan analiz al
-                                analysis = await self.analyzer.analyze_market(symbol)
-                                if analysis:
+                                # ThinkingBrain'den karar al (LONG/SHORT/WAIT)
+                                thinking_brain = get_thinking_brain()
+                                decision = await thinking_brain.think(symbol)
+                                
+                                # Sadece LONG veya SHORT kararlarını gönder
+                                if decision and decision.action in ['LONG', 'SHORT']:
                                     # Bull/Bear senaryoları oluştur
-                                    current_price = analysis.get('price', 0)
-                                    trend = analysis.get('trend', 'NEUTRAL')
-                                    confidence = analysis.get('confidence', 50)
+                                    price = decision.entry_price or 0
+                                    confidence_pct = decision.confidence * 100
                                     
-                                    bull_scenario = {
-                                        'probability': min(80, 50 + confidence/2) if trend == 'BULLISH' else max(20, 50 - confidence/2),
-                                        'condition': f"${current_price:.0f} üzerinde kalırsa",
-                                        'target': f"${current_price * 1.03:.0f} (+3%)"
-                                    }
-                                    bear_scenario = {
-                                        'probability': 100 - bull_scenario['probability'],
-                                        'condition': f"${current_price * 0.98:.0f} altına düşerse",
-                                        'target': f"${current_price * 0.95:.0f} (-5%)"
-                                    }
-                                    
-                                    # Tavsiye belirle
-                                    if trend == 'BULLISH' and confidence > 60:
+                                    if decision.action == 'LONG':
+                                        bull_scenario = {
+                                            'probability': min(85, 50 + confidence_pct/2),
+                                            'condition': f"${price:.0f} üzerinde kalırsa",
+                                            'target': f"${decision.target_price:.0f}" if decision.target_price else f"${price * 1.03:.0f}"
+                                        }
+                                        bear_scenario = {
+                                            'probability': max(15, 50 - confidence_pct/2),
+                                            'condition': f"${decision.stop_loss:.0f} altına düşerse" if decision.stop_loss else f"${price * 0.98:.0f} altına düşerse",
+                                            'target': f"${price * 0.95:.0f}"
+                                        }
                                         recommendation = "AL"
-                                        reason = "Teknik göstergeler yukarı yönü destekliyor"
-                                    elif trend == 'BEARISH' and confidence > 60:
+                                        reason = decision.conditions if decision.conditions else "ThinkingBrain LONG sinyali verdi"
+                                    else:  # SHORT
+                                        bull_scenario = {
+                                            'probability': max(15, 50 - confidence_pct/2),
+                                            'condition': f"${price * 1.02:.0f} üzerine çıkarsa",
+                                            'target': f"${price * 1.05:.0f}"
+                                        }
+                                        bear_scenario = {
+                                            'probability': min(85, 50 + confidence_pct/2),
+                                            'condition': f"${price:.0f} altında kalırsa",
+                                            'target': f"${decision.target_price:.0f}" if decision.target_price else f"${price * 0.97:.0f}"
+                                        }
                                         recommendation = "SAT"
-                                        reason = "Düşüş sinyalleri güçlü"
-                                    else:
-                                        recommendation = "BEKLE"
-                                        reason = "Net yön oluşana kadar bekleyin"
+                                        reason = decision.conditions if decision.conditions else "ThinkingBrain SHORT sinyali verdi"
                                     
-                                    overview = f"{symbol} şu an ${current_price:.2f} seviyesinde. Trend: {trend}, Güven: %{confidence:.0f}"
+                                    overview = f"{symbol} | ThinkingBrain: {decision.action} | Güven: %{confidence_pct:.0f} | Giriş: ${price:.2f}"
                                     
                                     await self.notifier.send_ai_vision(
                                         symbol=symbol,
@@ -339,45 +406,12 @@ class BotEngine:
                                         recommendation_reason=reason
                                     )
                                     self.last_ai_vision[symbol] = datetime.now()
-                                    logger.info(f"🧠 AI Vision: {symbol} → {recommendation}")
+                                    logger.info(f"🧠 AI Vision (ThinkingBrain): {symbol} → {decision.action} %{confidence_pct:.0f}")
+                                else:
+                                    # WAIT kararı - sadece logla, bildirim gönderme
+                                    logger.debug(f"🧠 AI Vision: {symbol} WAIT - {decision.conditions if decision else 'No decision'}")
                             except Exception as vision_err:
-                                logger.debug(f"AI Vision error: {vision_err}")
-                    
-                    # --- KURUMSAL TETİKLEYİCİ (Whale/CME/ETF) - 4. bildirim tipi ---
-                    # Bu Sudden Alert içinde zaten entegre - InstitutionalAggregator'dan gelir
-                    # Aşağıdaki kod sadece büyük kurumsal hareketler için ek bildirim gönderir
-                    if not hasattr(self, 'last_institutional_check'):
-                        self.last_institutional_check = datetime.now() - timedelta(minutes=10)
-                    
-                    if (datetime.now() - self.last_institutional_check).total_seconds() >= 300:  # 5 dakika
-                        try:
-                            from src.brain.institutional_aggregator import get_aggregator
-                            aggregator = get_aggregator()
-                            
-                            # Büyük kurumsal hareketleri kontrol et
-                            for symbol in ['BTCUSDT']:  # Sadece BTC için kurumsal
-                                snapshot = await aggregator.get_institutional_snapshot(symbol)
-                                
-                                # Büyük ETF akışı veya Whale hareketi varsa bildir
-                                etf_flow = snapshot.get('etf_flow', {}).get('daily_flow', 0)
-                                whale_ratio = snapshot.get('whale_ratio', 1.0)
-                                
-                                if abs(etf_flow) > 200:  # $200M+ ETF akışı
-                                    direction = "GİRİŞ 📈" if etf_flow > 0 else "ÇIKIŞ 📉"
-                                    msg = f"""🏛️ *KURUMSAL HAREKET - {symbol}*
-━━━━━━━━━━━━━━━━━━
-💰 ETF Akışı: ${abs(etf_flow):.0f}M {direction}
-🐋 Whale Oranı: {whale_ratio:.2f}x
-
-{"⚠️ Büyük kurumsal alım!" if etf_flow > 0 else "⚠️ Kurumsal satış baskısı!"}
-━━━━━━━━━━━━━━━━━━
-⏰ {datetime.now().strftime('%H:%M')}"""
-                                    await self.notifier.send_message_raw(msg)
-                                    logger.info(f"🏛️ Institutional: {symbol} ETF ${etf_flow}M")
-                                    
-                            self.last_institutional_check = datetime.now()
-                        except Exception as inst_err:
-                            logger.debug(f"Institutional check error: {inst_err}")
+                                logger.debug(f"AI Vision (ThinkingBrain) error: {vision_err}")
                     
                     # DISABLED: THINKING BRAIN (AI GÜNLÜĞÜ) - Not in agreed 4 types
                     # Her 15 dakikada bir THINKING BRAIN analizi (GERCEK DUSUNEN AI)
