@@ -109,6 +109,51 @@ class ThinkingBrain:
         self.memories: List[Memory] = []
         self._load_memory()
         
+    def _detect_setup(self, obs: Observation) -> Optional[Scenario]:
+        """ozel setup formasyonlarini tespit et (ONCEDEN HABER VERME)."""
+        
+        # 1. WHALE ACCUMULATION SETUP (Fiyat yatay, Balina aliyor)
+        if obs.whale_flow == 'BUYING' and obs.squeeze:
+            return Scenario(
+                name="BALİNA AKÜMÜLASYONU 🐋",
+                probability=0.85,
+                description="Fiyat yatay seyrederken balinalar gizlice topluyor. Bu genelde yukarı patlamanın habercisidir.",
+                invalidation_point=obs.price * 0.99,
+                confirmation_point=obs.price * 1.01
+            )
+            
+        # 2. SHORT SQUEEZE SETUP (Negatif funding + Fiyat dusmuyor)
+        if obs.funding_rate < -0.01 and obs.price > obs.price * 0.99: # Basit mantik
+            return Scenario(
+                name="SHORT CONSTRICTION (SIKIŞTIRMA) ⚡",
+                probability=0.80,
+                description="Market short işlem dolu (negatif funding) ama fiyat düşmüyor. Shortcuları patlatmak için yukarı sert hareket gelebilir.",
+                invalidation_point=obs.price * 0.98,
+                confirmation_point=obs.price * 1.01
+            )
+            
+        # 3. RSI DIVERGENCE (Basit version)
+        if obs.rsi < 30 and obs.whale_flow == 'BUYING':
+            return Scenario(
+                name="POZİTİF UYUMSUZLUK (BULLISH) 📈",
+                probability=0.75,
+                description="Fiyat düşük (RSI < 30) ama akıllı para (Whales) alım yapıyor. Dönüş potansiyeli yüksek.",
+                invalidation_point=obs.price * 0.98,
+                confirmation_point=obs.price * 1.01
+            )
+            
+        # 4. WHALE DISTRIBUTION (Fiyat tepede, Balina satiyor)
+        if obs.whale_flow == 'SELLING' and obs.rsi > 70:
+            return Scenario(
+                name="BALİNA DAĞITIMI (BEARISH) 📉",
+                probability=0.85,
+                description="Fiyat tepelerdeyken balinalar satışa geçti. Büyük düşüş öncesi mal boşaltma operasyonu olabilir.",
+                invalidation_point=obs.price * 1.01,
+                confirmation_point=obs.price * 0.99
+            )
+            
+        return None
+
     async def think(self, symbol: str = 'BTCUSDT') -> Decision:
         """
         INSAN GIBI DUSUNME SURECI
@@ -121,12 +166,20 @@ class ThinkingBrain:
         # 2. KARAKTER ANALIZI (Piyasa Ruh Hali)
         mood = self._analyze_mood(obs)
         
-        # 3. SENARYO OLUSTURMA (Gelecegi Hayal Etme)
-        bull_case = self._construct_bull_case(obs)
-        bear_case = self._construct_bear_case(obs)
+        # 3. OZEL SETUP KONTROLU (Predictive Power)
+        special_setup = self._detect_setup(obs)
         
-        # 4. SENARYO CARPISTIRMA (Hangisi daha mantikli?)
-        winner, narrative = self._synthesize_narrative(obs, mood, bull_case, bear_case)
+        if special_setup:
+            # Eger ozel bir setup varsa, onu ana senaryo yap
+            winner = special_setup
+            narrative = f"🚨 RADARIMA GİRDİ: {special_setup.name}\n"
+            narrative += f"{special_setup.description}\n"
+            narrative += f"Normal analizlerin ötesinde, şu an özel bir fırsat oluşumu var."
+        else:
+            # Yoksa normal senaryo analizi yap
+            bull_case = self._construct_bull_case(obs)
+            bear_case = self._construct_bear_case(obs)
+            winner, narrative = self._synthesize_narrative(obs, mood, bull_case, bear_case)
         
         # 5. KARAR (Eylem Plani)
         decision = self._formulate_plan(symbol, winner, narrative, obs)
@@ -259,7 +312,7 @@ class ThinkingBrain:
                 conditions=[f"Net kirilim bekliyorum (${winner.confirmation_point:,.0f} ustu)"]
             )
             
-        action = "LONG" if "BOĞA" in winner.name else "SHORT"
+        action = "LONG" if any(x in winner.name for x in ["BOĞA", "BALİNA", "POZİTİF", "CONSTRICTION"]) and "BEARISH" not in winner.name else "SHORT"
         
         # Dinamik TP/SL
         atr_pct = 0.02 # Basitlik icin sabit, normalde ATR'den gelmeli

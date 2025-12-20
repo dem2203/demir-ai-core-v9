@@ -28,5 +28,25 @@
     "pnl_percent": 0,
     "lesson": "",
     "timestamp": "2025-12-20T14:50:58.341647"
+  },
+  {
+    "id": "pred_20251220_150819",
+    "symbol": "BTCUSDT",
+    "prediction": "SHORT",
+    "reasoning": "\ud83d\udea8 RADARIMA G\u0130RD\u0130: BAL\u0130NA AK\u00dcM\u00dcLASYONU \ud83d\udc0b\nFiyat yatay seyrederken balinalar gizlice topluyor. Bu genelde yukar\u0131 patlaman\u0131n habercisidir.\nNormal analizlerin \u00f6tesinde, \u015fu an \u00f6zel bir f\u0131rsat olu\u015fumu var.",
+    "result": "PENDING",
+    "pnl_percent": 0,
+    "lesson": "",
+    "timestamp": "2025-12-20T15:08:19.629528"
+  },
+  {
+    "id": "pred_20251220_150858",
+    "symbol": "BTCUSDT",
+    "prediction": "WAIT",
+    "reasoning": "Piyasa su an PANIK, PATLAMAYA HAZIR modunda. Bence yon AYI. Neden bu kadar eminim? Cunku Balinalar satiyor. Karsi senaryo (BO\u011eA) su an cok daha zayif (10%).",
+    "result": "PENDING",
+    "pnl_percent": 0,
+    "lesson": "",
+    "timestamp": "2025-12-20T15:08:58.879249"
   }
 ]
