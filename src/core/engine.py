@@ -148,8 +148,25 @@ class BotEngine:
             logger.critical(f"❌ CRITICAL: Failed to connect to Exchange: {e}")
             return # Bağlantı yoksa başlama
 
-        # Telegram'a "Ben Başladım" mesajı at
-        await self.notifier.send_message_raw("🦅 **DEMIR AI ONLINE**\nSistem başlatıldı. Beyin eğitimi arka planda başlatılıyor...")
+        # Telegram'a "Ben Başladım" mesajı at (10 dakikalık debounce ile)
+        # Restart spam'ını önlemek için
+        import os
+        import time
+        startup_flag_file = "/tmp/demir_last_startup"
+        should_send_startup = True
+        try:
+            if os.path.exists(startup_flag_file):
+                last_startup = float(open(startup_flag_file).read().strip())
+                if time.time() - last_startup < 600:  # 10 dakika
+                    should_send_startup = False
+                    logger.info("⏳ Startup message skipped (debounced)")
+            if should_send_startup:
+                with open(startup_flag_file, 'w') as f:
+                    f.write(str(time.time()))
+                await self.notifier.send_message_raw("🦅 **DEMIR AI ONLINE**\nSistem başlatıldı. Beyin eğitimi arka planda başlatılıyor...")
+        except Exception as e:
+            logger.debug(f"Startup message handling: {e}")
+            await self.notifier.send_message_raw("🦅 **DEMIR AI ONLINE**\nSistem başlatıldı. Beyin eğitimi arka planda başlatılıyor...")
         
         # Ensure AI Brain is Trained (Non-Blocking Background Task)
         # Fixes 502 Error: Training takes time, so we don't block startup.
