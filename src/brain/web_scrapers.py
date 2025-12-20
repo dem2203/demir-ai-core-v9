@@ -5,6 +5,9 @@ DEMIR AI - WEB SCRAPER COLLECTION
 API Key gerektiren verileri web scraping ile toplayan modül.
 Playwright kullanarak gerçek tarayıcı ile veri kazır.
 
+⚠️ RAILWAY WARNING: Playwright is DISABLED on Railway due to thread limits.
+   All scraper methods return fallback data on Railway.
+
 Hedef Siteler:
 1. CoinGlass - Exchange Flow, Options
 2. DefiLlama - Stablecoin Supply
@@ -14,27 +17,52 @@ Hedef Siteler:
 """
 import logging
 import asyncio
+import os
 from datetime import datetime
 from typing import Dict, Optional
-from playwright.async_api import async_playwright, Browser, Page
+
+# Check if running on Railway (limited resources)
+IS_RAILWAY = os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('RAILWAY_SERVICE_NAME')
+
+# Only import Playwright if NOT on Railway
+PLAYWRIGHT_AVAILABLE = False
+if not IS_RAILWAY:
+    try:
+        from playwright.async_api import async_playwright, Browser, Page
+        PLAYWRIGHT_AVAILABLE = True
+    except ImportError:
+        pass
 
 logger = logging.getLogger("WEB_SCRAPERS")
+
+if IS_RAILWAY:
+    logger.warning("🚫 Running on Railway - Playwright scrapers DISABLED to prevent thread exhaustion")
 
 
 class WebScraperManager:
     """
     Tüm web scraperları yöneten ana sınıf.
     Tek bir browser instance paylaşılır.
+    
+    ⚠️ On Railway: All methods return fallback data (no browser launching)
     """
     
     def __init__(self):
-        self._browser: Optional[Browser] = None
+        self._browser = None
         self._playwright = None
         self._initialized = False
+        self._disabled = IS_RAILWAY or not PLAYWRIGHT_AVAILABLE
+        
+        if self._disabled:
+            logger.info("📴 WebScraperManager: Browser scraping disabled (Railway mode or no Playwright)")
     
     async def _ensure_browser(self):
         """Browser'ı başlat veya var olanı kullan."""
-        if not self._initialized:
+        if self._disabled:
+            return  # Skip browser on Railway
+            
+        if not self._initialized and PLAYWRIGHT_AVAILABLE:
+            from playwright.async_api import async_playwright
             self._playwright = await async_playwright().start()
             self._browser = await self._playwright.chromium.launch(
                 headless=True,
@@ -51,9 +79,14 @@ class WebScraperManager:
             await self._playwright.stop()
         self._initialized = False
     
-    async def _new_page(self) -> Page:
-        """Yeni sayfa oluştur."""
+    async def _new_page(self):
+        """Yeni sayfa oluştur. Returns None on Railway."""
+        if self._disabled:
+            return None  # Railway mode - no browser
+            
         await self._ensure_browser()
+        if not self._browser:
+            return None
         context = await self._browser.new_context(
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         )
@@ -68,8 +101,15 @@ class WebScraperManager:
         CoinGlass'tan exchange inflow/outflow verisi kazı.
         URL: https://www.coinglass.com/exchange-flow
         """
+        # Railway fallback - return neutral data
+        if self._disabled:
+            return {'inflow': 0, 'outflow': 0, 'netflow': 0, 'source': 'fallback'}
+            
         try:
             page = await self._new_page()
+            if not page:
+                return {'inflow': 0, 'outflow': 0, 'netflow': 0, 'source': 'fallback'}
+                
             await page.goto(f'https://www.coinglass.com/exchange-flow/{symbol}', wait_until='networkidle', timeout=30000)
             
             # Sayfanın yüklenmesini bekle
@@ -113,6 +153,7 @@ class WebScraperManager:
             }''')
             
             await page.close()
+            data['source'] = 'live'
             logger.info(f"📊 Exchange Flow scraped: In={data['inflow']}, Out={data['outflow']}")
             return data
             
@@ -129,8 +170,13 @@ class WebScraperManager:
         DefiLlama'dan stablecoin supply değişikliklerini kazı.
         URL: https://defillama.com/stablecoins
         """
+        if self._disabled:
+            return {'usdt_change': 0, 'usdc_change': 0, 'total_supply': 0, 'source': 'fallback'}
+            
         try:
             page = await self._new_page()
+            if not page:
+                return {'usdt_change': 0, 'usdc_change': 0, 'total_supply': 0, 'source': 'fallback'}
             await page.goto('https://defillama.com/stablecoins', wait_until='networkidle', timeout=30000)
             
             await asyncio.sleep(3)
@@ -193,8 +239,13 @@ class WebScraperManager:
         CoinGlass'tan options put/call ratio kazı.
         URL: https://www.coinglass.com/options
         """
+        if self._disabled:
+            return {'put_call': 1.0, 'max_pain': 0, 'source': 'fallback'}
+            
         try:
             page = await self._new_page()
+            if not page:
+                return {'put_call': 1.0, 'max_pain': 0, 'source': 'fallback'}
             await page.goto(f'https://www.coinglass.com/options/{symbol}', wait_until='networkidle', timeout=30000)
             
             await asyncio.sleep(2)
@@ -240,8 +291,13 @@ class WebScraperManager:
         CME BTC Futures gap analizi.
         Cuma kapanış vs Pazartesi açılış karşılaştırması.
         """
+        if self._disabled:
+            return {'gap_price': 0, 'filled': True, 'direction': '', 'source': 'fallback'}
+            
         try:
             page = await self._new_page()
+            if not page:
+                return {'gap_price': 0, 'filled': True, 'direction': '', 'source': 'fallback'}
             # CME BTC verisi için Binance Futures kullan (CME direkt erişilemez)
             await page.goto('https://www.binance.com/en/futures/BTCUSDT', wait_until='networkidle', timeout=30000)
             
@@ -281,8 +337,13 @@ class WebScraperManager:
         SoSoValue'dan Bitcoin ETF akış verisi kazı.
         URL: https://sosovalue.xyz/assets/etf/us-btc-spot
         """
+        if self._disabled:
+            return {'daily_flow': 0, 'total_aum': 0, 'gbtc_premium': 0, 'source': 'fallback'}
+            
         try:
             page = await self._new_page()
+            if not page:
+                return {'daily_flow': 0, 'total_aum': 0, 'gbtc_premium': 0, 'source': 'fallback'}
             await page.goto('https://sosovalue.xyz/assets/etf/us-btc-spot', wait_until='networkidle', timeout=30000)
             
             await asyncio.sleep(3)
@@ -332,8 +393,13 @@ class WebScraperManager:
         Blockchain.com'dan ağ metrikleri kazı.
         URL: https://www.blockchain.com/explorer/charts
         """
+        if self._disabled:
+            return {'hash_rate': 0, 'active_addresses': 0, 'hash_change': 0, 'source': 'fallback'}
+            
         try:
             page = await self._new_page()
+            if not page:
+                return {'hash_rate': 0, 'active_addresses': 0, 'hash_change': 0, 'source': 'fallback'}
             await page.goto('https://www.blockchain.com/explorer/charts/hash-rate', wait_until='networkidle', timeout=30000)
             
             await asyncio.sleep(2)
@@ -382,8 +448,13 @@ class WebScraperManager:
         """
         Grayscale GBTC premium/discount kazı.
         """
+        if self._disabled:
+            return {'premium': 0, 'source': 'fallback'}
+            
         try:
             page = await self._new_page()
+            if not page:
+                return {'premium': 0, 'source': 'fallback'}
             await page.goto('https://ycharts.com/companies/GBTC/discount_or_premium_to_nav', wait_until='networkidle', timeout=30000)
             
             await asyncio.sleep(2)
