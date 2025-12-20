@@ -110,11 +110,28 @@ class NotificationManager:
         ✅ Hangi kaynaklar GÜÇLÜ sinyal veriyor?
         ✅ Şimdi giriş yapmalı mı?
         ✅ Hedefler neler?
+        ✅ Data validation ile mock/fallback tespit
         """
         try:
             from src.brain.institutional_aggregator import get_aggregator
+            from src.brain.data_validator import get_data_validator
+            
             agg = get_aggregator()
             snapshot = await agg.get_live_snapshot(symbol)
+            
+            # ═══ DATA VALIDATION CHECK ═══
+            validator = get_data_validator()
+            validation = await validator.validate_live_snapshot(snapshot, symbol)
+            
+            if not validation.is_usable:
+                logger.warning(f"⚠️ {symbol} verisi reddedildi: {validation.rejection_reason}")
+                # Notify about data quality issue (optional)
+                await self.send_message_raw(f"⚠️ *VERİ UYARISI - {symbol}*\n{validation.rejection_reason}\n_Bildirim gönderilmedi_")
+                return
+            
+            # Log validation quality
+            if validation.overall_quality.value != "VERIFIED":
+                logger.info(f"📊 {symbol} veri kalitesi: {validation.overall_quality.value} ({validation.verification_rate:.0f}%)")
             
             # Yön analizi - Her kaynak için güç seviyesi belirleme
             bullish_signals = []  # (score, text) tuples
