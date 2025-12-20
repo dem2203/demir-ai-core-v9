@@ -288,6 +288,97 @@ class BotEngine:
                             except Exception as pred_err:
                                 logger.debug(f"Live prediction error: {pred_err}")
                     
+                    # --- AI VİZYON ANALİZİ (15 dakika) - 3. bildirim tipi ---
+                    if not hasattr(self, 'last_ai_vision'):
+                        self.last_ai_vision = {}
+                    
+                    for symbol in ['BTCUSDT', 'ETHUSDT']:  # Sadece BTC ve ETH için
+                        if symbol not in self.last_ai_vision:
+                            self.last_ai_vision[symbol] = datetime.now() - timedelta(minutes=20)
+                        
+                        if (datetime.now() - self.last_ai_vision[symbol]).total_seconds() >= 900:
+                            try:
+                                # MarketAnalyzer'dan analiz al
+                                analysis = await self.analyzer.analyze_market(symbol)
+                                if analysis:
+                                    # Bull/Bear senaryoları oluştur
+                                    current_price = analysis.get('price', 0)
+                                    trend = analysis.get('trend', 'NEUTRAL')
+                                    confidence = analysis.get('confidence', 50)
+                                    
+                                    bull_scenario = {
+                                        'probability': min(80, 50 + confidence/2) if trend == 'BULLISH' else max(20, 50 - confidence/2),
+                                        'condition': f"${current_price:.0f} üzerinde kalırsa",
+                                        'target': f"${current_price * 1.03:.0f} (+3%)"
+                                    }
+                                    bear_scenario = {
+                                        'probability': 100 - bull_scenario['probability'],
+                                        'condition': f"${current_price * 0.98:.0f} altına düşerse",
+                                        'target': f"${current_price * 0.95:.0f} (-5%)"
+                                    }
+                                    
+                                    # Tavsiye belirle
+                                    if trend == 'BULLISH' and confidence > 60:
+                                        recommendation = "AL"
+                                        reason = "Teknik göstergeler yukarı yönü destekliyor"
+                                    elif trend == 'BEARISH' and confidence > 60:
+                                        recommendation = "SAT"
+                                        reason = "Düşüş sinyalleri güçlü"
+                                    else:
+                                        recommendation = "BEKLE"
+                                        reason = "Net yön oluşana kadar bekleyin"
+                                    
+                                    overview = f"{symbol} şu an ${current_price:.2f} seviyesinde. Trend: {trend}, Güven: %{confidence:.0f}"
+                                    
+                                    await self.notifier.send_ai_vision(
+                                        symbol=symbol,
+                                        overview=overview,
+                                        bull_scenario=bull_scenario,
+                                        bear_scenario=bear_scenario,
+                                        recommendation=recommendation,
+                                        recommendation_reason=reason
+                                    )
+                                    self.last_ai_vision[symbol] = datetime.now()
+                                    logger.info(f"🧠 AI Vision: {symbol} → {recommendation}")
+                            except Exception as vision_err:
+                                logger.debug(f"AI Vision error: {vision_err}")
+                    
+                    # --- KURUMSAL TETİKLEYİCİ (Whale/CME/ETF) - 4. bildirim tipi ---
+                    # Bu Sudden Alert içinde zaten entegre - InstitutionalAggregator'dan gelir
+                    # Aşağıdaki kod sadece büyük kurumsal hareketler için ek bildirim gönderir
+                    if not hasattr(self, 'last_institutional_check'):
+                        self.last_institutional_check = datetime.now() - timedelta(minutes=10)
+                    
+                    if (datetime.now() - self.last_institutional_check).total_seconds() >= 300:  # 5 dakika
+                        try:
+                            from src.brain.institutional_aggregator import get_aggregator
+                            aggregator = get_aggregator()
+                            
+                            # Büyük kurumsal hareketleri kontrol et
+                            for symbol in ['BTCUSDT']:  # Sadece BTC için kurumsal
+                                snapshot = await aggregator.get_institutional_snapshot(symbol)
+                                
+                                # Büyük ETF akışı veya Whale hareketi varsa bildir
+                                etf_flow = snapshot.get('etf_flow', {}).get('daily_flow', 0)
+                                whale_ratio = snapshot.get('whale_ratio', 1.0)
+                                
+                                if abs(etf_flow) > 200:  # $200M+ ETF akışı
+                                    direction = "GİRİŞ 📈" if etf_flow > 0 else "ÇIKIŞ 📉"
+                                    msg = f"""🏛️ *KURUMSAL HAREKET - {symbol}*
+━━━━━━━━━━━━━━━━━━
+💰 ETF Akışı: ${abs(etf_flow):.0f}M {direction}
+🐋 Whale Oranı: {whale_ratio:.2f}x
+
+{"⚠️ Büyük kurumsal alım!" if etf_flow > 0 else "⚠️ Kurumsal satış baskısı!"}
+━━━━━━━━━━━━━━━━━━
+⏰ {datetime.now().strftime('%H:%M')}"""
+                                    await self.notifier.send_message_raw(msg)
+                                    logger.info(f"🏛️ Institutional: {symbol} ETF ${etf_flow}M")
+                                    
+                            self.last_institutional_check = datetime.now()
+                        except Exception as inst_err:
+                            logger.debug(f"Institutional check error: {inst_err}")
+                    
                     # DISABLED: THINKING BRAIN (AI GÜNLÜĞÜ) - Not in agreed 4 types
                     # Her 15 dakikada bir THINKING BRAIN analizi (GERCEK DUSUNEN AI)
                     # if not hasattr(self, 'last_unified_analysis'):
