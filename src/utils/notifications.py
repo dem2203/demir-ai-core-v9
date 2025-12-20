@@ -1,492 +1,44 @@
+# -*- coding: utf-8 -*-
+"""
+DEMIR AI - Telegram Notification Manager V2
+============================================
+4 Bildirim Kategorisi:
+1. TEKNİK SİNYAL - Matematiksel indikatör bazlı
+2. CANLI VERİ TAHMİNİ - Web scraping bazlı (Whale, Liq, OB)
+3. ANİ HAREKET UYARISI - Volatilite ve risk tespiti
+4. AI GÖZ ANALİZİ - Düşünen yapay zeka perspektifi
+"""
 import logging
 import requests
 import asyncio
-import json
-import os
-from datetime import datetime, timedelta
+from datetime import datetime
+from typing import Dict, List, Optional
 from src.config.settings import Config
-from src.core.signal_filter import SignalQualityFilter
-from src.utils.notification_priority import get_notification_priority, NotificationPriority
 
 logger = logging.getLogger("NOTIFICATION_MANAGER")
 
 
-class DedupCache:
-    """
-    Prevents spamming the same signal repeatedly.
-    Now Price-Aware (Phase 21 Fix).
-    """
-    def __init__(self, cooldown_minutes: int = 60, price_threshold: float = 0.01):
-        self.cache = {}
-        self.cooldown = timedelta(minutes=cooldown_minutes)
-        self.price_threshold = price_threshold # 1% default
-
-    def is_duplicate(self, symbol: str, side: str, current_price: float) -> bool:
-        key = f"{symbol}_{side}"
-        now = datetime.now()
-        
-        if key in self.cache:
-            last_time, last_price = self.cache[key]
-            
-            # 1. Time Check
-            if now - last_time < self.cooldown:
-                # 2. Price Check (If moved > 1%, it's NEW)
-                price_diff = abs(current_price - last_price) / last_price
-                if price_diff < self.price_threshold:
-                    return True # Duplicate (Close in time AND price)
-        
-        # Update cache
-        self.cache[key] = (now, current_price)
-        return False
-
 class NotificationManager:
     """
-    DEMIR AI V20.0 - TELEGRAM ALERT SYSTEM
-    
-    Sends critical signals through Telegram.
+    DEMIR AI V2.0 - 4-Katmanlı Bildirim Sistemi
     """
     
     def __init__(self):
         self.telegram_token = Config.TELEGRAM_TOKEN
         self.telegram_chat_id = Config.TELEGRAM_CHAT_ID
         self.telegram_url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage" if self.telegram_token else None
-        self.signal_filter = SignalQualityFilter(min_confidence=70.0)
-        self.rejected_log_path = "rejected_signals.json"
-        self.dedup_cache = DedupCache(cooldown_minutes=60) # Phase 21: Dedup
         
-        # Phase 30 Fix: Early warning deduplication (4 hour cooldown for same symbol+direction)
-        self.early_warning_cache = {}  # {symbol_direction: last_sent_time}
-        
-        # Phase 31: Active positions tracking - prevents repeat signals until TP/SL hit
-        # Format: {symbol: {'side': 'BUY', 'entry': price, 'sl': price, 'tp1': price, 'timestamp': datetime}}
-        self.active_positions = {}
-        
-        self.priority_calculator = get_notification_priority()  # Phase 29: Smart urgency
+        if self.telegram_token and self.telegram_chat_id:
+            logger.info("✅ Telegram V2 Ready (4 Notification Types)")
+        else:
+            logger.warning("⚠️ Telegram credentials not configured")
 
-    async def send_signal(self, signal: dict, snapshot: dict = None):
-        """
-        Sends ENHANCED signal to Telegram (Phase 29).
-        
-        New features:
-        - Urgency level (CRITICAL/HIGH/MEDIUM/LOW)
-        - Volume Profile zones (POC, VAH, VAL)
-        - Cross-exchange price comparison
-        """
-        if not self.telegram_token or not self.telegram_chat_id:
-            return
-            
-        # 1. STRICT FILTER: Only STRONG signals
-        if signal.get('quality') != 'STRONG':
-            return
-        
-        # 1.5 SIGNAL GATE CHECK (Phase 93)
-        # Only 1 active signal per coin - must wait for TP/SL before new signal
-        try:
-            from src.brain.signal_gate import get_gate
-            gate = get_gate()
-            symbol = signal['symbol']
-            
-            if not gate.can_send_signal(symbol):
-                active = gate.get_active_signals().get(symbol, {})
-                logger.info(f"🚫 Signal BLOCKED for {symbol} - Active signal exists: {active.get('direction')} @ ${active.get('entry', 0):,.2f}")
-                return
-        except Exception as e:
-            logger.warning(f"Signal gate check failed: {e}")
-        
-        # 2. DEDUP CHECK
-        price = signal.get('entry_price', signal.get('price', 0))
-        if self.dedup_cache.is_duplicate(signal['symbol'], signal['side'], price):
-            return
-        
-        # 2.5 POSITION TRACKING CHECK (Phase 31)
-        # If we already have an active position for this symbol, check if TP/SL was hit
-        symbol = signal['symbol']
-        if symbol in self.active_positions:
-            pos = self.active_positions[symbol]
-            
-            # Check if position expired (24 hour max)
-            hours_since = (datetime.now() - pos['timestamp']).total_seconds() / 3600
-            if hours_since >= 24:
-                logger.info(f"📊 Position expired after 24h: {symbol}")
-                del self.active_positions[symbol]
-            else:
-                # Check if TP1 or SL was hit
-                current_price = price
-                if pos['side'] == 'BUY':  # LONG position
-                    if pos['tp1'] > 0 and current_price >= pos['tp1']:
-                        logger.info(f"🎯 LONG TP1 HIT: {symbol} at ${current_price:,.2f}")
-                        del self.active_positions[symbol]
-                    elif pos['sl'] > 0 and current_price <= pos['sl']:
-                        logger.info(f"🛡️ LONG SL HIT: {symbol} at ${current_price:,.2f}")
-                        del self.active_positions[symbol]
-                    else:
-                        logger.debug(f"⏳ Active LONG position exists for {symbol}, skipping signal")
-                        return
-                else:  # SHORT position
-                    if pos['tp1'] > 0 and current_price <= pos['tp1']:
-                        logger.info(f"🎯 SHORT TP1 HIT: {symbol} at ${current_price:,.2f}")
-                        del self.active_positions[symbol]
-                    elif pos['sl'] > 0 and current_price >= pos['sl']:
-                        logger.info(f"🛡️ SHORT SL HIT: {symbol} at ${current_price:,.2f}")
-                        del self.active_positions[symbol]
-                    else:
-                        logger.debug(f"⏳ Active SHORT position exists for {symbol}, skipping signal")
-                        return
-        
-        # 3. CALCULATE URGENCY (Phase 29)
-        urgency_data = self.priority_calculator.calculate_urgency(signal, snapshot)
-        
-        # 4. Check urgency-based cooldown
-        if not urgency_data.get('can_send', True):
-            logger.debug(f"Signal blocked by urgency cooldown: {signal['symbol']}")
-            return
-        
-        try:
-            side_icon = "🟢 LONG 🚀" if signal['side'] == "BUY" else "🔴 SHORT 🔻"
-            conf = signal['confidence']
-            
-            # Get enhanced data from snapshot
-            snapshot = snapshot or {}
-            smart_sltp = snapshot.get('smart_sltp', {})
-            mtf = snapshot.get('mtf', {})
-            smc = snapshot.get('smc', {})
-            volume_profile = snapshot.get('volume_profile', {})
-            cross_exchange = snapshot.get('cross_exchange', {})
-            
-            # Entry and levels
-            entry = signal['entry_price']
-            sl = smart_sltp.get('stop_loss', signal.get('sl_price', 0))
-            tp1 = smart_sltp.get('take_profit_1', signal.get('tp_price', 0))
-            tp2 = smart_sltp.get('take_profit_2', 0)
-            tp3 = smart_sltp.get('take_profit_3', 0)
-            
-            # Risk/Reward ratios
-            rr1 = smart_sltp.get('risk_reward_1', 0)
-            rr2 = smart_sltp.get('risk_reward_2', 0)
-            rr3 = smart_sltp.get('risk_reward_3', 0)
-            risk_pct = smart_sltp.get('risk_pct', 0)
-            
-            # Setup quality
-            quality = smart_sltp.get('quality', signal.get('quality', 'UNKNOWN'))
-            quality_emoji = "✅" if quality == "EXCELLENT" else "👍" if quality == "GOOD" else "⚠️"
-            
-            # === BUILD ENHANCED MESSAGE ===
-            
-            # Header with Urgency
-            urgency = urgency_data['urgency']
-            urgency_emoji = urgency_data['emoji']
-            urgency_score = urgency_data['score']
-            action_window = urgency_data['action_window']
-            
-            message = f"{side_icon} **{signal['symbol']}**\n"
-            message += f"━━━━━━━━━━━━━━━━━━\n"
-            
-            # Urgency Banner (Phase 29)
-            if urgency == 'CRITICAL':
-                message += f"{urgency_emoji} **URGENCY: CRITICAL** {urgency_emoji}\n"
-                message += f"⚡ ACT NOW | Score: {urgency_score}/100\n"
-                message += f"⏱️ Window: {action_window}\n"
-            elif urgency == 'HIGH':
-                message += f"{urgency_emoji} **URGENCY: HIGH** | Score: {urgency_score}/100\n"
-                message += f"⏱️ Window: {action_window}\n"
-            else:
-                message += f"{urgency_emoji} Urgency: {urgency} | Score: {urgency_score}/100\n"
-            
-            message += f"━━━━━━━━━━━━━━━━━━\n"
-            
-            # Quality and Confidence + PHASE 69: Star System
-            def confidence_to_stars(c: float) -> str:
-                if c >= 70:
-                    return "⭐⭐⭐"
-                elif c >= 55:
-                    return "⭐⭐"
-                elif c >= 40:
-                    return "⭐"
-                else:
-                    return ""
-            
-            stars = confidence_to_stars(conf)
-            message += f"{quality_emoji} **Setup:** {quality}\n"
-            message += f"🧠 **Confidence:** {conf:.1f}% {stars}\n"
-            message += f"📉 **Reason:** {signal.get('reason', 'AI Model')[:50]}\n"
-            
-            # MTF Confluence
-            mtf_score = mtf.get('confluence_score', 0)
-            if mtf_score > 0:
-                mtf_type = mtf.get('confluence_type', 'N/A')
-                trends = mtf.get('trends', {})
-                trend_1h = trends.get('1h', {}).get('trend', '?')
-                trend_4h = trends.get('4h', {}).get('trend', '?')
-                trend_1d = trends.get('1d', {}).get('trend', '?')
-                t1_e = "🟢" if trend_1h == "BULLISH" else "🔴" if trend_1h == "BEARISH" else "⚪"
-                t4_e = "🟢" if trend_4h == "BULLISH" else "🔴" if trend_4h == "BEARISH" else "⚪"
-                td_e = "🟢" if trend_1d == "BULLISH" else "🔴" if trend_1d == "BEARISH" else "⚪"
-                message += f"📊 **MTF:** {mtf_score}% ({mtf_type})\n"
-                message += f"   {t1_e}1H {t4_e}4H {td_e}1D\n"
-            
-            # SMC Bias
-            smc_bias = smc.get('smc_bias', 'N/A')
-            if smc_bias != 'N/A':
-                bias_e = "🟢" if smc_bias == "BULLISH" else "🔴" if smc_bias == "BEARISH" else "⚪"
-                message += f"🎯 **SMC:** {bias_e} {smc_bias}\n"
-            
-            # === VOLUME PROFILE SECTION (Phase 29.1) ===
-            vpoc = volume_profile.get('vpoc', 0)
-            vah = volume_profile.get('vah', 0)
-            val = volume_profile.get('val', 0)
-            vp_position = volume_profile.get('price_position', '')
-            
-            if vpoc > 0:
-                message += f"━━━ VOLUME PROFILE ━━━\n"
-                message += f"📊 **POC:** ${vpoc:,.0f}\n"
-                message += f"   VAH: ${vah:,.0f} | VAL: ${val:,.0f}\n"
-                
-                if vp_position:
-                    pos_emoji = "🔼" if "ABOVE" in vp_position else "🔽" if "BELOW" in vp_position else "↔️"
-                    message += f"   {pos_emoji} Price: {vp_position.replace('_', ' ')}\n"
-            
-            # === CROSS-EXCHANGE SECTION (Phase 29.3) ===
-            if cross_exchange and cross_exchange.get('exchanges_online', 0) > 1:
-                message += f"━━━ CROSS-EXCHANGE ━━━\n"
-                for ex in ['binance', 'bybit', 'coinbase']:
-                    if ex in cross_exchange and cross_exchange[ex].get('price', 0) > 0:
-                        ex_data = cross_exchange[ex]
-                        ex_price = ex_data['price']
-                        deviation = ex_data.get('deviation', 0)
-                        dev_str = f"+{deviation:.2f}%" if deviation > 0 else f"{deviation:.2f}%"
-                        dev_emoji = "🟢" if deviation > 0 else "🔴" if deviation < 0 else "⚪"
-                        message += f"   {dev_emoji} {ex.capitalize()}: ${ex_price:,.0f} ({dev_str})\n"
-                
-                max_div = cross_exchange.get('max_divergence', 0)
-                if max_div >= 0.1:
-                    message += f"   ⚡ **Divergence: {max_div:.2f}%**\n"
-            
-            message += f"━━━━━━━━━━━━━━━━━━\n"
-            
-            # Entry/SL/TP Section
-            message += f"🚪 **ENTRY:** ${entry:,.2f}\n"
-            if sl > 0:
-                message += f"🛡️ **STOP:** ${sl:,.2f} ({risk_pct:.1f}% risk)\n"
-            message += f"━━━ TARGETS ━━━\n"
-            if tp1 > 0:
-                message += f"🎯 **TP1:** ${tp1:,.2f} (R:R {rr1})\n"
-            if tp2 > 0:
-                message += f"🎯 **TP2:** ${tp2:,.2f} (R:R {rr2})\n"
-            if tp3 > 0:
-                message += f"🎯 **TP3:** ${tp3:,.2f} (R:R {rr3})\n"
-            
-            message += f"━━━━━━━━━━━━━━━━━━\n"
-            message += f"💰 **Size:** {signal.get('kelly_size', 'N/A')}%\n"
-            message += f"⚠️ _DYOR - AI Advisory Only v29_"
-            
-            await self.send_message_raw(message)
-            logger.info(f"✅ Phase 29 Enhanced Signal sent: {signal['symbol']} [Urgency: {urgency}]")
-            
-            # Phase 31: Register position for tracking
-            self.active_positions[signal['symbol']] = {
-                'side': signal['side'],
-                'entry': entry,
-                'sl': sl,
-                'tp1': tp1,
-                'timestamp': datetime.now()
-            }
-            logger.info(f"📊 Position registered: {signal['symbol']} {signal['side']} Entry=${entry:,.2f} SL=${sl:,.2f} TP1=${tp1:,.2f}")
-            
-            # Phase 93: Close the gate - no new signal until TP/SL hit
-            try:
-                from src.brain.signal_gate import get_gate
-                gate = get_gate()
-                gate.open_gate(signal['symbol'], {
-                    'direction': 'LONG' if signal['side'] == 'BUY' else 'SHORT',
-                    'entry': entry,
-                    'tp1': tp1,
-                    'tp2': tp2,
-                    'sl': sl,
-                    'confidence': signal.get('confidence', 50)
-                })
-                logger.info(f"🔒 Signal Gate CLOSED for {signal['symbol']} - waiting for TP/SL")
-            except Exception as gate_err:
-                logger.warning(f"Gate registration failed: {gate_err}")
-            
-        except Exception as e:
-            logger.error(f"Telegram Error: {e}")
-
-    async def send_heartbeat(self, price_info: dict):
-        """Sends hourly heartbeat if no signals were sent."""
-        if not self.telegram_token: return
-        
-        try:
-            msg = (
-                f"💓 **System Heartbeat**\n"
-                f"━━━━━━━━━━━━━━\n"
-                f"🤖 AI Engine: **ONLINE**\n"
-                f"📅 Time: {datetime.now().strftime('%H:%M')}\n"
-                f"━━━━━━━━━━━━━━\n"
-            )
-            
-            for sym, price in price_info.items():
-                msg += f"🔹 **{sym}:** ${price:,.2f}\n"
-                
-            msg += f"━━━━━━━━━━━━━━\n"
-            msg += f"Scanning for opportunities..."
-            
-            await self.send_message_raw(msg)
-        except Exception as e:
-            logger.error(f"Heartbeat failed: {e}")
+    # =========================================
+    # TEMEL MESAJ GÖNDERME
+    # =========================================
     
-    async def send_money_flow_report(self, money_flow_data: dict):
-        """
-        Mikabot tarzı para akışı raporu gönderir.
-        (Sends Mikabot-style money flow report to Telegram)
-        
-        Yeni Format (v2):
-        - Coin başına Flow %, 15m %, Mts değeri
-        - 6 timeframe için oklar (5m, 15m, 1h, 4h, 12h, 1d)
-        """
-        if not self.telegram_token or not self.telegram_chat_id:
-            return
-        
-        try:
-            # Header
-            msg = "📊 **Marketteki Tüm Coinlere Olan Nakit Girişi Raporu.**\n"
-            msg += f"_Kısa Vadeli Market Alım Gücü:_ **{money_flow_data.get('buying_power', '0X')}**\n"
-            msg += f"_Marketteki Hacim Payı:_ **%{money_flow_data.get('market_buyer_pct', 50):.1f}**\n"
-            msg += "━━━━━━━━━━━━━━━━━━━━\n"
-            
-            # Timeframe analysis (use new 'timeframe_flows' key)
-            tf_flows = money_flow_data.get('timeframe_flows', money_flow_data.get('market_flow', {}))
-            for tf in ['15m', '1h', '4h', '12h', '1d']:
-                pct = tf_flows.get(tf, 50)
-                arrow = "🟢▲" if pct >= 50 else "🔴▼"
-                msg += f"{tf}=> **%{pct:.1f}** {arrow}\n"
-            
-            msg += "━━━━━━━━━━━━━━━━━━━━\n"
-            
-            # Coin details (new detailed format)
-            msg += "**En çok nakit girişi olanlar.**\n"
-            msg += "_(Sonunda 🔺 olanlar sağlıklıdır)_\n"
-            msg += "_Nakitin nereye aktığını gösterir._\n\n"
-            
-            # Use new coin_details or fallback to old top_inflow
-            coin_details = money_flow_data.get('coin_details', [])
-            
-            if coin_details:
-                for coin in coin_details[:5]:  # Top 5
-                    symbol = coin.get('symbol', '???')
-                    flow_pct = coin.get('flow_pct', 0)
-                    buyer_15m = coin.get('buyer_15m', 50)
-                    mts = coin.get('mts', 0)
-                    arrows = coin.get('arrows', '➖➖➖➖➖➖')
-                    
-                    msg += f"**{symbol}** Nakit: %{flow_pct:.1f} 15m:%{buyer_15m:.0f} Mts:{mts} {arrows}\n"
-            else:
-                # Fallback to old format
-                for symbol, pct in money_flow_data.get('top_inflow', [])[:5]:
-                    clean_symbol = symbol.replace('USDT', '')
-                    arrows = "🔺🔺🔺" if pct >= 55 else "🔺" if pct >= 50 else "🔻"
-                    msg += f"🔹 **{clean_symbol}** Nakit: %{pct:.1f} {arrows}\n"
-            
-            msg += "\n━━━━━━━━━━━━━━━━━━━━\n"
-            msg += f"_Güncelleme: {datetime.now().strftime('%H:%M')}_"
-            
-            await self.send_message_raw(msg)
-            logger.info("📊 Money Flow report sent to Telegram")
-            
-        except Exception as e:
-            logger.error(f"Money flow report failed: {e}")
-    
-    
-    async def send_early_warning(self, symbol: str, warnings: list, visual_prediction: dict = None):
-        """
-        PROAKTIF ERKEN UYARI MESAJI (Proactive Early Warning)
-        
-        İndikatörlerden FARKLI olarak:
-        - Hareket OLMADAN ÖNCE uyarır
-        - Ne olacağını TAHMİN eder
-        - ERKEN GİRİŞ noktası verir
-        """
-        if not self.telegram_token or not self.telegram_chat_id:
-            return
-        
-        if not warnings:
-            return
-        
-        # Phase 30 Fix: Check if we already sent this warning recently (4 hour cooldown)
-        # Create a key from symbol + first warning title/type
-        first_warning = warnings[0] if warnings else {}
-        warning_key = f"{symbol}_{first_warning.get('title', 'unknown')}"
-        
-        now = datetime.now()
-        if warning_key in self.early_warning_cache:
-            last_sent = self.early_warning_cache[warning_key]
-            hours_since = (now - last_sent).total_seconds() / 3600
-            if hours_since < 4:  # 4 hour cooldown
-                logger.debug(f"Early warning skipped (sent {hours_since:.1f}h ago): {warning_key}")
-                return
-        
-        # Update cache
-        self.early_warning_cache[warning_key] = now
-        
-        try:
-            # Build message
-            msg = f"⚡ **ERKEN UYARI - {symbol}**\n"
-            msg += f"━━━━━━━━━━━━━━━━━━━━\n\n"
-            
-            # Add each warning
-            for w in warnings[:3]:  # Max 3 warnings
-                priority_emoji = {
-                    'CRITICAL': '🔴',
-                    'HIGH': '🟠',
-                    'MEDIUM': '🟡',
-                    'LOW': '⚪'
-                }.get(w.get('priority'), '⚪')
-                
-                msg += f"{priority_emoji} **{w.get('title', 'Uyarı')}**\n"
-                msg += f"   {w.get('message', '')}\n"
-                msg += f"   ➡️ _{w.get('action', '')}_\n\n"
-            
-            # Add AI prediction if available
-            if visual_prediction and visual_prediction.get('probability', 0) >= 60:
-                msg += f"━━━━━━━━━━━━━━━━━━━━\n"
-                msg += f"🧠 **AI TAHMİNİ**\n"
-                msg += f"📊 Trend: **{visual_prediction.get('trend', 'N/A')}**\n"
-                msg += f"🎯 Olasılık: **%{visual_prediction.get('probability', 0)}**\n"
-                
-                prediction = visual_prediction.get('prediction', '')
-                if prediction:
-                    msg += f"📈 Tahmin: _{prediction}_\n"
-                
-                early_entry = visual_prediction.get('early_entry_price')
-                target = visual_prediction.get('target_price')
-                stop = visual_prediction.get('stop_loss')
-                
-                if early_entry:
-                    msg += f"\n💰 **ERKEN GİRİŞ:**\n"
-                    msg += f"   📍 Giriş: ${early_entry:,.0f}\n" if isinstance(early_entry, (int, float)) else f"   📍 Giriş: {early_entry}\n"
-                    if target:
-                        msg += f"   🎯 Hedef: ${target:,.0f}\n" if isinstance(target, (int, float)) else f"   🎯 Hedef: {target}\n"
-                    if stop:
-                        msg += f"   🛡️ Stop: ${stop:,.0f}\n" if isinstance(stop, (int, float)) else f"   🛡️ Stop: {stop}\n"
-                
-                time_horizon = visual_prediction.get('time_horizon')
-                if time_horizon:
-                    msg += f"   ⏰ Süre: {time_horizon}\n"
-                
-                risk_warning = visual_prediction.get('risk_warning')
-                if risk_warning:
-                    msg += f"\n⚠️ Risk: _{risk_warning}_\n"
-            
-            msg += f"\n━━━━━━━━━━━━━━━━━━━━\n"
-            msg += f"_Bu bir ERKEN UYARIDIR. Hareket henüz başlamadı._"
-            
-            await self.send_message_raw(msg)
-            logger.info(f"📢 Early Warning sent for {symbol}: {len(warnings)} warnings")
-            
-        except Exception as e:
-            logger.error(f"Early Warning send failed: {e}")
-
     async def send_message_raw(self, text: str):
-        """Send raw text to Telegram"""
+        """Temel mesaj gönderme - Tüm metodların temeli."""
         if not self.telegram_token or not self.telegram_chat_id:
             return
         
@@ -497,516 +49,257 @@ class NotificationManager:
                 "parse_mode": "Markdown"
             }
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, lambda: requests.post(self.telegram_url, data=payload))
+            await loop.run_in_executor(
+                None, 
+                lambda: requests.post(self.telegram_url, data=payload, timeout=10)
+            )
         except Exception as e:
             logger.error(f"Telegram Error: {e}")
-    
-    # ==========================================
-    # PHASE 50 METHODS - MERGED FROM TelegramNotifier
-    # ==========================================
-    
-    async def send_result(self, symbol: str, direction: str, result_type: str,
-                   entry: float, exit_price: float, profit_pct: float,
-                   duration_hours: float, signal_id: str):
-        """
-        TP veya SL sonuç bildirimi.
-        
-        result_type: TP1_HIT, TP2_HIT, SL_HIT
-        """
-        if 'TP' in result_type:
-            emoji = "✅"
-            result_text = "TP VURULDU! 🎉"
-            profit_emoji = "📊"
-        else:
-            emoji = "❌"
-            result_text = "SL VURULDU 😔"
-            profit_emoji = "📉"
-        
-        dir_emoji = "📈" if direction == "LONG" else "📉"
-        
-        message = f"""
-{emoji} **DEMIR AI - {result_text}**
 
-{dir_emoji} **{symbol} {direction}**
-
+    # =========================================
+    # 1️⃣ TEKNİK SİNYAL
+    # =========================================
+    
+    async def send_technical_signal(
+        self,
+        symbol: str,
+        direction: str,  # "LONG" or "SHORT"
+        entry: float,
+        tp1: float,
+        tp2: float,
+        sl: float,
+        strong_indicators: List[Dict],  # [{"name": "RSI", "value": 78, "reason": "Aşırı Alım"}]
+        confidence: float
+    ):
+        """
+        Teknik/Matematiksel indikatör bazlı sinyal.
+        Sadece %70+ güven veren indikatörler gösterilir.
+        """
+        dir_emoji = "🟢 LONG" if direction == "LONG" else "🔴 SHORT"
+        
+        # Risk/Reward hesapla
+        risk = abs(entry - sl)
+        reward1 = abs(tp1 - entry)
+        rr1 = round(reward1 / risk, 1) if risk > 0 else 0
+        reward2 = abs(tp2 - entry)
+        rr2 = round(reward2 / risk, 1) if risk > 0 else 0
+        
+        # Güçlü indikatörleri listele
+        indicator_lines = ""
+        for ind in strong_indicators:
+            indicator_lines += f"• {ind['name']}: {ind['value']:.0f}% ({ind['reason']})\n"
+        
+        msg = f"""🎯 *TEKNİK SİNYAL - {symbol}*
+━━━━━━━━━━━━━━━━━━
+📊 Yön: *{dir_emoji}*
 💰 Entry: `${entry:,.2f}`
-🏁 Çıkış: `${exit_price:,.2f}`
-{profit_emoji} Sonuç: **{profit_pct:+.2f}%**
-
-⏱️ Süre: {duration_hours:.1f} saat
-🔔 ID: `{signal_id}`
-
-⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}
-        """.strip()
-        
-        await self.send_message_raw(message)
-    
-    async def send_warning(self, symbol: str, warning_type: str,
-                    description: str, potential_signal: str = None,
-                    timeframe: str = None):
-        """
-        Risk veya fırsat uyarısı.
-        
-        warning_type: WHALE_ALERT, HIGH_VOLATILITY, LIQUIDATION_RISK, OPPORTUNITY
-        """
-        type_emojis = {
-            'WHALE_ALERT': '🐋',
-            'HIGH_VOLATILITY': '⚡',
-            'LIQUIDATION_RISK': '⚠️',
-            'OPPORTUNITY': '💡',
-            'NEWS': '📰'
-        }
-        
-        emoji = type_emojis.get(warning_type, '⚠️')
-        
-        message = f"""
-{emoji} **DEMIR AI - UYARI**
-
-**{warning_type.replace('_', ' ')}**
-📍 {symbol}
-
-{description}
-        """.strip()
-        
-        if potential_signal:
-            message += f"\n\n📊 _Potansiyel sinyal:_ {potential_signal}"
-        
-        if timeframe:
-            message += f"\n⏰ _Tahmini:_ {timeframe}"
-        
-        message += f"\n\n🕐 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
-        
-        await self.send_message_raw(message)
-    
-    async def send_news(self, headline: str, source: str,
-                 market_impact: str, sentiment: str):
-        """
-        Önemli haber bildirimi.
-        
-        sentiment: BULLISH, BEARISH, NEUTRAL
-        """
-        sentiment_emoji = {
-            'BULLISH': '🟢 YÜKSELİŞ',
-            'BEARISH': '🔴 DÜŞÜŞ',
-            'NEUTRAL': '⚪ NÖTR'
-        }
-        
-        message = f"""
-📰 **DEMIR AI - ÖNEMLİ HABER**
-
-📢 **{headline}**
-
-📊 Piyasa Etkisi: **{market_impact}**
-🎯 Tahmin: **{sentiment_emoji.get(sentiment, sentiment)}**
-
-🔗 Kaynak: {source}
-⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}
-        """.strip()
-        
-        await self.send_message_raw(message)
-    
-    # ==========================================
-    # PHASE 76: SUDDEN MOVEMENT ALERT 🚨
-    # ==========================================
-    
-    async def send_sudden_movement_alert(self, symbol: str, alert_data: dict):
-        """
-        Ani hareket uyarısı - Bollinger Squeeze, Liquidation Cascade, etc.
-        
-        alert_data:
-            direction: LONG/SHORT
-            confidence: 0-100
-            entry_price: float
-            tp1, tp2, sl: float
-            triggers: list of active triggers
-            squeeze_data: dict (bandwidth, breakout_imminent)
-            cascade_data: dict (risk, squeeze_type)
-            volume_data: dict (spike_strength)
-            taker_data: dict (ratio, imbalance)
-            divergence_data: dict (premium_pct, type)
-        """
-        direction = alert_data.get('direction', 'NEUTRAL')
-        confidence = alert_data.get('confidence', 50)
-        entry = alert_data.get('entry_price', 0)
-        tp1 = alert_data.get('tp1', 0)
-        tp2 = alert_data.get('tp2', 0)
-        sl = alert_data.get('sl', 0)
-        
-        # Yön emoji
-        if direction == 'LONG':
-            dir_emoji = "🟢"
-            dir_text = "LONG"
-        else:
-            dir_emoji = "🔴"
-            dir_text = "SHORT"
-        
-        # Yıldız sistemi
-        if confidence >= 70:
-            stars = "⭐⭐⭐"
-        elif confidence >= 55:
-            stars = "⭐⭐"
-        elif confidence >= 40:
-            stars = "⭐"
-        else:
-            stars = ""
-        
-        # Trigger listesi oluştur
-        triggers = alert_data.get('triggers', [])
-        trigger_lines = []
-        
-        # Bollinger Squeeze
-        squeeze = alert_data.get('squeeze_data', {})
-        if squeeze.get('squeeze_active'):
-            breakout = "🔥 PATLAMA YAKLAŞIYOR!" if squeeze.get('breakout_imminent') else ""
-            trigger_lines.append(f"📊 Bollinger Squeeze: %{squeeze.get('bandwidth_pct', 0):.1f} genişlik {breakout}")
-        
-        # Liquidation Cascade
-        cascade = alert_data.get('cascade_data', {})
-        if cascade.get('cascade_risk') in ['HIGH', 'MEDIUM']:
-            squeeze_type = cascade.get('squeeze_type', '')
-            risk_emoji = "🚨" if cascade.get('cascade_risk') == 'HIGH' else "⚠️"
-            trigger_lines.append(f"{risk_emoji} {squeeze_type}: Funding %{cascade.get('funding_rate_pct', 0):.2f}")
-        
-        # Volume Spike
-        volume = alert_data.get('volume_data', {})
-        if volume.get('spike_detected'):
-            trigger_lines.append(f"📈 Hacim Patlaması: {volume.get('spike_strength', 1):.1f}x normal")
-        
-        # Taker Flow
-        taker = alert_data.get('taker_data', {})
-        if taker.get('imbalance') != 'NONE':
-            flow_emoji = "🐋" if taker.get('imbalance') == 'STRONG' else "📊"
-            trigger_lines.append(f"{flow_emoji} Taker Flow: Buy/Sell {taker.get('ratio', 1):.2f} ({taker.get('imbalance', '')})")
-        
-        # Exchange Divergence
-        diverge = alert_data.get('divergence_data', {})
-        if diverge.get('divergence_type') not in ['ALIGNED', 'UNKNOWN', None]:
-            trigger_lines.append(f"🏦 {diverge.get('divergence_type', '')}: {diverge.get('premium_pct', 0):+.2f}%")
-        
-        triggers_text = "\n".join(trigger_lines) if trigger_lines else "• Birden fazla modül uyumlu"
-        
-        message = f"""
-🚨 **ANİ HAREKET UYARISI!**
-━━━━━━━━━━━━━━━━━━━━━━
-{dir_emoji} Yön: **{dir_text}**
-💰 Giriş: **${entry:,.2f}**
-🎯 TP1: ${tp1:,.2f}
-🎯 TP2: ${tp2:,.2f}
-🛡️ SL: ${sl:,.2f}
-📊 Güven: **%{confidence}** {stars}
-━━━━━━━━━━━━━━━━━━━━━━
-**Tetikleyiciler:**
-{triggers_text}
-━━━━━━━━━━━━━━━━━━━━━━
-⏱️ Beklenen süre: **1-5 mum** (15dk)
-⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}
-━━━━━━━━━━━━━━━━━━━━━━
-⚡ Bu özel bir **ANİ HAREKET** sinyalidir!
-        """.strip()
-        
-        await self.send_message_raw(message)
-        logger.info(f"🚨 Sudden Movement Alert sent: {symbol} {direction} {confidence}%")
-    
-    def _log_rejected_signal(self, signal: dict, quality_score: int, reason: str):
-        """Log rejected signals to JSON file for dashboard review"""
-        try:
-            rejected_data = {
-                "timestamp": datetime.now().isoformat(),
-                "symbol": signal['symbol'],
-                "side": signal['side'],
-                "quality_score": quality_score,
-                "reason": reason,
-                "pattern": signal.get('pattern', 'None'),
-                "confidence": signal.get('confidence', 0)
-            }
-            
-            # Append to log file
-            if os.path.exists(self.rejected_log_path):
-                with open(self.rejected_log_path, 'r') as f:
-                    logs = json.load(f)
-            else:
-                logs = []
-            
-            logs.append(rejected_data)
-            
-            # Keep only last 50 rejected signals
-            if len(logs) > 50:
-                logs = logs[-50:]
-            
-            with open(self.rejected_log_path, 'w') as f:
-                json.dump(logs, f, indent=2)
-            
-            logger.info(f"📝 Rejected signal logged: {signal['symbol']} (Score: {quality_score})")
-        except Exception as e:
-            logger.error(f"Error logging rejected signal: {e}")
-    
-    # ============================================
-    # TELEGRAM COMMAND HANDLER (Phase 31)
-    # ============================================
-    
-    async def check_telegram_commands(self, money_flow_analyzer=None):
-        """
-        Check for incoming Telegram commands.
-        Supported commands:
-        - inout / /inout : Trigger Money Flow report
-        - status / /status : System status
-        """
-        if not self.telegram_token or not self.telegram_chat_id:
-            return
-        
-        try:
-            # Initialize last_update_id if not exists
-            if not hasattr(self, 'last_update_id'):
-                self.last_update_id = 0
-            
-            # Get updates from Telegram
-            url = f"https://api.telegram.org/bot{self.telegram_token}/getUpdates"
-            params = {
-                'offset': self.last_update_id + 1,
-                'timeout': 1,  # Short timeout for non-blocking
-                'allowed_updates': ['message']
-            }
-            
-            response = requests.get(url, params=params, timeout=5)
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                if data.get('ok') and data.get('result'):
-                    for update in data['result']:
-                        self.last_update_id = update['update_id']
-                        
-                        message = update.get('message', {})
-                        text = message.get('text', '').lower().strip()
-                        chat_id = str(message.get('chat', {}).get('id', ''))
-                        
-                        # Only respond to authorized chat
-                        if chat_id != str(self.telegram_chat_id):
-                            continue
-                        
-                        # Handle commands
-                        if text in ['inout', '/inout', 'moneyflow', '/moneyflow']:
-                            logger.info(f"📩 Telegram command received: {text}")
-                            await self._handle_inout_command(money_flow_analyzer)
-                        
-                        elif text in ['status', '/status', 'durum', '/durum']:
-                            logger.info(f"📩 Telegram command received: {text}")
-                            await self._handle_status_command()
-                        
-                        elif text in ['winrate', '/winrate', 'performans', '/performans']:
-                            logger.info(f"📩 Telegram command received: {text}")
-                            await self._handle_winrate_command()
-                        
-                        elif text in ['help', '/help', 'yardim', '/yardim']:
-                            await self._handle_help_command()
-                            
-        except requests.exceptions.Timeout:
-            pass  # Normal, non-blocking check
-        except Exception as e:
-            logger.debug(f"Telegram command check error: {e}")
-    
-    async def _handle_inout_command(self, money_flow_analyzer):
-        """Handle inout command - send Money Flow report"""
-        if money_flow_analyzer is None:
-            await self.send_message_raw("⚠️ Money Flow Analyzer not available")
-            return
-        
-        try:
-            await self.send_message_raw("⏳ Nakit akışı hesaplanıyor...")
-            
-            # Get fresh money flow data
-            money_flow_data = await money_flow_analyzer.get_market_money_flow()
-            await self.send_money_flow_report(money_flow_data)
-            
-        except Exception as e:
-            await self.send_message_raw(f"❌ Hata: {e}")
-            logger.error(f"Money flow command error: {e}")
-    
-    async def _handle_status_command(self):
-        """Handle status command"""
-        from datetime import datetime
-        
-        msg = "📊 **DEMIR AI DURUM**\n"
-        msg += f"━━━━━━━━━━━━━━━━━━━━\n"
-        msg += f"⏰ Zaman: {datetime.now().strftime('%H:%M:%S')}\n"
-        msg += f"🟢 Sistem: AKTIF\n"
-        msg += f"📈 Aktif Pozisyon: {len(self.active_positions)}\n"
-        msg += f"━━━━━━━━━━━━━━━━━━━━\n"
-        msg += f"_/inout - Para akışı raporu_\n"
-        msg += f"_/help - Komut listesi_"
+🎯 TP1: `${tp1:,.2f}` (R:R {rr1})
+🎯 TP2: `${tp2:,.2f}` (R:R {rr2})
+🛡️ SL: `${sl:,.2f}`
+━━━━━━━━━━━━━━━━━━
+✅ *Güçlü Sinyaller (%70+):*
+{indicator_lines}━━━━━━━━━━━━━━━━━━
+🧠 AI Güven: *{confidence:.0f}%*
+⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}"""
         
         await self.send_message_raw(msg)
+        logger.info(f"📊 Technical Signal sent: {symbol} {direction} {confidence:.0f}%")
+
+    # =========================================
+    # 2️⃣ CANLI VERİ TAHMİNİ
+    # =========================================
     
-    async def _handle_help_command(self):
-        """Handle help command"""
-        msg = "📋 **KOMUT LİSTESİ**\n"
-        msg += f"━━━━━━━━━━━━━━━━━━━━\n"
-        msg += f"📊 `/inout` - Nakit akışı raporu\n"
-        msg += f"📈 `/status` - Sistem durumu\n"
-        msg += f"🏆 `/winrate` - Sinyal performansı\n"
-        msg += f"❓ `/help` - Bu yardım mesajı\n"
-        msg += f"━━━━━━━━━━━━━━━━━━━━\n"
-        msg += f"_35 modül AI analizi_"
+    async def send_live_prediction(
+        self,
+        symbol: str,
+        prediction: str,  # "YUKARI" or "ASAGI"
+        target_price: float,
+        timeframe: str,  # "1-4 saat", "24 saat", etc.
+        data_sources: Dict,  # {"whale": {...}, "orderbook": {...}, "liq": {...}, ...}
+        confidence: float
+    ):
+        """
+        Canlı veri bazlı tahmin.
+        Whale, Order Book, Liquidation, Kurumsal akış kullanır.
+        """
+        pred_emoji = "📈 YUKARI" if prediction == "YUKARI" else "📉 AŞAĞI"
+        
+        # Veri kaynakları
+        whale = data_sources.get('whale', {})
+        orderbook = data_sources.get('orderbook', {})
+        liq = data_sources.get('liq', {})
+        funding = data_sources.get('funding', {})
+        institutional = data_sources.get('institutional', {})
+        
+        source_lines = ""
+        
+        # Whale
+        if whale.get('net_flow'):
+            flow = whale['net_flow']
+            flow_type = "ALIŞ" if flow > 0 else "SATIŞ"
+            source_lines += f"🐋 Whale: ${abs(flow)/1e6:.1f}M NET {flow_type}\n"
+        
+        # Order Book
+        if orderbook.get('imbalance'):
+            imb = orderbook['imbalance']
+            imb_type = "BID ağırlıklı" if imb > 1 else "ASK ağırlıklı"
+            source_lines += f"📊 Order Book: {imb:.1f}x {imb_type}\n"
+        
+        # Liquidation
+        if liq.get('nearest_level'):
+            liq_dir = liq.get('direction', '')
+            liq_amount = liq.get('amount', 0)
+            source_lines += f"💧 Liq Zones: ${liq['nearest_level']:,.0f} ({liq_dir}, ${liq_amount/1e6:.0f}M)\n"
+        
+        # Funding
+        if funding.get('rate'):
+            rate = funding['rate']
+            risk = "Short Squeeze riski" if rate < -0.01 else "Long Squeeze riski" if rate > 0.05 else ""
+            source_lines += f"📉 Funding: {rate:.3f}% {risk}\n"
+        
+        # Institutional
+        if institutional.get('exchanges'):
+            exchanges = institutional['exchanges']
+            source_lines += f"🏦 Kurumsal: {', '.join(exchanges)}\n"
+        
+        if not source_lines:
+            source_lines = "• Veri toplanıyor...\n"
+        
+        msg = f"""🐋 *CANLI VERİ TAHMİNİ - {symbol}*
+━━━━━━━━━━━━━━━━━━
+{pred_emoji}
+🎯 Hedef: `${target_price:,.2f}`
+⏱️ Süre: {timeframe}
+
+━━━ VERİ KAYNAKLARI ━━━
+{source_lines}━━━━━━━━━━━━━━━━━━
+🧠 AI Güven: *{confidence:.0f}%*
+⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}"""
         
         await self.send_message_raw(msg)
-    
-    # ═══════════════════════════════════════════════════════════════════
-    # PHASE 91: WIN RATE TRACKING 🏆
-    # ═══════════════════════════════════════════════════════════════════
-    
-    async def send_signal_result(self, signal: dict):
-        """
-        Sinyal sonucu gönder (TP/SL vurulduğunda).
-        """
-        try:
-            from src.brain.signal_performance_tracker import get_tracker
-            tracker = get_tracker()
-            message = tracker.format_signal_result(signal)
-            
-            if message:
-                await self.send_message_raw(message)
-                logger.info(f"📊 Signal result sent: {signal['symbol']} {signal['status']}")
-        except Exception as e:
-            logger.error(f"Signal result notification failed: {e}")
-    
-    async def send_daily_performance_report(self):
-        """
-        Günlük performans raporu gönder.
-        """
-        try:
-            from src.brain.signal_performance_tracker import get_tracker
-            tracker = get_tracker()
-            message = tracker.format_daily_report()
-            
-            if message:
-                await self.send_message_raw(message)
-                logger.info("📊 Daily performance report sent")
-        except Exception as e:
-            logger.error(f"Daily performance report failed: {e}")
-    
-    async def record_signal_for_tracking(self, signal: dict):
-        """
-        Gönderilen sinyali Win Rate tracking için kaydet.
-        """
-        try:
-            from src.brain.signal_performance_tracker import get_tracker
-            tracker = get_tracker()
-            
-            signal_data = {
-                'symbol': signal.get('symbol', 'BTCUSDT'),
-                'direction': signal.get('side', 'LONG'),
-                'entry': signal.get('entry', 0),
-                'tp1': signal.get('tp1', 0),
-                'tp2': signal.get('tp2', 0),
-                'sl': signal.get('stop_loss', 0),
-                'confidence': signal.get('confidence', 50)
-            }
-            
-            signal_id = tracker.record_signal(signal_data)
-            logger.info(f"📝 Signal recorded for tracking: {signal_id}")
-            return signal_id
-        except Exception as e:
-            logger.error(f"Signal recording failed: {e}")
-            return None
-    
-    async def check_and_update_signals(self):
-        """
-        Aktif sinyallerin TP/SL durumunu kontrol et ve sonuç gönder.
-        """
-        try:
-            from src.brain.signal_performance_tracker import get_tracker
-            tracker = get_tracker()
-            
-            updated = tracker.check_signals()
-            
-            for signal in updated:
-                await self.send_signal_result(signal)
-            
-            if updated:
-                logger.info(f"📊 {len(updated)} signal(s) updated")
-                
-        except Exception as e:
-            logger.error(f"Signal check failed: {e}")
-    
-    async def _handle_winrate_command(self):
-        """Handle /winrate command"""
-        try:
-            from src.brain.signal_performance_tracker import get_tracker
-            tracker = get_tracker()
-            
-            stats_7d = tracker.get_win_rate(days=7)
-            stats_30d = tracker.get_win_rate(days=30)
-            
-            msg = f"""
-🏆 **SİNYAL PERFORMANSI**
-━━━━━━━━━━━━━━━━━━━━━━
-**Son 7 Gün:**
-├── Toplam: {stats_7d['total_signals']} sinyal
-├── ✅ Kazanan: {stats_7d['winners']}
-├── ❌ Kaybeden: {stats_7d['losers']}
-├── 📈 Win Rate: **%{stats_7d['win_rate']}**
-└── Ort. Kâr: {stats_7d['avg_profit_pct']:+.2f}%
+        logger.info(f"🐋 Live Prediction sent: {symbol} {prediction} {confidence:.0f}%")
 
-**Son 30 Gün:**
-├── Toplam: {stats_30d['total_signals']} sinyal
-├── 📈 Win Rate: **%{stats_30d['win_rate']}**
-└── Ort. Kâr: {stats_30d['avg_profit_pct']:+.2f}%
-━━━━━━━━━━━━━━━━━━━━━━
-⏳ Aktif: {stats_7d['active']} sinyal
-⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}
-""".strip()
-            
-            await self.send_message_raw(msg)
-            logger.info("📊 Win rate stats sent")
-        except Exception as e:
-            logger.error(f"Win rate command failed: {e}")
-            await self.send_message_raw("⚠️ Win rate verisi henüz yok.")
+    # =========================================
+    # 3️⃣ ANİ HAREKET UYARISI
+    # =========================================
     
-    # ═══════════════════════════════════════════════════════════════════
-    # PHASE 94: POSITION RISK MONITOR 🚨
-    # ═══════════════════════════════════════════════════════════════════
-    
-    async def send_risk_warning(self, message: str):
+    async def send_sudden_alert(
+        self,
+        symbol: str,
+        alert_type: str,  # "FIRSAT" or "RİSK"
+        direction: str,  # "YUKARI" or "ASAGI"
+        potential_price: float,
+        potential_pct: float,
+        triggers: List[Dict],  # [{"name": "Bollinger Squeeze", "value": "0.8%", "status": "PATLAMA YAKLAŞIYOR"}]
+        expected_time: str,  # "15-60 dakika"
+        warning: str = None  # Optional risk warning
+    ):
         """
-        Risk uyarısı gönder.
+        Ani hareket öncesi uyarı.
+        Volatilite spike, squeeze, cascade tespiti.
         """
-        if not self.telegram_token or not message:
-            return
+        type_emoji = "💡 FIRSAT" if alert_type == "FIRSAT" else "⚠️ RİSK"
+        dir_emoji = "📈 YUKARI" if direction == "YUKARI" else "📉 AŞAĞI"
+        pct_sign = "+" if potential_pct > 0 else ""
         
-        await self.send_message_raw(message)
-        logger.warning(f"🚨 Risk warning sent")
+        # Tetikleyiciler
+        trigger_lines = ""
+        for t in triggers:
+            trigger_lines += f"• {t['name']}: {t['value']} ({t['status']})\n"
+        
+        if not trigger_lines:
+            trigger_lines = "• Çoklu sinyal uyumu\n"
+        
+        msg = f"""⚡ *ANİ HAREKET UYARISI!*
+━━━━━━━━━━━━━━━━━━
+🚨 {type_emoji}
+📍 Coin: *{symbol}*
+{dir_emoji}
+🎯 Potansiyel: `${potential_price:,.2f}` ({pct_sign}{potential_pct:.1f}%)
+
+━━━ TETİKLEYİCİLER ━━━
+{trigger_lines}━━━━━━━━━━━━━━━━━━
+⏱️ Beklenen Süre: {expected_time}"""
+        
+        if warning:
+            msg += f"\n⚠️ Dikkat: _{warning}_"
+        
+        msg += f"\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+        
+        await self.send_message_raw(msg)
+        logger.info(f"⚡ Sudden Alert sent: {symbol} {alert_type} {direction}")
+
+    # =========================================
+    # 4️⃣ AI GÖZ ANALİZİ
+    # =========================================
     
-    async def check_active_position_risks(self):
+    async def send_ai_vision(
+        self,
+        symbol: str,
+        overview: str,  # Genel görünüm paragrafı
+        bull_scenario: Dict,  # {"probability": 40, "condition": "$96k kırılırsa", "target": "$98k"}
+        bear_scenario: Dict,  # {"probability": 60, "condition": "$94k kırılırsa", "target": "$91k"}
+        recommendation: str,  # "BEKLE", "AL", "SAT"
+        recommendation_reason: str
+    ):
         """
-        Tüm aktif pozisyonlar için risk kontrolü yap.
-        Risk tespit edilirse uyarı gönder.
+        Düşünen yapay zeka perspektifi.
+        Piyasayı bir analist gibi değerlendirir.
         """
-        try:
-            from src.brain.signal_gate import get_gate
-            from src.brain.position_risk_monitor import get_monitor
-            
-            gate = get_gate()
-            monitor = get_monitor()
-            
-            active_signals = gate.get_active_signals()
-            
-            for symbol, position in active_signals.items():
-                # Cooldown kontrolü
-                if not monitor.can_send_warning(symbol):
-                    continue
-                
-                # Risk kontrolü
-                risks = monitor.check_position_risks(symbol, position)
-                
-                if risks:
-                    # Uyarı formatla ve gönder
-                    message = monitor.format_risk_warning(symbol, position, risks)
-                    await self.send_risk_warning(message)
-                    
-                    # Cooldown'ı başlat
-                    monitor.mark_warning_sent(symbol)
-                    
-                    logger.warning(f"🚨 Risk detected for {symbol}: {len(risks)} issues")
-                    
-        except Exception as e:
-            logger.error(f"Position risk check failed: {e}")
+        # Öneriye göre emoji
+        rec_map = {
+            "BEKLE": "⏳ BEKLE",
+            "AL": "🟢 AL",
+            "SAT": "🔴 SAT",
+            "DİKKATLİ AL": "🟡 DİKKATLİ AL",
+            "DİKKATLİ SAT": "🟡 DİKKATLİ SAT"
+        }
+        rec_text = rec_map.get(recommendation, f"📊 {recommendation}")
+        
+        msg = f"""🧠 *AI PİYASA ANALİZİ - {symbol}*
+━━━━━━━━━━━━━━━━━━
+📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}
+
+*Genel Görünüm:*
+{overview}
+
+*Bull Senaryosu ({bull_scenario.get('probability', 0)}%):*
+{bull_scenario.get('condition', 'N/A')} → {bull_scenario.get('target', 'N/A')}
+
+*Bear Senaryosu ({bear_scenario.get('probability', 0)}%):*
+{bear_scenario.get('condition', 'N/A')} → {bear_scenario.get('target', 'N/A')}
+
+━━━━━━━━━━━━━━━━━━
+*AI Tavsiyesi:*
+{rec_text}
+_{recommendation_reason}_
+━━━━━━━━━━━━━━━━━━"""
+        
+        await self.send_message_raw(msg)
+        logger.info(f"🧠 AI Vision sent: {symbol} → {recommendation}")
+
+    # =========================================
+    # YARDIMCI: Model Update Bildirimi
+    # =========================================
+    
+    async def send_model_update(
+        self,
+        model_type: str,  # "LSTM" or "RL"
+        symbol: str,
+        accuracy: float,
+        loss: float,
+        samples: int
+    ):
+        """Model eğitim tamamlandı bildirimi."""
+        msg = f"""🧠 *MODEL GÜNCELLENDİ*
+━━━━━━━━━━━━━━━━━━
+📊 Model: {model_type}
+📍 Coin: {symbol}
+✅ Accuracy: {accuracy:.1%}
+📉 Loss: {loss:.4f}
+📚 Samples: {samples:,}
+━━━━━━━━━━━━━━━━━━
+⏰ Sonraki eğitim: 24 saat
+"""
+        await self.send_message_raw(msg)
+        logger.info(f"🧠 Model Update sent: {model_type} {symbol}")
