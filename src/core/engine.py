@@ -40,6 +40,8 @@ from src.brain.exit_strategy import ExitStrategy
 # PHASE 200: UNIFIED BRAIN & EARLY WARNING (NEW ARCHITECTURE)
 from src.brain.unified_brain import get_unified_brain
 from src.brain.early_warning import get_warning_system
+from src.brain.auto_trainer import get_trainer, start_training_background
+from src.brain.signal_performance import get_performance_tracker
 
 logger = logging.getLogger("DEMIR_AI_CORE_ENGINE")
 
@@ -160,6 +162,13 @@ class BotEngine:
         except Exception as e:
             logger.warning(f"Continuous Monitor start failed: {e}")
         
+        # PHASE 201: Start Auto Training (Background)
+        try:
+            asyncio.create_task(start_training_background())
+            logger.info("🎓 Auto Trainer started (background)")
+        except Exception as e:
+            logger.warning(f"Auto Trainer start failed: {e}")
+        
         self.is_running = True
         await self.run_forever()
 
@@ -214,16 +223,35 @@ class BotEngine:
                     if not hasattr(self, 'last_unified_analysis'):
                         self.last_unified_analysis = datetime.now() - timedelta(minutes=20)
                     
+                    performance_tracker = get_performance_tracker()
+                    
                     if (datetime.now() - self.last_unified_analysis).total_seconds() >= 900:
                         for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:
                             signal = await unified_brain.analyze(symbol)
                             
                             if signal:
+                                # Sinyali kaydet (performance tracking)
+                                performance_tracker.record_signal(signal)
+                                
                                 msg = unified_brain.format_for_telegram(signal)
                                 await self.notifier.send_message_raw(msg)
                                 logger.info(f"🧠 UNIFIED BRAIN: {symbol} {signal.direction} %{signal.confidence:.0f}")
                         
                         self.last_unified_analysis = datetime.now()
+                    
+                    # Her saat başı performance stats check
+                    if not hasattr(self, 'last_perf_check'):
+                        self.last_perf_check = datetime.now() - timedelta(hours=2)
+                    
+                    if (datetime.now() - self.last_perf_check).total_seconds() >= 3600:
+                        # Aktif sinyalleri kontrol et (TP/SL vuruldu mu?)
+                        results = await performance_tracker.check_active_signals()
+                        
+                        for result in results:
+                            msg = f"{result['emoji']} {result['symbol']} {result['status']}: {result['pnl_percent']:+.2f}%"
+                            await self.notifier.send_message_raw(msg)
+                        
+                        self.last_perf_check = datetime.now()
                         
                 except Exception as unified_err:
                     logger.debug(f"Unified Brain skipped: {unified_err}")

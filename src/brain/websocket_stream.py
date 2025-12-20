@@ -55,7 +55,7 @@ class WebSocketStream:
         logger.info("✅ WebSocket Stream initialized (Spot + Futures)")
     
     async def start(self, symbol: str = "btcusdt", market: str = "spot"):
-        """WebSocket stream başlat (Spot veya Futures)."""
+        """WebSocket stream başlat (Spot veya Futures) - Reconnection destekli."""
         self.running = True
         self.current_symbol = symbol.upper()
         self.current_market = market.upper()
@@ -70,25 +70,50 @@ class WebSocketStream:
         
         logger.info(f"🔌 Connecting to {market.upper()} WebSocket: {symbol}")
         
-        try:
-            async with websockets.connect(url) as ws:
-                self.ws = ws
-                logger.info(f"✅ {market.upper()} WebSocket connected for {self.current_symbol}!")
-                
-                while self.running:
-                    try:
-                        message = await asyncio.wait_for(ws.recv(), timeout=30)
-                        await self._process_trade(json.loads(message), market, threshold)
-                    except asyncio.TimeoutError:
-                        # Heartbeat
-                        await ws.ping()
-                    except Exception as e:
-                        logger.warning(f"WebSocket error: {e}")
-                        await asyncio.sleep(1)
+        reconnect_delay = 1  # Start with 1 second
+        max_reconnect_delay = 60  # Max 60 seconds
+        
+        while self.running:
+            try:
+                async with websockets.connect(
+                    url, 
+                    ping_interval=20,
+                    ping_timeout=10,
+                    close_timeout=5
+                ) as ws:
+                    self.ws = ws
+                    reconnect_delay = 1  # Reset on successful connect
+                    logger.info(f"✅ {market.upper()} WebSocket connected for {self.current_symbol}!")
+                    
+                    while self.running:
+                        try:
+                            message = await asyncio.wait_for(ws.recv(), timeout=30)
+                            await self._process_trade(json.loads(message), market, threshold)
+                        except asyncio.TimeoutError:
+                            # No data received, send ping to keep alive
+                            try:
+                                await ws.ping()
+                                logger.debug("WebSocket ping sent")
+                            except:
+                                logger.warning("WebSocket ping failed, reconnecting...")
+                                break
+                        except websockets.exceptions.ConnectionClosed as e:
+                            logger.warning(f"WebSocket connection closed: {e}")
+                            break
+                        except Exception as e:
+                            logger.debug(f"WebSocket processing error: {e}")
+                            await asyncio.sleep(0.1)
                         
-        except Exception as e:
-            logger.error(f"WebSocket connection failed: {e}")
-            self.running = False
+            except Exception as e:
+                logger.error(f"WebSocket connection error: {e}")
+            
+            if not self.running:
+                break
+            
+            # Exponential backoff for reconnection
+            logger.info(f"🔄 Reconnecting in {reconnect_delay}s...")
+            await asyncio.sleep(reconnect_delay)
+            reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
     
     async def _process_trade(self, data: dict, market: str = "spot", threshold: float = 5):
         """Her trade'i işle ve büyük hareketleri tespit et."""
