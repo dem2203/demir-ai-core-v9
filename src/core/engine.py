@@ -47,6 +47,9 @@ from src.brain.predictive_engine import get_predictive_engine
 # PHASE 205: THINKING BRAIN - Gercek Dusunen AI
 from src.thinking_brain.brain import get_thinking_brain
 
+# PHASE 206: MARKET RESEARCHER - Kapsamli Arastirmaci
+from src.thinking_brain.market_researcher import get_market_researcher
+
 logger = logging.getLogger("DEMIR_AI_CORE_ENGINE")
 
 class BotEngine:
@@ -250,12 +253,15 @@ class BotEngine:
                         self.last_perf_check = datetime.now() - timedelta(hours=2)
                     
                     if (datetime.now() - self.last_perf_check).total_seconds() >= 3600:
-                        # Aktif sinyalleri kontrol et (TP/SL vuruldu mu?)
-                        results = await performance_tracker.check_active_signals()
-                        
-                        for result in results:
-                            msg = f"{result['emoji']} {result['symbol']} {result['status']}: {result['pnl_percent']:+.2f}%"
+                        # PHASE 206: MARKET RESEARCHER - Her saat tam piyasa raporu
+                        try:
+                            researcher = get_market_researcher()
+                            report = await researcher.research_market()
+                            msg = researcher.format_telegram(report)
                             await self.notifier.send_message_raw(msg)
+                            logger.info(f"📊 MARKET REPORT: {report.overall_bias} - {report.market_phase}")
+                        except Exception as research_err:
+                            logger.debug(f"Market research skipped: {research_err}")
                         
                         self.last_perf_check = datetime.now()
                         
