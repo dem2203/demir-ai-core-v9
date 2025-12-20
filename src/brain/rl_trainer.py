@@ -65,8 +65,30 @@ class RLTrainer:
         """Blocking training logic to be run in a separate thread."""
         logger.info(f"Training Environment Ready. Data Shape: {df.shape}")
         
+        # CRITICAL: Clean DataFrame - Remove ANY string columns
+        # This fixes: ValueError: could not convert string to float: 'OK'
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        df_clean = df[numeric_cols].copy()
+        
+        # Also remove any columns that might have mixed types
+        for col in df_clean.columns:
+            try:
+                df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce')
+            except:
+                df_clean.drop(columns=[col], inplace=True)
+        
+        # Fill NaN with 0
+        df_clean.fillna(0, inplace=True)
+        
+        # Ensure 'close' column exists (required for TradingEnv)
+        if 'close' not in df_clean.columns:
+            logger.error("❌ 'close' column missing from training data!")
+            return
+        
+        logger.info(f"✅ Cleaned data shape: {df_clean.shape} (numeric only)")
+        
         # Ortamı Kur
-        env = TradingEnv(df)
+        env = TradingEnv(df_clean)
         
         # Modeli Tanımla (RecurrentPPO - LSTM Policy)
         try:
