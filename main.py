@@ -1,5 +1,14 @@
-import asyncio
+# CRITICAL: Set thread limits BEFORE importing any libraries
+# This prevents Railway resource exhaustion (pthread_create failures)
 import os
+os.environ['OPENBLAS_NUM_THREADS'] = '4'
+os.environ['OMP_NUM_THREADS'] = '4'
+os.environ['MKL_NUM_THREADS'] = '4'
+os.environ['NUMEXPR_NUM_THREADS'] = '4'
+os.environ['TF_NUM_INTEROP_THREADS'] = '4'
+os.environ['TF_NUM_INTRAOP_THREADS'] = '4'
+
+import asyncio
 import glob # Dosya silmek için
 from src.core.engine import BotEngine
 from src.utils.logger import setup_logger
