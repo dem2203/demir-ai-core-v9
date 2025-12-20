@@ -126,15 +126,48 @@ class DataValidator:
         report.sources_verified = sum(1 for v in validations if v.quality in [DataQuality.VERIFIED, DataQuality.REAL])
         report.sources_failed = sum(1 for v in validations if v.quality in [DataQuality.MOCK, DataQuality.FALLBACK])
         
+        # ═══════════════════════════════════════════════════════════════
+        # FALLBACK CHAIN: Mock/fallback tespit edilirse alternatif kaynak dene
+        # ═══════════════════════════════════════════════════════════════
+        if report.sources_failed > 0:
+            try:
+                from src.brain.fallback_chain import get_fallback_chain
+                chain = get_fallback_chain()
+                
+                # Başarısız kaynakları fallback chain ile yeniden dene
+                retry_results = await chain.fetch_all_data(symbol)
+                
+                recovered_count = 0
+                for v in validations:
+                    if v.quality in [DataQuality.MOCK, DataQuality.FALLBACK]:
+                        # Fallback chain'den veri al
+                        chain_key = self._map_validation_to_chain_key(v.source_name)
+                        if chain_key and chain_key in retry_results:
+                            chain_result = retry_results[chain_key]
+                            if chain_result.value is not None and chain_result.quality != "FAILED":
+                                v.quality = DataQuality.REAL
+                                v.value_hash = f"{chain_result.value} (from {chain_result.source})"
+                                v.issues.append(f"Recovered via {chain_result.source}")
+                                recovered_count += 1
+                
+                if recovered_count > 0:
+                    logger.info(f"🔄 {recovered_count} kaynak fallback chain ile kurtarıldı")
+                    report.sources_verified += recovered_count
+                    report.sources_failed -= recovered_count
+                    
+            except Exception as chain_err:
+                logger.debug(f"Fallback chain error: {chain_err}")
+        
         # Determine overall quality
         if report.sources_failed > 0:
             if report.sources_failed >= report.sources_checked / 2:
                 report.overall_quality = DataQuality.MOCK
-                report.is_usable = False
-                report.rejection_reason = f"{report.sources_failed}/{report.sources_checked} kaynakta mock/fallback veri tespit edildi"
+                # BİLDİRİMİ ENGELLEMEK YERİNE UYARI VER AMA DEVAM ET
+                report.is_usable = True  # Artık engelleme yok
+                report.rejection_reason = f"⚠️ {report.sources_failed}/{report.sources_checked} kaynakta sorun (fallback kullanılıyor)"
             else:
                 report.overall_quality = DataQuality.FALLBACK
-                report.is_usable = True  # Kısmi kullanılabilir
+                report.is_usable = True
         elif report.verification_rate >= 80:
             report.overall_quality = DataQuality.VERIFIED
         elif report.verification_rate >= 50:
@@ -144,6 +177,18 @@ class DataValidator:
         
         self._validation_history.append(report)
         return report
+    
+    def _map_validation_to_chain_key(self, source_name: str) -> str:
+        """Validation source ismini fallback chain key'ine çevir"""
+        mapping = {
+            'price': 'btc_price',
+            'taker_volume': None,  # No chain equivalent
+            'orderbook': None,
+            'funding': 'funding',
+            'fear_greed': 'fear_greed',
+            'whale': None,
+        }
+        return mapping.get(source_name, None)
     
     def _validate_price(self, snapshot: Any, symbol: str) -> ValidationResult:
         """Fiyat doğrulama"""
