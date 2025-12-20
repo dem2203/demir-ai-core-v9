@@ -36,16 +36,18 @@ class AutoTrainer:
     - LSTM: 1000+ saatlik veri ile eğitir
     - RL: Simülasyon ortamında eğitir
     - Her 24 saatte bir günceller
+    - Telegram bildirimi gönderir
     """
     
     SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']
     TRAINING_INTERVAL = 86400  # 24 saat
     MIN_CANDLES = 500  # Minimum eğitim verisi
     
-    def __init__(self):
+    def __init__(self, notify_callback=None):
         MODEL_DIR.mkdir(parents=True, exist_ok=True)
         self.training_log = self._load_training_log()
         self.is_training = False
+        self.notify_callback = notify_callback  # Telegram notification function
     
     def _load_training_log(self) -> Dict:
         """Eğitim logunu yükle."""
@@ -163,6 +165,19 @@ class AutoTrainer:
                 self._save_training_log()
                 
                 logger.info(f"✅ LSTM {symbol} trained: acc={result.get('final_accuracy', 0):.2%}, loss={result.get('final_loss', 0):.4f}")
+                
+                # Telegram Notification
+                if self.notify_callback:
+                    try:
+                        msg = f"🧠 **MODEL UPDATED**\n" \
+                              f"• Coin: {symbol}\n" \
+                              f"• Accuracy: {result.get('final_accuracy', 0):.1%}\n" \
+                              f"• Loss: {result.get('final_loss', 0):.4f}\n" \
+                              f"• Samples: {result.get('samples', 0)}\n" \
+                              f"• Next Train: 24 hours"
+                        asyncio.create_task(self.notify_callback(msg))
+                    except Exception as notify_err:
+                        logger.debug(f"Notification failed: {notify_err}")
             else:
                 logger.warning(f"LSTM training failed for {symbol}: {result.get('error')}")
                 
@@ -328,9 +343,47 @@ class AutoTrainer:
                 std = np.std(close[-20:])
                 state[7] = (close[-1] - sma) / (2 * std + 1e-10)
                 
-                # Fill remaining with normalized values
-                for j in range(8, 37):
-                    state[j] = np.random.randn() * 0.1  # Placeholder
+                # --- Zero-Mock Features (Replaces random noise) ---
+                
+                # 8-10: MACD
+                ema12 = self._ema(close, 12)
+                ema26 = self._ema(close, 26)
+                macd_line = ema12 - ema26
+                signal_line = self._ema(np.array([macd_line]), 9) if len(close) > 9 else macd_line
+                state[8] = macd_line
+                state[9] = signal_line
+                state[10] = macd_line - signal_line
+                
+                # 11: Momentum (10-bar)
+                state[11] = close[-1] - close[-11] if len(close) > 11 else 0
+                
+                # 12: ROC (Rate of Change)
+                state[12] = ((close[-1] - close[-10]) / close[-10]) * 100 if len(close) > 10 else 0
+                
+                # 13: ATR (Approximate Trur Range) normalized
+                high = df['high'].values
+                low = df['low'].values
+                tr = np.maximum(high[i] - low[i], np.abs(high[i] - close[i-1]))
+                atr = np.mean(tr[-14:]) if len(tr) > 14 else tr[-1]
+                state[13] = atr / close[-1] * 100
+                
+                # 14-16: Lagged Returns (t-2, t-3, t-4)
+                state[14] = (close[-2] / close[-3] - 1) * 100
+                state[15] = (close[-3] / close[-4] - 1) * 100
+                state[16] = (close[-4] / close[-5] - 1) * 100
+                
+                # 17-19: Lagged Volume
+                state[17] = volume[-2] / avg_vol if avg_vol > 0 else 1
+                state[18] = volume[-3] / avg_vol if avg_vol > 0 else 1
+                state[19] = volume[-4] / avg_vol if avg_vol > 0 else 1
+                
+                # 20: High/Low relative position
+                hl_range = high[i] - low[i]
+                state[20] = (close[i] - low[i]) / hl_range if hl_range > 0 else 0.5
+                
+                # Fill remaining with 0 (better than random noise for model stability)
+                for j in range(21, 37):
+                    state[j] = 0.0
                 
                 features.append(state)
             
@@ -363,17 +416,17 @@ class AutoTrainer:
 
 _trainer: Optional[AutoTrainer] = None
 
-def get_trainer() -> AutoTrainer:
+def get_trainer(notify_callback=None) -> AutoTrainer:
     """Get or create trainer instance."""
     global _trainer
     if _trainer is None:
-        _trainer = AutoTrainer()
+        _trainer = AutoTrainer(notify_callback=notify_callback)
     return _trainer
 
 
-async def start_training_background():
+async def start_training_background(notify_callback=None):
     """Background training task başlat."""
-    trainer = get_trainer()
+    trainer = get_trainer(notify_callback=notify_callback)
     await trainer.run_training_loop()
 
 

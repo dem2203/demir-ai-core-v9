@@ -43,61 +43,47 @@ class OnChainIntelligence:
     
     async def detect_whale_trades(self, symbol: str = "BTCUSDT") -> Dict:
         """
-        Binance'den büyük işlemleri tespit et.
-        Gerçek whale aktivitesi göstergesi.
+        Binance Whale Tracker Entegrasyonu (Zero-Mock).
+        Gerçek zamanlı WebSocket verisi kullanılır.
         """
         try:
-            session = await self._get_session()
+            from src.brain.whale_tracker import get_whale_tracker
+            tracker = get_whale_tracker()
             
-            # Binance Recent Trades (son 1000 işlem)
-            url = f"https://api.binance.com/api/v3/trades?symbol={symbol}&limit=1000"
+            # Eğer tracker çalışmıyorsa başlat (Lazy Start)
+            if not tracker.running:
+                await tracker.start()
+                # İlk veri için kısa bekleme
+                await asyncio.sleep(2)
             
-            async with session.get(url) as resp:
-                if resp.status != 200:
-                    return {'whale_count': 0, 'whale_volume': 0, 'direction': 'neutral'}
-                
-                trades = await resp.json()
+            # WebSocket'ten anlık özet al
+            whale_summary = tracker.get_whale_summary()
             
-            threshold = self.WHALE_THRESHOLD.get(f"{symbol[:3]}/{symbol[3:]}", self.WHALE_THRESHOLD['default'])
+            if not whale_summary['available']:
+                return {'whale_count': 0, 'whale_volume': 0, 'direction': 'neutral', 'reason': 'Tracker warming up'}
             
-            whale_buys = 0
-            whale_sells = 0
-            whale_buy_volume = 0
-            whale_sell_volume = 0
+            # Veriyi OnChainIntel formatına çevir
+            # WhaleTracker net_flow_usd ve imbalance veriyor
             
-            for trade in trades:
-                trade_value = float(trade['price']) * float(trade['qty'])
-                
-                if trade_value >= threshold:
-                    if trade['isBuyerMaker']:
-                        whale_sells += 1
-                        whale_sell_volume += trade_value
-                    else:
-                        whale_buys += 1
-                        whale_buy_volume += trade_value
+            net_flow = whale_summary.get('net_flow_usd', 0)
             
-            total_whale_volume = whale_buy_volume + whale_sell_volume
-            
-            # Yön belirleme
-            if whale_buy_volume > whale_sell_volume * 1.5:
-                direction = "ACCUMULATION"  # Whale'lar alıyor
-            elif whale_sell_volume > whale_buy_volume * 1.5:
-                direction = "DISTRIBUTION"  # Whale'lar satıyor
-            else:
-                direction = "NEUTRAL"
+            direction = "NEUTRAL"
+            if net_flow > 1_000_000: direction = "ACCUMULATION"
+            elif net_flow < -1_000_000: direction = "DISTRIBUTION"
             
             result = {
-                'whale_buys': whale_buys,
-                'whale_sells': whale_sells,
-                'whale_buy_volume': whale_buy_volume,
-                'whale_sell_volume': whale_sell_volume,
-                'total_whale_volume': total_whale_volume,
+                'whale_buys': whale_summary.get('whale_trade_count', 0), # Simplified count
+                'whale_sells': 0, # Tracker aggregates net flow mostly
+                'whale_buy_volume': max(0, net_flow) if net_flow > 0 else 0,
+                'whale_sell_volume': abs(net_flow) if net_flow < 0 else 0,
+                'total_whale_volume': abs(net_flow),
                 'direction': direction,
-                'buy_sell_ratio': whale_buy_volume / max(whale_sell_volume, 1),
+                'net_flow_usd': net_flow,
+                'imbalance_ratio': whale_summary.get('imbalance_ratio', 1.0),
                 'timestamp': datetime.now().isoformat()
             }
             
-            logger.info(f"🐋 Whale Activity: {direction} | Buys: ${whale_buy_volume:,.0f} | Sells: ${whale_sell_volume:,.0f}")
+            logger.info(f"🐋 Whale Activity (WS): {direction} | Net Flow: ${net_flow:,.0f}")
             return result
             
         except Exception as e:

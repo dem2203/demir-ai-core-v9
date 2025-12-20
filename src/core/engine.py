@@ -172,10 +172,10 @@ class BotEngine:
         except Exception as e:
             logger.warning(f"Continuous Monitor start failed: {e}")
         
-        # PHASE 201: Start Auto Training (Background)
+        # PHASE 201: Start Auto Training (Background) with Telegram Notifications
         try:
-            asyncio.create_task(start_training_background())
-            logger.info("🎓 Auto Trainer started (background)")
+            asyncio.create_task(start_training_background(notify_callback=self.notifier.send_message_raw))
+            logger.info("🎓 Auto Trainer started (background) with Telegram notifications")
         except Exception as e:
             logger.warning(f"Auto Trainer start failed: {e}")
         
