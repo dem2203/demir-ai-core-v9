@@ -297,7 +297,7 @@ class InstitutionalAggregator:
         """
         alert = SuddenAlertSnapshot(symbol=symbol)
         
-        # Paralel kontroller
+        # Paralel kontroller (15 trigger - 13 mevcut + 2 yeni)
         checks = await asyncio.gather(
             self._check_bollinger_squeeze(symbol),
             self._check_volume_anomaly(symbol),
@@ -312,6 +312,9 @@ class InstitutionalAggregator:
             self._check_market_structure(symbol),
             self._check_volatility_regime(symbol),
             self._check_correlation_breakdown(symbol),
+            # NEW: Multi-exchange ve Whale tracker
+            self._check_multi_exchange_imbalance(symbol),
+            self._check_whale_activity(symbol),
             return_exceptions=True
         )
         
@@ -904,6 +907,83 @@ class InstitutionalAggregator:
         """13. Correlation Breakdown (BTC/ETH)"""
         # Would need multi-asset analysis
         return AlertTrigger(name="Correlation Breakdown", active=False)
+    
+    async def _check_multi_exchange_imbalance(self, symbol: str) -> AlertTrigger:
+        """14. Multi-Exchange Order Book Imbalance (NEW)"""
+        try:
+            from src.brain.multi_exchange_orderbook import get_multi_exchange_orderbook
+            orderbook = get_multi_exchange_orderbook()
+            data = await orderbook.get_aggregated_orderbook(symbol)
+            
+            # Check for significant cross-exchange imbalance
+            if data.overall_imbalance > 2.5 or data.overall_imbalance < 0.4:
+                direction = "BULLISH" if data.overall_imbalance > 1 else "BEARISH"
+                wall_type = "BID WALL" if data.bid_wall_detected else "ASK WALL" if data.ask_wall_detected else "IMBALANCE"
+                
+                severity = "HIGH" if data.overall_imbalance > 3 or data.overall_imbalance < 0.33 else "MEDIUM"
+                
+                return AlertTrigger(
+                    name="Multi-Exchange Imbalance",
+                    active=True,
+                    value=f"{data.overall_imbalance:.2f}x ({len(data.exchanges)} borsa)",
+                    severity=severity,
+                    direction=direction,
+                    message=f"{wall_type} tespit edildi! Dominant: {data.dominant_exchange.upper()}"
+                )
+            
+            # Check for significant price divergence across exchanges
+            if data.price_divergence > 0.5:
+                return AlertTrigger(
+                    name="Cross-Exchange Divergence",
+                    active=True,
+                    value=f"%{data.price_divergence:.2f}",
+                    severity="MEDIUM",
+                    direction="NEUTRAL",
+                    message=f"Borsalar arası fiyat farkı! Arbitraj fırsatı olabilir."
+                )
+        except Exception as e:
+            logger.debug(f"Multi-exchange imbalance check error: {e}")
+        
+        return AlertTrigger(name="Multi-Exchange Imbalance", active=False)
+    
+    async def _check_whale_activity(self, symbol: str) -> AlertTrigger:
+        """15. Whale Wallet Activity (NEW)"""
+        try:
+            from src.brain.whale_wallet_tracker import get_whale_wallet_tracker
+            tracker = get_whale_wallet_tracker()
+            activity = await tracker.get_whale_activity(symbol)
+            
+            # Check for significant whale movement
+            if activity.signal in ["STRONG_BUY", "STRONG_SELL"]:
+                direction = "BULLISH" if activity.signal == "STRONG_BUY" else "BEARISH"
+                
+                return AlertTrigger(
+                    name="Whale Activity",
+                    active=True,
+                    value=f"${activity.total_volume_24h/1e6:.1f}M",
+                    severity="HIGH",
+                    direction=direction,
+                    message=activity.signal_reason
+                )
+            
+            # Check for large individual transactions
+            if activity.large_tx_count >= 3:
+                # Multiple large transactions indicate institutional activity
+                net_flow = activity.exchange_outflow_24h - activity.exchange_inflow_24h
+                direction = "BULLISH" if net_flow > 0 else "BEARISH" if net_flow < 0 else "NEUTRAL"
+                
+                return AlertTrigger(
+                    name="Large Wallet Activity",
+                    active=True,
+                    value=f"{activity.large_tx_count} büyük TX",
+                    severity="MEDIUM",
+                    direction=direction,
+                    message=f"Net flow: ${net_flow/1e6:.1f}M"
+                )
+        except Exception as e:
+            logger.debug(f"Whale activity check error: {e}")
+        
+        return AlertTrigger(name="Whale Activity", active=False)
 
 
 # =========================================
