@@ -469,11 +469,12 @@ class ContinuousMonitor:
                 await asyncio.sleep(60)
     
     async def send_notification(self, message: str):
-        """Bildirim gönder."""
-        if self.notification_callback:
-            await self.notification_callback(message)
-        else:
-            logger.info(f"📤 [NOTIFICATION]\n{message}")
+        """Bildirim gönder - DISABLED (Legacy)."""
+        # DISABLED: ThinkingBrain is the only voice now.
+        # if self.notification_callback:
+        #    await self.notification_callback(message)
+        # else:
+        logger.info(f"🔇 SILENCED LEGACY ALERT:\n{message}")
     
     def get_status(self) -> Dict:
         """Monitor durumu."""

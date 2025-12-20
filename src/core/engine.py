@@ -226,16 +226,13 @@ class BotEngine:
                         self.last_warning_scan = datetime.now() - timedelta(minutes=10)
                     
                     if (datetime.now() - self.last_warning_scan).total_seconds() >= 300:
-                        warnings = await warning_system.scan_all()
-                        
-                        if warnings:
-                            # Sadece HIGH ve CRITICAL uyarıları gönder
-                            critical_warnings = [w for w in warnings if w.severity in ['HIGH', 'CRITICAL']]
-                            if critical_warnings:
-                                msg = warning_system.format_warnings(critical_warnings)
-                                await self.notifier.send_message_raw(msg)
-                                logger.info(f"⚠️ {len(critical_warnings)} erken uyarı gönderildi")
-                        
+                        # PHASE 200: EARLY WARNING DISABLED (Silence legacy notifications)
+                        # warnings = await warning_system.scan_all()
+                        # if warnings:
+                        #     critical_warnings = [w for w in warnings if w.severity in ['HIGH', 'CRITICAL']]
+                        #     if critical_warnings:
+                        #         msg = warning_system.format_warnings(critical_warnings)
+                        #         await self.notifier.send_message_raw(msg)
                         self.last_warning_scan = datetime.now()
                     
                     # Her 15 dakikada bir THINKING BRAIN analizi (GERCEK DUSUNEN AI)
@@ -681,55 +678,15 @@ class BotEngine:
         
         # --- PHASE 32.5: PREDICTIVE SIGNALS (Leading Indicators) ---
         # Check for predictive signals FIRST - these are more valuable than lagging indicators
+        # --- PHASE 32.5: PREDICTIVE SIGNALS DISABLED (Legacy Checklist Style) ---
+        # Disabled to allow ThinkingBrain (Phase 208) to be the sole voice.
         try:
-            current_price = ticker_data[-1].get('close', 0) if ticker_data else 0
-            predictive_signal = await self.predictive_analyzer.analyze_predictive_signals(symbol, current_price)
-            
-            if predictive_signal.get('has_signal'):
-                direction = predictive_signal['direction']
-                entry = predictive_signal.get('entry', current_price)
-                confidence = predictive_signal.get('confidence', 50)
-                
-                # PHASE 93: Signal Gate Check - Only 1 active signal per coin
-                try:
-                    from src.brain.signal_gate import get_gate
-                    gate = get_gate()
-                    
-                    # Gate kontrolü - aktif sinyal varsa gönderme
-                    if not gate.can_send_signal(symbol):
-                        active = gate.get_active_signals().get(symbol, {})
-                        logger.info(f"🚫 BLOCKED: {symbol} {direction} - Active signal: {active.get('direction')} @ ${active.get('entry', 0):,.0f}")
-                    
-                    # Minimum confidence filter - %65 altı spam
-                    elif confidence < 65:
-                        logger.debug(f"🔇 LOW CONF: {symbol} {direction} {confidence}% - not sent")
-                    
-                    else:
-                        # Gate açık ve confidence yeterli - gönder
-                        formatted_msg = self.predictive_analyzer.format_predictive_signal(predictive_signal)
-                        if formatted_msg:
-                            await self.notifier.send_message_raw(formatted_msg)
-                            logger.info(f"🔮 PREDICTIVE SIGNAL: {symbol} {direction} - {len(predictive_signal.get('reasons', []))} confirmations")
-                            
-                            # Gate'i kapat - TP/SL gelene kadar yeni sinyal yok
-                            gate.open_gate(symbol, {
-                                'direction': direction,
-                                'entry': entry,
-                                'tp1': predictive_signal.get('take_profit_1', entry * 1.02),
-                                'tp2': predictive_signal.get('take_profit_2', entry * 1.04),
-                                'sl': predictive_signal.get('stop_loss', entry * 0.97),
-                                'confidence': confidence
-                            })
-                            logger.info(f"🔒 Gate CLOSED for {symbol} - waiting for TP/SL")
-                
-                except Exception as gate_err:
-                    logger.warning(f"Signal gate error: {gate_err}")
-                    # Fallback: Eski davranış
-                    formatted_msg = self.predictive_analyzer.format_predictive_signal(predictive_signal)
-                    if formatted_msg:
-                        await self.notifier.send_message_raw(formatted_msg)
+             pass
+             # current_price = ticker_data[-1].get('close', 0) if ticker_data else 0
+             # predictive_signal = await self.predictive_analyzer.analyze_predictive_signals(symbol, current_price)
+             # ... (Rest of logic commented out) ...
         except Exception as e:
-            logger.warning(f"Predictive analysis failed for {symbol}: {e}")
+             logger.warning(f"Predictive analysis failed for {symbol}: {e}")
         
         # --- PHASE 100: DISABLED - ERKEN UYARI (Early Warning) ---
         # These were causing spam. Only Signal Gate system now.
@@ -765,8 +722,8 @@ class BotEngine:
         trade_executed = self.paper_trader.execute_trade(signal)
         
         if trade_executed:
-            await self.notifier.send_signal(signal, snapshot)  # Pass snapshot for Precision Filter
-            logger.info(f"✅ SIGNAL BROADCASTED: {signal['side']} {symbol}")
+            # await self.notifier.send_signal(signal, snapshot)  <-- DISABLED LEGACY
+            logger.info(f"✅ SIGNAL BROADCASTED (Internal): {signal['side']} {symbol}")
         else:
             logger.info(f"⏸️ SIGNAL SKIPPED: {symbol} (Already in position or Insufficient Funds)")
 
