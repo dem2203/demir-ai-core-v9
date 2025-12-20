@@ -482,13 +482,109 @@ _{recommendation_reason}_
         logger.info(f"🧠 Model Update: {model_type} {symbol}")
 
     # =========================================
-    # LEGACY COMPATIBILITY STUBS
-    # Eski engine.py çağrıları için boş metodlar
+    # TELEGRAM KOMUT HANDLER (AKTİF)
+    # Kullanıcı coin yazınca detaylı analiz gönderir
     # =========================================
     
     async def check_telegram_commands(self, money_flow_analyzer=None):
-        """Legacy stub - Telegram komutları devre dışı."""
-        pass
+        """
+        Telegram'dan gelen mesajları kontrol et.
+        BTC, ETH, SOL, LTC yazılırsa detaylı analiz gönder.
+        """
+        try:
+            # Get updates from Telegram
+            url = f"https://api.telegram.org/bot{self.telegram_token}/getUpdates?offset=-10&timeout=1"
+            response = requests.get(url, timeout=5)
+            
+            if response.status_code != 200:
+                return
+            
+            data = response.json()
+            messages = data.get('result', [])
+            
+            if not hasattr(self, '_last_processed_update_id'):
+                self._last_processed_update_id = 0
+            
+            for update in messages:
+                update_id = update.get('update_id', 0)
+                
+                # Skip already processed
+                if update_id <= self._last_processed_update_id:
+                    continue
+                
+                self._last_processed_update_id = update_id
+                
+                message = update.get('message', {})
+                text = message.get('text', '').upper().strip()
+                chat_id = message.get('chat', {}).get('id')
+                
+                # Only process from our chat
+                if str(chat_id) != str(self.telegram_chat_id):
+                    continue
+                
+                # Check for coin analysis command
+                await self._handle_coin_command(text)
+                
+        except Exception as e:
+            logger.debug(f"Telegram command check error: {e}")
+    
+    async def _handle_coin_command(self, text: str):
+        """Coin analiz komutlarını işle"""
+        try:
+            from src.brain.interactive_analyzer import get_interactive_analyzer
+            
+            analyzer = get_interactive_analyzer()
+            
+            # Parse coin from message
+            symbol = analyzer.parse_coin_from_message(text)
+            
+            if symbol:
+                logger.info(f"🔍 Interactive analysis requested: {symbol}")
+                
+                # Send "analyzing" message
+                await self.send_message_raw(f"🔍 *{symbol} analiz ediliyor...*\n_Lütfen bekleyin (5-10 saniye)_")
+                
+                # Perform detailed analysis
+                analysis = await analyzer.analyze_coin(symbol)
+                
+                # Send formatted result
+                telegram_msg = analyzer.format_for_telegram(analysis)
+                await self.send_message_raw(telegram_msg)
+                
+                logger.info(f"✅ Interactive analysis sent: {symbol} → {analysis.overall_direction}")
+            
+            # Check for help command
+            elif text in ['/HELP', '/YARDIM', 'HELP', 'YARDIM', '/KOMUTLAR']:
+                help_text = """🤖 *DEMIR AI - KOMUTLAR*
+━━━━━━━━━━━━━━━━━━
+📊 *Coin Analizi:*
+Sadece coin ismini yaz:
+• `BTC` - Bitcoin analizi
+• `ETH` - Ethereum analizi
+• `SOL` - Solana analizi
+• `LTC` - Litecoin analizi
+
+Veya komut ile:
+• `/analiz BTC`
+• `/analiz ETH`
+
+━━━━━━━━━━━━━━━━━━
+📡 *Otomatik Bildirimler:*
+• Teknik Sinyal - Anlık (%70+)
+• Canlı Tahmin - 15 dk
+• Ani Hareket - 60 sn
+• AI Analizi - 1 saat
+
+━━━━━━━━━━━━━━━━━━
+🔍 Detaylı analiz için coin yaz!"""
+                await self.send_message_raw(help_text)
+                
+        except Exception as e:
+            logger.error(f"Coin command handler error: {e}")
+    
+    # =========================================
+    # LEGACY COMPATIBILITY STUBS
+    # =========================================
     
     async def check_and_update_signals(self):
         """Legacy stub - Signal gate kontrolü devre dışı."""
