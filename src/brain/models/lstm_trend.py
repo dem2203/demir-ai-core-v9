@@ -336,6 +336,21 @@ class LSTMTrendPredictor:
             'timestamp': datetime.now()
         }
     
+    def _fallback_prediction(self, df: pd.DataFrame = None) -> Dict:
+        """
+        Fallback prediction when insufficient data for full LSTM prediction.
+        Used by dashboard when price_history < 24 hours.
+        Returns neutral signal with explanation.
+        """
+        return {
+            'direction': 'NEUTRAL',
+            'confidence': 0,
+            'probabilities': {'UP': 33, 'NEUTRAL': 34, 'DOWN': 33},
+            'model': 'FALLBACK',
+            'reason': 'Insufficient price history for LSTM prediction (need 24+ hours)',
+            'timestamp': datetime.now()
+        }
+    
     def save_model(self, path: str) -> bool:
         """Save trained model."""
         if self.model is None:
