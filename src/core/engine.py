@@ -53,6 +53,9 @@ from src.thinking_brain.market_researcher import get_market_researcher
 # PHASE 207: INSTANT ALERT - Ani Hareket Tespiti
 from src.thinking_brain.instant_alert import get_instant_alert_system
 
+# PHASE 300: INSTITUTIONAL AGGREGATOR - 17 Sources + 13 Triggers
+from src.brain.institutional_aggregator import get_aggregator
+
 logger = logging.getLogger("DEMIR_AI_CORE_ENGINE")
 
 class BotEngine:
@@ -221,18 +224,43 @@ class BotEngine:
                     unified_brain = get_unified_brain()
                     warning_system = get_warning_system()
                     
-                    # Her 5 dakikada bir erken uyarı taraması
-                    if not hasattr(self, 'last_warning_scan'):
-                        self.last_warning_scan = datetime.now() - timedelta(minutes=10)
+                    # ═══════════════════════════════════════════════════════════════
+                    # PHASE 300: INSTITUTIONAL MONITORING (17 Sources + 13 Triggers)
+                    # Her 5 dakikada bir kurumsal seviye piyasa analizi
+                    # ═══════════════════════════════════════════════════════════════
+                    if not hasattr(self, 'last_institutional_scan'):
+                        self.last_institutional_scan = datetime.now() - timedelta(minutes=10)
                     
-                    if (datetime.now() - self.last_warning_scan).total_seconds() >= 300:
-                        # PHASE 200: EARLY WARNING DISABLED (Silence legacy notifications)
-                        # warnings = await warning_system.scan_all()
-                        # if warnings:
-                        #     critical_warnings = [w for w in warnings if w.severity in ['HIGH', 'CRITICAL']]
-                        #     if critical_warnings:
-                        #         msg = warning_system.format_warnings(critical_warnings)
-                        #         await self.notifier.send_message_raw(msg)
+                    if (datetime.now() - self.last_institutional_scan).total_seconds() >= 300:
+                        try:
+                            aggregator = get_aggregator()
+                            
+                            for symbol in ['BTCUSDT', 'ETHUSDT']:  # Ana coinler
+                                # 1. Ani Hareket Tetikleyicilerini Kontrol Et (13 Triggers)
+                                alert_snapshot = await aggregator.check_sudden_triggers(symbol)
+                                
+                                if alert_snapshot.should_alert:
+                                    await self.notifier.send_sudden_alert(symbol)
+                                    logger.info(f"⚡ Sudden Alert triggered for {symbol}: {alert_snapshot.active_trigger_count} triggers")
+                                
+                                # 2. Canlı Veri Tahmini (17 Sources) - Saatlik
+                                if not hasattr(self, 'last_live_prediction'):
+                                    self.last_live_prediction = {}
+                                
+                                if symbol not in self.last_live_prediction:
+                                    self.last_live_prediction[symbol] = datetime.now() - timedelta(hours=2)
+                                
+                                if (datetime.now() - self.last_live_prediction[symbol]).total_seconds() >= 3600:
+                                    await self.notifier.send_live_prediction(symbol)
+                                    self.last_live_prediction[symbol] = datetime.now()
+                                    logger.info(f"🏦 Live Prediction sent for {symbol}")
+                            
+                            self.last_institutional_scan = datetime.now()
+                            logger.info("🏦 Institutional scan completed (17 sources + 13 triggers)")
+                            
+                        except Exception as inst_err:
+                            logger.warning(f"Institutional monitoring error: {inst_err}")
+                        
                         self.last_warning_scan = datetime.now()
                     
                     # Her 15 dakikada bir THINKING BRAIN analizi (GERCEK DUSUNEN AI)
