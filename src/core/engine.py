@@ -163,10 +163,13 @@ class BotEngine:
             if should_send_startup:
                 with open(startup_flag_file, 'w') as f:
                     f.write(str(time.time()))
-                await self.notifier.send_message_raw("🦅 **DEMIR AI ONLINE**\nSistem başlatıldı. Beyin eğitimi arka planda başlatılıyor...")
+                # DISABLED: Startup message removed per user request (only 4 notification types allowed)
+                # await self.notifier.send_message_raw("🦅 **DEMIR AI ONLINE**\nSistem başlatıldı. Beyin eğitimi arka planda başlatılıyor...")
+                logger.info("🦅 DEMIR AI ONLINE (message suppressed)")
         except Exception as e:
             logger.debug(f"Startup message handling: {e}")
-            await self.notifier.send_message_raw("🦅 **DEMIR AI ONLINE**\nSistem başlatıldı. Beyin eğitimi arka planda başlatılıyor...")
+            # DISABLED: Startup message removed
+            # await self.notifier.send_message_raw("🦅 **DEMIR AI ONLINE**\nSistem başlatıldı. Beyin eğitimi arka planda başlatılıyor...")
         
         # Ensure AI Brain is Trained (Non-Blocking Background Task)
         # Fixes 502 Error: Training takes time, so we don't block startup.
@@ -199,14 +202,16 @@ class BotEngine:
         except Exception as e:
             logger.warning(f"Auto Trainer start failed: {e}")
         
-        # PHASE 207: Start Instant Alert System (Background)
-        try:
-            instant_alert = get_instant_alert_system()
-            instant_alert.set_callback(self.notifier.send_message_raw)
-            asyncio.create_task(instant_alert.start_monitoring())
-            logger.info("⚡ Instant Alert System started (real-time monitoring)")
-        except Exception as e:
-            logger.warning(f"Instant Alert start failed: {e}")
+        # PHASE 207: Instant Alert System - DISABLED per user request
+        # HACIM PATLAMASI notifications are not in the agreed 4 notification types
+        # try:
+        #     instant_alert = get_instant_alert_system()
+        #     instant_alert.set_callback(self.notifier.send_message_raw)
+        #     asyncio.create_task(instant_alert.start_monitoring())
+        #     logger.info("⚡ Instant Alert System started (real-time monitoring)")
+        # except Exception as e:
+        #     logger.warning(f"Instant Alert start failed: {e}")
+        logger.info("⚡ Instant Alert System DISABLED (only 4 notification types allowed)")
         
         self.is_running = True
         await self.run_forever()
@@ -283,44 +288,42 @@ class BotEngine:
                             except Exception as pred_err:
                                 logger.debug(f"Live prediction error: {pred_err}")
                     
+                    # DISABLED: THINKING BRAIN (AI GÜNLÜĞÜ) - Not in agreed 4 types
                     # Her 15 dakikada bir THINKING BRAIN analizi (GERCEK DUSUNEN AI)
-                    if not hasattr(self, 'last_unified_analysis'):
-                        self.last_unified_analysis = datetime.now() - timedelta(minutes=20)
+                    # if not hasattr(self, 'last_unified_analysis'):
+                    #     self.last_unified_analysis = datetime.now() - timedelta(minutes=20)
+                    # 
+                    # thinking_brain = get_thinking_brain()
+                    # 
+                    # if (datetime.now() - self.last_unified_analysis).total_seconds() >= 900:
+                    #     for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:
+                    #         decision = await thinking_brain.think(symbol)
+                    #         
+                    #         if decision.action in ['LONG', 'SHORT']:
+                    #             msg = thinking_brain.format_telegram(decision)
+                    #             await self.notifier.send_message_raw(msg)
+                    #             logger.info(f"🧠 THINKING: {symbol} {decision.action} ({decision.confidence*100:.0f}%)")
+                    #         else:
+                    #             logger.info(f"🧠 THINKING: {symbol} WAIT - {decision.conditions}")
+                    #     
+                    #     self.last_unified_analysis = datetime.now()
                     
-                    thinking_brain = get_thinking_brain()
-                    
-                    if (datetime.now() - self.last_unified_analysis).total_seconds() >= 900:
-                        for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:
-                            # Thinking Brain: Gercek dusunen AI (gozlem + hafiza + celiski + karar)
-                            decision = await thinking_brain.think(symbol)
-                            
-                            # Sadece LONG veya SHORT kararlari gonder (WAIT gondermiyoruz)
-                            if decision.action in ['LONG', 'SHORT']:
-                                msg = thinking_brain.format_telegram(decision)
-                                await self.notifier.send_message_raw(msg)
-                                logger.info(f"🧠 THINKING: {symbol} {decision.action} ({decision.confidence*100:.0f}%)")
-                            else:
-                                # WAIT kararlari da logla
-                                logger.info(f"🧠 THINKING: {symbol} WAIT - {decision.conditions}")
-                        
-                        self.last_unified_analysis = datetime.now()
-                    
+                    # DISABLED: MARKET RESEARCHER - Not in agreed 4 types
                     # Her saat başı performance stats check
-                    if not hasattr(self, 'last_perf_check'):
-                        self.last_perf_check = datetime.now() - timedelta(hours=2)
-                    
-                    if (datetime.now() - self.last_perf_check).total_seconds() >= 3600:
-                        # PHASE 206: MARKET RESEARCHER - Her saat tam piyasa raporu
-                        try:
-                            researcher = get_market_researcher()
-                            report = await researcher.research_market()
-                            msg = researcher.format_telegram(report)
-                            await self.notifier.send_message_raw(msg)
-                            logger.info(f"📊 MARKET REPORT: {report.overall_bias} - {report.market_phase}")
-                        except Exception as research_err:
-                            logger.debug(f"Market research skipped: {research_err}")
-                        
-                        self.last_perf_check = datetime.now()
+                    # if not hasattr(self, 'last_perf_check'):
+                    #     self.last_perf_check = datetime.now() - timedelta(hours=2)
+                    # 
+                    # if (datetime.now() - self.last_perf_check).total_seconds() >= 3600:
+                    #     try:
+                    #         researcher = get_market_researcher()
+                    #         report = await researcher.research_market()
+                    #         msg = researcher.format_telegram(report)
+                    #         await self.notifier.send_message_raw(msg)
+                    #         logger.info(f"📊 MARKET REPORT: {report.overall_bias} - {report.market_phase}")
+                    #     except Exception as research_err:
+                    #         logger.debug(f"Market research skipped: {research_err}")
+                    #     
+                    #     self.last_perf_check = datetime.now()
                         
                 except Exception as unified_err:
                     logger.debug(f"Unified Brain skipped: {unified_err}")
@@ -336,96 +339,99 @@ class BotEngine:
                     
                     reasoning = get_reasoning_engine()
                     
+                    # DISABLED: AI REASONING (AI GÜNLÜĞÜ / AI TRADER ANALİZİ) - Not in agreed 4 types
                     # Her 15 dakikada bir akıl yürüt (900 saniye)
-                    if not hasattr(self, 'last_reasoning_time'):
-                        self.last_reasoning_time = datetime.now() - timedelta(hours=1)
-                    
-                    if (datetime.now() - self.last_reasoning_time).total_seconds() >= 900:
-                        for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:  # All 4 coins
-                            prediction = await reasoning.think(symbol)
-                            
-                            if prediction and prediction.confidence >= 55:
-                                msg = reasoning.format_for_telegram(prediction, symbol)
-                                await self.notifier.send_message_raw(msg)
-                                logger.info(f"🧠 AI REASONING: {symbol} → {prediction.direction} %{prediction.confidence:.0f}")
-                        
-                        # PHASE 131: TECHNICAL SCANNER - 4 coin x 14 modül
-                        try:
-                            from src.brain.technical_scanner import get_technical_scanner
-                            scanner = get_technical_scanner()
-                            scans = await scanner.scan_all_coins()
-                            
-                            for scan in scans:
-                                msg = scanner.format_scan_message(scan)
-                                await self.notifier.send_message_raw(msg)
-                                logger.info(f"📊 TECH SCAN: {scan.symbol} → {scan.direction} %{scan.overall_confidence:.0f}")
-                        except Exception as scan_err:
-                            logger.debug(f"Technical scan skipped: {scan_err}")
-                        
-                        self.last_reasoning_time = datetime.now()
+                    # if not hasattr(self, 'last_reasoning_time'):
+                    #     self.last_reasoning_time = datetime.now() - timedelta(hours=1)
+                    # 
+                    # if (datetime.now() - self.last_reasoning_time).total_seconds() >= 900:
+                    #     for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:
+                    #         prediction = await reasoning.think(symbol)
+                    #         
+                    #         if prediction and prediction.confidence >= 55:
+                    #             msg = reasoning.format_for_telegram(prediction, symbol)
+                    #             await self.notifier.send_message_raw(msg)
+                    #             logger.info(f"🧠 AI REASONING: {symbol} → {prediction.direction} %{prediction.confidence:.0f}")
+                    #     
+                    #     # PHASE 131: TECHNICAL SCANNER - 4 coin x 14 modül
+                    #     try:
+                    #         from src.brain.technical_scanner import get_technical_scanner
+                    #         scanner = get_technical_scanner()
+                    #         scans = await scanner.scan_all_coins()
+                    #         
+                    #         for scan in scans:
+                    #             msg = scanner.format_scan_message(scan)
+                    #             await self.notifier.send_message_raw(msg)
+                    #             logger.info(f"📊 TECH SCAN: {scan.symbol} → {scan.direction} %{scan.overall_confidence:.0f}")
+                    #     except Exception as scan_err:
+                    #         logger.debug(f"Technical scan skipped: {scan_err}")
+                    #     
+                    #     self.last_reasoning_time = datetime.now()
                     
                     # PHASE 128: ADVANCED AI INTELLIGENCE FEATURES
                     now = datetime.now()
                     
-                    # 1. Daily Briefing - 09:00 ve 21:00
-                    if not hasattr(self, 'last_briefing_date'):
-                        self.last_briefing_date = None
-                        self.morning_briefing_sent = False
-                        self.evening_briefing_sent = False
+                    # ================================================================
+                    # DISABLED NOTIFICATIONS (per user request - only 4 types allowed):
+                    # - Daily Briefing (09:00/21:00)
+                    # - Weekly Outlook (Monday 10:00)
+                    # - Risk Alerts (hourly)
+                    # - Whale Commentary (every 4 hours)
+                    # ================================================================
                     
-                    if self.last_briefing_date != now.date():
-                        self.last_briefing_date = now.date()
-                        self.morning_briefing_sent = False
-                        self.evening_briefing_sent = False
+                    # 1. Daily Briefing - DISABLED
+                    # if not hasattr(self, 'last_briefing_date'):
+                    #     self.last_briefing_date = None
+                    #     self.morning_briefing_sent = False
+                    #     self.evening_briefing_sent = False
+                    # 
+                    # if self.last_briefing_date != now.date():
+                    #     self.last_briefing_date = now.date()
+                    #     self.morning_briefing_sent = False
+                    #     self.evening_briefing_sent = False
+                    # 
+                    # if now.hour == 9 and now.minute < 30 and not self.morning_briefing_sent:
+                    #     briefing = await reasoning.generate_daily_briefing(morning=True)
+                    #     await self.notifier.send_message_raw(briefing)
+                    #     self.morning_briefing_sent = True
+                    # 
+                    # if now.hour == 21 and now.minute < 30 and not self.evening_briefing_sent:
+                    #     briefing = await reasoning.generate_daily_briefing(morning=False)
+                    #     await self.notifier.send_message_raw(briefing)
+                    #     self.evening_briefing_sent = True
                     
-                    # Morning: Only at exactly 09:XX (not after restart)
-                    if now.hour == 9 and now.minute < 30 and not self.morning_briefing_sent:
-                        briefing = await reasoning.generate_daily_briefing(morning=True)
-                        await self.notifier.send_message_raw(briefing)
-                        self.morning_briefing_sent = True
-                        logger.info("🌅 Morning briefing sent")
+                    # 2. Weekly Outlook - DISABLED
+                    # if not hasattr(self, 'weekly_outlook_sent'):
+                    #     self.weekly_outlook_sent = False
+                    # 
+                    # if now.weekday() == 0 and now.hour >= 10 and now.hour < 11:
+                    #     if not self.weekly_outlook_sent:
+                    #         outlook = await reasoning.generate_weekly_outlook()
+                    #         await self.notifier.send_message_raw(outlook)
+                    #         self.weekly_outlook_sent = True
+                    # elif now.weekday() != 0:
+                    #     self.weekly_outlook_sent = False
                     
-                    # Evening: Only at exactly 21:XX (not after restart) 
-                    if now.hour == 21 and now.minute < 30 and not self.evening_briefing_sent:
-                        briefing = await reasoning.generate_daily_briefing(morning=False)
-                        await self.notifier.send_message_raw(briefing)
-                        self.evening_briefing_sent = True
-                        logger.info("🌙 Evening briefing sent")
+                    # 3. Risk Alerts - DISABLED
+                    # if not hasattr(self, 'last_risk_check'):
+                    #     self.last_risk_check = datetime.now() - timedelta(hours=2)
+                    # 
+                    # if (now - self.last_risk_check).total_seconds() >= 3600:
+                    #     for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:
+                    #         risk_alert = await reasoning.generate_risk_alerts(symbol)
+                    #         if risk_alert:
+                    #             await self.notifier.send_message_raw(risk_alert)
+                    #     self.last_risk_check = now
                     
-                    # 2. Weekly Outlook - Pazartesi 10:00
-                    if not hasattr(self, 'weekly_outlook_sent'):
-                        self.weekly_outlook_sent = False
+                    # 4. Whale Commentary - DISABLED
+                    # if not hasattr(self, 'last_whale_comment'):
+                    #     self.last_whale_comment = datetime.now() - timedelta(hours=5)
+                    # 
+                    # if (now - self.last_whale_comment).total_seconds() >= 14400:
+                    #     whale_msg = await reasoning.generate_whale_commentary('BTCUSDT')
+                    #     await self.notifier.send_message_raw(whale_msg)
+                    #     self.last_whale_comment = now
                     
-                    if now.weekday() == 0 and now.hour >= 10 and now.hour < 11:
-                        if not self.weekly_outlook_sent:
-                            outlook = await reasoning.generate_weekly_outlook()
-                            await self.notifier.send_message_raw(outlook)
-                            self.weekly_outlook_sent = True
-                            logger.info("📅 Weekly outlook sent")
-                    elif now.weekday() != 0:
-                        self.weekly_outlook_sent = False
-                    
-                    # 3. Risk Alerts - Her saat başı
-                    if not hasattr(self, 'last_risk_check'):
-                        self.last_risk_check = datetime.now() - timedelta(hours=2)
-                    
-                    if (now - self.last_risk_check).total_seconds() >= 3600:
-                        for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:  # All 4 coins
-                            risk_alert = await reasoning.generate_risk_alerts(symbol)
-                            if risk_alert:  # Sadece risk varsa gönder
-                                await self.notifier.send_message_raw(risk_alert)
-                                logger.info(f"🚨 Risk alert sent for {symbol}")
-                        self.last_risk_check = now
-                    
-                    # 4. Whale Commentary - Her 4 saatte bir
-                    if not hasattr(self, 'last_whale_comment'):
-                        self.last_whale_comment = datetime.now() - timedelta(hours=5)
-                    
-                    if (now - self.last_whale_comment).total_seconds() >= 14400:  # 4 saat
-                        whale_msg = await reasoning.generate_whale_commentary('BTCUSDT')
-                        await self.notifier.send_message_raw(whale_msg)
-                        self.last_whale_comment = now
-                        logger.info("🐋 Whale commentary sent")
                         
                 except Exception as reasoning_err:
                     logger.debug(f"AI Reasoning skipped: {reasoning_err}")
