@@ -268,14 +268,50 @@ class InstantAlertSystem:
         
         current_price = history[-1]['price']
         
-        message = f"""📊 HACIM PATLAMASI - {symbol}
+        # YÖN ANALİZİ
+        prices = [p['price'] for p in history[-10:]]
+        price_change = ((prices[-1] - prices[0]) / prices[0]) * 100 if prices[0] > 0 else 0
+        
+        if price_change > 0.5:
+            direction = "📈 YUKARI"
+            direction_emoji = "🟢"
+            advice = "💡 Alıcılar baskın! Momentum devam edebilir."
+            potential = current_price * 1.02  # +2% hedef
+        elif price_change < -0.5:
+            direction = "📉 AŞAĞI"
+            direction_emoji = "🔴"
+            advice = "💡 Satıcılar baskın! Destek seviyelerini takip et."
+            potential = current_price * 0.98  # -2% hedef
+        else:
+            direction = "↔️ YATAY"
+            direction_emoji = "⚪"
+            advice = "💡 Yön belirsiz. Kırılımı bekle."
+            potential = current_price
+        
+        # Taker Ratio (son verilere göre tahmin)
+        buy_pressure = 50 + (price_change * 10)  # Basit tahmin
+        buy_pressure = max(0, min(100, buy_pressure))
+        
+        # Güç seviyesi
+        if ratio > 5:
+            strength = "🔥🔥🔥 ÇOK GÜÇLÜ"
+        elif ratio > 3:
+            strength = "🔥🔥 GÜÇLÜ"
+        else:
+            strength = "🔥 NORMAL"
+        
+        message = f"""📊 *HACIM PATLAMASI - {symbol}*
 ━━━━━━━━━━━━━━━━━━━━━━━━
-⚡ Hacim normalin {ratio:.1f} KATI!
+{direction_emoji} Yön: *{direction}*
+⚡ Hacim: *{ratio:.1f}x* normal ({strength})
 
-📍 Fiyat: ${current_price:,.2f}
+📍 Fiyat: `${current_price:,.2f}`
+📊 Değişim: `{price_change:+.2f}%` (son 10 bar)
+🎯 Potansiyel: `${potential:,.2f}`
 
-💡 Buyuk oyuncular harekete gecti!
-Ani fiyat hareketi olabilir.
+━━━ ANALİZ ━━━
+📊 Alıcı Baskısı: *{buy_pressure:.0f}%*
+{advice}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 ⏰ {datetime.now().strftime('%H:%M:%S')}"""
@@ -286,7 +322,7 @@ Ani fiyat hareketi olabilir.
             severity='WARNING',
             price_before=current_price,
             price_now=current_price,
-            change_percent=0,
+            change_percent=price_change,
             timeframe_minutes=5,
             volume_ratio=ratio,
             message=message
