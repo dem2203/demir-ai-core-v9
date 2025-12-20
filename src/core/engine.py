@@ -225,43 +225,46 @@ class BotEngine:
                     warning_system = get_warning_system()
                     
                     # ═══════════════════════════════════════════════════════════════
-                    # PHASE 300: INSTITUTIONAL MONITORING (17 Sources + 13 Triggers)
-                    # Her 5 dakikada bir kurumsal seviye piyasa analizi
+                    # PHASE 300: INSTITUTIONAL MONITORING
+                    # Ani Hareket: Her 60 saniyede bir (sürekli takip)
+                    # Canlı Veri Tahmini: Her 15 dakikada bir
                     # ═══════════════════════════════════════════════════════════════
-                    if not hasattr(self, 'last_institutional_scan'):
-                        self.last_institutional_scan = datetime.now() - timedelta(minutes=10)
                     
-                    if (datetime.now() - self.last_institutional_scan).total_seconds() >= 300:
+                    # --- ANİ HAREKET KONTROLÜ (60 saniye = sürekli) ---
+                    if not hasattr(self, 'last_sudden_check'):
+                        self.last_sudden_check = datetime.now() - timedelta(minutes=2)
+                    
+                    if (datetime.now() - self.last_sudden_check).total_seconds() >= 60:
                         try:
                             aggregator = get_aggregator()
                             
-                            for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:  # 4 ana coin
-                                # 1. Ani Hareket Tetikleyicilerini Kontrol Et (13 Triggers)
+                            for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:
                                 alert_snapshot = await aggregator.check_sudden_triggers(symbol)
                                 
                                 if alert_snapshot.should_alert:
                                     await self.notifier.send_sudden_alert(symbol)
-                                    logger.info(f"⚡ Sudden Alert triggered for {symbol}: {alert_snapshot.active_trigger_count} triggers")
-                                
-                                # 2. Canlı Veri Tahmini (17 Sources) - Saatlik
-                                if not hasattr(self, 'last_live_prediction'):
-                                    self.last_live_prediction = {}
-                                
-                                if symbol not in self.last_live_prediction:
-                                    self.last_live_prediction[symbol] = datetime.now() - timedelta(hours=2)
-                                
-                                if (datetime.now() - self.last_live_prediction[symbol]).total_seconds() >= 3600:
-                                    await self.notifier.send_live_prediction(symbol)
-                                    self.last_live_prediction[symbol] = datetime.now()
-                                    logger.info(f"🏦 Live Prediction sent for {symbol}")
+                                    logger.info(f"⚡ Sudden Alert: {symbol} ({alert_snapshot.active_trigger_count} triggers)")
                             
-                            self.last_institutional_scan = datetime.now()
-                            logger.info("🏦 Institutional scan completed (17 sources + 13 triggers)")
+                            self.last_sudden_check = datetime.now()
                             
-                        except Exception as inst_err:
-                            logger.warning(f"Institutional monitoring error: {inst_err}")
+                        except Exception as sudden_err:
+                            logger.debug(f"Sudden check error: {sudden_err}")
+                    
+                    # --- CANLI VERİ TAHMİNİ (15 dakika) ---
+                    if not hasattr(self, 'last_live_prediction'):
+                        self.last_live_prediction = {}
+                    
+                    for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:
+                        if symbol not in self.last_live_prediction:
+                            self.last_live_prediction[symbol] = datetime.now() - timedelta(minutes=20)
                         
-                        self.last_warning_scan = datetime.now()
+                        if (datetime.now() - self.last_live_prediction[symbol]).total_seconds() >= 900:
+                            try:
+                                await self.notifier.send_live_prediction(symbol)
+                                self.last_live_prediction[symbol] = datetime.now()
+                                logger.info(f"🏦 Live Prediction: {symbol}")
+                            except Exception as pred_err:
+                                logger.debug(f"Live prediction error: {pred_err}")
                     
                     # Her 15 dakikada bir THINKING BRAIN analizi (GERCEK DUSUNEN AI)
                     if not hasattr(self, 'last_unified_analysis'):
