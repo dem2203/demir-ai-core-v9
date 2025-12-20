@@ -50,6 +50,9 @@ from src.thinking_brain.brain import get_thinking_brain
 # PHASE 206: MARKET RESEARCHER - Kapsamli Arastirmaci
 from src.thinking_brain.market_researcher import get_market_researcher
 
+# PHASE 207: INSTANT ALERT - Ani Hareket Tespiti
+from src.thinking_brain.instant_alert import get_instant_alert_system
+
 logger = logging.getLogger("DEMIR_AI_CORE_ENGINE")
 
 class BotEngine:
@@ -175,6 +178,15 @@ class BotEngine:
             logger.info("🎓 Auto Trainer started (background)")
         except Exception as e:
             logger.warning(f"Auto Trainer start failed: {e}")
+        
+        # PHASE 207: Start Instant Alert System (Background)
+        try:
+            instant_alert = get_instant_alert_system()
+            instant_alert.set_callback(self.notifier.send_message_raw)
+            asyncio.create_task(instant_alert.start_monitoring())
+            logger.info("⚡ Instant Alert System started (real-time monitoring)")
+        except Exception as e:
+            logger.warning(f"Instant Alert start failed: {e}")
         
         self.is_running = True
         await self.run_forever()
