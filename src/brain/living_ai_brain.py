@@ -139,21 +139,21 @@ class LivingAIBrain:
         except Exception as e:
             logger.warning(f"Signal Combiner load failed: {e}")
         
-        # RL Agent
+        # RL Agent - FIXED: state_dim must match StateVectorBuilder (37)
         try:
             from src.brain.rl_agent.ppo_agent import RLAgent
-            self.rl_agent = RLAgent(state_dim=25, action_dim=3)  # LONG, SHORT, HOLD
+            self.rl_agent = RLAgent()  # Uses storage_dir for loading
             
-            # Load trained weights if available
-            model_path = "src/brain/rl_agent/models/ppo_trader_v1.pth"
-            if os.path.exists(model_path):
-                self.rl_agent.load(model_path)
+            # Try to load trained weights
+            loaded = self.rl_agent.load("ppo_btcusdt_v1")
+            if loaded:
                 logger.info("✅ RL Agent loaded with trained weights")
             else:
                 logger.info("⚠️ RL Agent initialized without trained weights")
                 
         except Exception as e:
             logger.warning(f"RL Agent load failed: {e}")
+            self.rl_agent = None
     
     async def think(self, symbol: str, market_data: Dict) -> AIDecision:
         """
@@ -342,35 +342,66 @@ class LivingAIBrain:
         return None
     
     def _prepare_rl_state(self, market_data: Dict) -> Optional[np.ndarray]:
-        """RL agent için state hazırla."""
+        """RL agent için state hazırla - FIXED: 37 features matching StateVectorBuilder."""
         try:
-            # 25 features expected by RL agent
+            # 37 features expected by RL agent (matches StateVectorBuilder.STATE_DIM)
             features = [
-                market_data.get('rsi', 50) / 100,
-                market_data.get('macd', 0) / 1000,
-                market_data.get('bb_position', 0.5),
-                market_data.get('volume_ratio', 1),
-                market_data.get('price_change_1h', 0),
-                market_data.get('price_change_4h', 0),
-                market_data.get('price_change_24h', 0),
-                market_data.get('ema_9_21_cross', 0),
-                market_data.get('ema_21_50_cross', 0),
-                market_data.get('funding_rate', 0),
+                # LSTM predictions (3)
+                market_data.get('lstm_up_prob', 0.33),
+                market_data.get('lstm_neutral_prob', 0.34),
+                market_data.get('lstm_down_prob', 0.33),
+                
+                # Fractal analysis (3)
+                market_data.get('fractal_trend', 0),
+                market_data.get('fractal_strength', 0.5),
+                market_data.get('fractal_distance', 0),
+                
+                # Order book (5)
+                market_data.get('bid_volume_ratio', 0.5),
+                market_data.get('ask_volume_ratio', 0.5),
+                market_data.get('orderbook_imbalance', 0),
+                market_data.get('bid_wall_distance', 0),
+                market_data.get('ask_wall_distance', 0),
+                
+                # Correlation (4)
+                market_data.get('eth_btc_ratio', 0.05),
+                market_data.get('btc_dominance', 50) / 100,
+                market_data.get('gold_btc_ratio', 0.02),
+                market_data.get('sp500_btc_ratio', 0.5),
+                
+                # Funding and derivatives (3)
+                market_data.get('funding_rate', 0) * 100,  # Scale to reasonable range
                 market_data.get('long_short_ratio', 1),
                 market_data.get('open_interest_change', 0),
-                market_data.get('cvd', 0),
-                market_data.get('taker_buy_ratio', 0.5),
-                market_data.get('orderbook_imbalance', 0),
-                market_data.get('atr', 0),
-                market_data.get('stoch_k', 50) / 100,
-                market_data.get('stoch_d', 50) / 100,
-                market_data.get('adx', 25) / 100,
-                market_data.get('cci', 0) / 200,
-                market_data.get('mfi', 50) / 100,
-                market_data.get('obv_change', 0),
-                market_data.get('vwap_distance', 0),
-                market_data.get('support_distance', 0),
-                market_data.get('resistance_distance', 0)
+                
+                # Volatility (5)
+                market_data.get('atr', 0) / 1000,  # Normalize
+                market_data.get('bb_position', 0.5),
+                market_data.get('volatility_pct', 2) / 10,
+                market_data.get('price_change_1h', 0) / 10,
+                market_data.get('price_change_24h', 0) / 10,
+                
+                # Anomaly detection (3)
+                market_data.get('volume_anomaly', 0),
+                market_data.get('price_anomaly', 0),
+                market_data.get('flow_anomaly', 0),
+                
+                # Macro (5)
+                market_data.get('macro_score', 0) / 100,
+                market_data.get('fear_greed_index', 50) / 100,
+                market_data.get('vix', 20) / 100,
+                market_data.get('dxy', 100) / 150,
+                market_data.get('interest_rate', 5) / 10,
+                
+                # Position info (3)
+                1.0 if market_data.get('in_position', False) else 0.0,
+                market_data.get('position_pnl', 0) / 10,
+                market_data.get('position_duration', 0) / 24,  # Hours normalized
+                
+                # Performance (3)
+                market_data.get('rsi', 50) / 100,
+                market_data.get('macd', 0) / 1000,
+                market_data.get('stoch_k', 50) / 100
             ]
             
             return np.array(features, dtype=np.float32)

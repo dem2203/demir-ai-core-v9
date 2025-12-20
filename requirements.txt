@@ -8,8 +8,8 @@ numpy
 ccxt>=4.0.0
 scikit-learn
 joblib
-yfinance>=0.2.50
-pandas_datareader
+# yfinance REMOVED - causes production errors on Railway
+# pandas_datareader REMOVED - yfinance dependency
 
 # --- Deep Learning ---
 tensorflow

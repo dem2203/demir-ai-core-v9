@@ -1,26 +1,26 @@
+# -*- coding: utf-8 -*-
+"""
+DEMIR AI - Macro Connector (yfinance-free version)
+FRED API + CoinGecko + Binance for all market data.
+NO YFINANCE - Production safe.
+"""
 import logging
 import pandas as pd
 import requests
-import yfinance as yf
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 import os
-from src.config.settings import Config
 
 logger = logging.getLogger("MACRO_CONNECTOR")
 
 class MacroConnector:
     """
-    MACRO ECONOMIC INTELLIGENCE
-    Fetches key economic indicators from FRED and Market Data from Yahoo Finance.
+    MACRO ECONOMIC INTELLIGENCE - NO YFINANCE
     
-    Indicators:
-    1. US Interest Rate (FEDFUNDS)
-    2. Inflation (CPIAUCSL)
-    3. Unemployment Rate (UNRATE)
-    4. M2 Money Supply (M2SL)
-    5. DXY Index (DX-Y.NYB)
-    6. VIX Index (^VIX)
+    Data Sources:
+    - FRED API: Interest rates, CPI, unemployment, VIX, DXY
+    - CoinGecko: BTC dominance, market cap
+    - Binance: Crypto prices
     """
     
     def __init__(self):
@@ -28,52 +28,109 @@ class MacroConnector:
         self.base_url = "https://api.stlouisfed.org/fred/series/observations"
         self.cache = {}
         self.cache_duration = 3600 * 24  # 24 hours (FRED data)
-        self.market_cache_duration = 300 # 5 minutes (Market data)
         
         if not self.api_key:
-            logger.warning("⚠️ FRED_API_KEY not found. Macro analysis will use fallback values.")
+            logger.warning("⚠️ FRED_API_KEY not found. Using limited macro data.")
             
     def fetch_data(self) -> Dict[str, float]:
-        """Get latest macro indicators"""
-        
-        # 1. FRED Data (Economic + Market Proxy)
-        indicators = {
-            "interest_rate": "FEDFUNDS",
-            "cpi": "CPIAUCSL",
-            "unemployment": "UNRATE",
-            "m2_money_supply": "M2SL",
-            "vix": "VIXCLS",       # CBOE Volatility Index from FRED
-            "dxy": "DTWEXBGS"      # Nominal Broad U.S. Dollar Index (Proxy for DXY)
-        }
+        """Get latest macro indicators - NO YFINANCE"""
         
         result = {}
         errors = []
         
-        for name, series_id in indicators.items():
+        # 1. FRED Data (Economic indicators)
+        fred_indicators = {
+            "interest_rate": "FEDFUNDS",
+            "cpi": "CPIAUCSL",
+            "unemployment": "UNRATE",
+            "m2_money_supply": "M2SL",
+            "vix": "VIXCLS",       # VIX from FRED
+            "dxy": "DTWEXBGS"      # Dollar Index from FRED
+        }
+        
+        for name, series_id in fred_indicators.items():
             value, error = self._get_series_latest(series_id)
             if value is not None:
                 result[name] = value
             elif error:
                 errors.append(f"{name}: {error}")
-
-        # 2. Market Data Fallback (yfinance)
-        if "dxy" not in result or "vix" not in result:
-            try:
-                # DXY
-                if "dxy" not in result:
-                    dxy_ticker = yf.Ticker("DX-Y.NYB")
-                    if hasattr(dxy_ticker, 'fast_info') and 'last_price' in dxy_ticker.fast_info:
-                        result['dxy'] = dxy_ticker.fast_info['last_price']
+        
+        # 2. CoinGecko - Crypto market data (free, no limit issues)
+        try:
+            cg_response = requests.get(
+                "https://api.coingecko.com/api/v3/global",
+                timeout=10
+            )
+            if cg_response.status_code == 200:
+                global_data = cg_response.json().get('data', {})
                 
-                # VIX
-                if "vix" not in result:
-                    vix_ticker = yf.Ticker("^VIX")
-                    if hasattr(vix_ticker, 'fast_info') and 'last_price' in vix_ticker.fast_info:
-                        result['vix'] = vix_ticker.fast_info['last_price']
-            except Exception as e:
-                msg = f"yfinance fallback failed: {e}"
-                logger.warning(msg)
-                errors.append(msg)
+                result['btc_dominance'] = global_data.get('market_cap_percentage', {}).get('btc', 50)
+                result['btc_dominance_change'] = global_data.get('market_cap_change_percentage_24h_usd', 0)
+                result['total_market_cap'] = global_data.get('total_market_cap', {}).get('usd', 0)
+                
+                logger.debug(f"CoinGecko: BTC.D={result['btc_dominance']:.1f}%")
+        except Exception as e:
+            logger.warning(f"CoinGecko failed: {e}")
+            result['btc_dominance'] = 50
+            result['btc_dominance_change'] = 0
+        
+        # 3. Binance - Crypto prices and ETH/BTC ratio
+        try:
+            # BTC price
+            btc_resp = requests.get(
+                "https://api.binance.com/api/v3/ticker/24hr",
+                params={'symbol': 'BTCUSDT'},
+                timeout=5
+            )
+            if btc_resp.status_code == 200:
+                btc_data = btc_resp.json()
+                btc_price = float(btc_data.get('lastPrice', 100000))
+                result['btc_price'] = btc_price
+            else:
+                btc_price = 100000
+            
+            # ETH/BTC ratio
+            ethbtc_resp = requests.get(
+                "https://api.binance.com/api/v3/ticker/price",
+                params={'symbol': 'ETHBTC'},
+                timeout=5
+            )
+            if ethbtc_resp.status_code == 200:
+                result['eth_btc_ratio'] = float(ethbtc_resp.json().get('price', 0.05))
+                
+        except Exception as e:
+            logger.warning(f"Binance price fetch failed: {e}")
+            btc_price = 100000
+            result['eth_btc_ratio'] = 0.05
+        
+        # 4. Gold & Traditional Markets - Use FRED if available, otherwise estimate
+        # FRED has gold series: GOLDAMGBD228NLBM (London Gold Fixing)
+        gold_value, _ = self._get_series_latest("GOLDAMGBD228NLBM")
+        if gold_value:
+            result['gold'] = gold_value
+            result['gold_change'] = 0  # FRED doesn't give 24h change easily
+            result['gold_btc_ratio'] = gold_value / btc_price if btc_price > 0 else 0.02
+        else:
+            # Fallback - approximate gold price
+            result['gold'] = 2650  # Approximate current gold price
+            result['gold_change'] = 0
+            result['gold_btc_ratio'] = 2650 / btc_price if btc_price > 0 else 0.02
+        
+        # 5. Nasdaq - Use FRED NASDAQCOM series
+        nasdaq_value, _ = self._get_series_latest("NASDAQCOM")
+        if nasdaq_value:
+            result['nasdaq'] = nasdaq_value
+            result['nasdaq_change'] = 0
+        else:
+            result['nasdaq'] = 20000  # Approximate
+            result['nasdaq_change'] = 0
+        
+        # 6. S&P 500 proxy - Use FRED SP500 series
+        sp500_value, _ = self._get_series_latest("SP500")
+        if sp500_value:
+            result['sp500_btc_ratio'] = sp500_value / (btc_price / 1000) if btc_price > 0 else 5.0
+        else:
+            result['sp500_btc_ratio'] = 5.0
         
         # Store errors in result for debug
         if errors:
@@ -86,97 +143,23 @@ class MacroConnector:
         if rate < 3.0: score += 30
         elif rate > 5.0: score -= 30
         
-        # DTWEXBGS is usually higher than DXY (e.g., 120 vs 104). Adjust logic slightly or just track trend.
-        # For simplicity, we assume higher is bearish for crypto.
         dxy_val = result.get('dxy')
         if dxy_val:
-            if dxy_val > 115: score -= 20 # Strong Dollar (Broad Index) -> Bad for Crypto
+            if dxy_val > 115: score -= 20  # Strong Dollar = Bad for Crypto
             elif dxy_val < 100: score += 20
+        
+        vix_val = result.get('vix')
+        if vix_val:
+            if vix_val > 30: score -= 15  # High fear
+            elif vix_val < 15: score += 10  # Low fear
         
         result["macro_score"] = score
         result["timestamp"] = datetime.now().isoformat()
         
-        # v6 MACRO FEATURES: Cross-market correlations + Dashboard Display
-        try:
-            import ccxt
-            exchange = ccxt.binance()
-            
-            # ETH/BTC Ratio
-            eth_btc = exchange.fetch_ticker('ETH/BTC')
-            result['eth_btc_ratio'] = float(eth_btc['last']) if eth_btc else 0.0
-            
-            # Get BTC price for Gold/BTC
-            btc_usdt = exchange.fetch_ticker('BTC/USDT')
-            btc_price = float(btc_usdt['last']) if btc_usdt else 100000
-            
-            # ✅ DASHBOARD: Gold Price with 24h change (GC=F futures)
-            try:
-                gold = yf.Ticker("GC=F")
-                gold_info = gold.fast_info
-                gold_price = gold_info.get('lastPrice') or gold_info.get('last_price') or gold_info.get('regularMarketPrice', 0)
-                gold_prev = gold_info.get('previousClose') or gold_info.get('regularMarketPreviousClose', 0)
-                result['gold'] = gold_price if gold_price else 0
-                result['gold_change'] = ((gold_price - gold_prev) / gold_prev * 100) if gold_prev and gold_price else 0
-                result['gold_btc_ratio'] = gold_price / btc_price if btc_price > 0 and gold_price else 0.0
-            except Exception as e:
-                logger.warning(f"Gold fetch failed: {e}")
-                result['gold'] = 0
-                result['gold_change'] = 0
-                result['gold_btc_ratio'] = 0.02
-            
-            # ✅ DASHBOARD: Nasdaq Composite with 24h change (^IXIC)
-            try:
-                nasdaq = yf.Ticker("^IXIC")
-                nasdaq_info = nasdaq.fast_info
-                nasdaq_price = nasdaq_info.get('lastPrice') or nasdaq_info.get('last_price') or nasdaq_info.get('regularMarketPrice', 0)
-                nasdaq_prev = nasdaq_info.get('previousClose') or nasdaq_info.get('regularMarketPreviousClose', 0)
-                result['nasdaq'] = nasdaq_price if nasdaq_price else 0
-                result['nasdaq_change'] = ((nasdaq_price - nasdaq_prev) / nasdaq_prev * 100) if nasdaq_prev and nasdaq_price else 0
-            except Exception as e:
-                logger.warning(f"Nasdaq fetch failed: {e}")
-                result['nasdaq'] = 0
-                result['nasdaq_change'] = 0
-            
-            # ✅ DASHBOARD: BTC Dominance with 24h change (CoinGecko free API)
-            try:
-                cg_response = requests.get("https://api.coingecko.com/api/v3/global", timeout=5)
-                if cg_response.status_code == 200:
-                    global_data = cg_response.json()
-                    btc_d = global_data['data']['market_cap_percentage']['btc']
-                    btc_d_24h = global_data['data'].get('market_cap_change_percentage_24h_usd', 0)
-                    result['btc_dominance'] = btc_d
-                    result['btc_dominance_change'] = btc_d_24h  # Market cap change proxy
-                else:
-                    result['btc_dominance'] = 0
-                    result['btc_dominance_change'] = 0
-            except Exception as e:
-                logger.warning(f"BTC.D fetch failed: {e}")
-                result['btc_dominance'] = 0
-                result['btc_dominance_change'] = 0
-                
-            # S&P500/BTC correlation proxy
-            try:
-                spy = yf.Ticker("SPY")
-                spy_price = spy.fast_info.get('lastPrice') or spy.fast_info.get('last_price') or spy.fast_info.get('regularMarketPrice', 500)
-                result['sp500_btc_ratio'] = spy_price / (btc_price / 1000) if btc_price > 0 else 0.0
-            except:
-                result['sp500_btc_ratio'] = 5.0  # fallback
-                
-            logger.info(f"📈 Dashboard Macro: Gold=${result.get('gold', 0):,.0f} | Nasdaq={result.get('nasdaq', 0):,.0f} | BTC.D={result.get('btc_dominance', 0):.1f}%")
-            
-        except Exception as e:
-            logger.warning(f"Could not fetch v6 ratios: {e}")
-            result['eth_btc_ratio'] = 0.0
-            result['gold_btc_ratio'] = 0.0
-            result['gold'] = 0
-            result['nasdaq'] = 0
-            result['btc_dominance'] = 0
-            result['sp500_btc_ratio'] = 0.0
-        
         # Log summary
-        rate_str = f"{rate}%" if result.get("interest_rate") else "N/A"
+        rate_str = f"{rate:.2f}%" if result.get("interest_rate") else "N/A"
         dxy_str = f"{result.get('dxy', 0):.2f}" if result.get('dxy') else "N/A"
-        logger.info(f"🌍 Macro Data: Rate={rate_str} | DXY(Broad)={dxy_str} | Score={score}")
+        logger.info(f"🌍 Macro: Rate={rate_str} | DXY={dxy_str} | BTC.D={result.get('btc_dominance', 0):.1f}% | Score={score}")
         
         return result
         

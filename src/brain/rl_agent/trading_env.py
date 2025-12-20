@@ -11,12 +11,17 @@ class TradingEnv(gym.Env):
     Gym-Compatible Trading Environment for RL Agent
     (RL Ajanı için Gym Uyumlu Trading Ortamı)
     
-    State (Durum): 28 features (fiyat + makro + pozisyon bilgisi)
+    State (Durum): 37 features (StateVectorBuilder ile uyumlu)
     Action (Aksiyon): 0=HOLD, 1=BUY, 2=SELL
     Reward (Ödül): PnL değişimi + Sharpe bonusu - işlem cezası
+    
+    FIXED: observation_space shape now matches StateVectorBuilder.STATE_DIM (37)
     """
     
     metadata = {'render_modes': []}
+    
+    # CRITICAL: Must match StateVectorBuilder.STATE_DIM
+    OBSERVATION_DIM = 37
     
     def __init__(
         self, 
@@ -32,11 +37,12 @@ class TradingEnv(gym.Env):
         self.transaction_fee = transaction_fee
         self.max_position_size = max_position_size
         
-        # State space: 28 features (özellik)
-        # [price_features(20), macro(5), position_info(3)]
+        # State space: 37 features (FIXED - matches StateVectorBuilder)
+        # [lstm(3), fractal(3), orderbook(5), correlation(4), funding(3), 
+        #  volatility(5), anomaly(3), macro(5), position(3), performance(3)]
         self.observation_space = spaces.Box(
             low=-10.0, high=10.0, 
-            shape=(28,), 
+            shape=(self.OBSERVATION_DIM,), 
             dtype=np.float32
         )
         
@@ -115,24 +121,37 @@ class TradingEnv(gym.Env):
         """
         Build state vector from current market data
         (Mevcut piyasa verisinden durum vektörü oluştur)
-        """
-        # Price features (20): OHLCV ratios, returns, indicators
-        # Simplified for now - in real impl, use FeatureExtractor
-        price_features = self.data[self.current_step, :20]
         
-        # Macro features (5): DXY, VIX, etc.
-        macro_features = self.data[self.current_step, 20:25]
+        FIXED: Now produces 37-dimensional state vector matching StateVectorBuilder
+        """
+        # If data is already 37 dimensional, use directly
+        if self.data.shape[1] >= self.OBSERVATION_DIM:
+            obs = self.data[self.current_step, :self.OBSERVATION_DIM]
+            return obs.astype(np.float32)
+        
+        # Otherwise, pad to 37 dimensions
+        current_price = self._get_current_price()
+        
+        # Available features from data
+        available = min(self.data.shape[1], 34)
+        base_features = self.data[self.current_step, :available]
         
         # Position info (3): is_in_position, entry_delta, unrealized_pnl
-        current_price = self._get_current_price()
         position_info = np.array([
             1.0 if self.position != 0 else 0.0,  # In position?
             (current_price - self.entry_price) / current_price if self.entry_price > 0 else 0.0,
             self._calculate_unrealized_pnl(current_price) / self.balance if self.balance > 0 else 0.0
         ])
         
-        obs = np.concatenate([price_features, macro_features, position_info])
-        return obs.astype(np.float32)
+        # Concatenate and pad to 37 if needed
+        obs = np.concatenate([base_features, position_info])
+        
+        if len(obs) < self.OBSERVATION_DIM:
+            # Pad with zeros
+            padding = np.zeros(self.OBSERVATION_DIM - len(obs))
+            obs = np.concatenate([obs, padding])
+        
+        return obs[:self.OBSERVATION_DIM].astype(np.float32)
     
     def _execute_action(self, action: int, current_price: float) -> float:
         """

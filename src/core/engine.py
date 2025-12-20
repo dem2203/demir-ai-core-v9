@@ -37,6 +37,10 @@ from src.core.risk_shield import RiskShield
 from src.core.performance_tracker import PerformanceTracker
 from src.brain.exit_strategy import ExitStrategy 
 
+# PHASE 200: UNIFIED BRAIN & EARLY WARNING (NEW ARCHITECTURE)
+from src.brain.unified_brain import get_unified_brain
+from src.brain.early_warning import get_warning_system
+
 logger = logging.getLogger("DEMIR_AI_CORE_ENGINE")
 
 class BotEngine:
@@ -180,6 +184,53 @@ class BotEngine:
                 # Phase 93+94: Check signal gate TP/SL and position risks
                 await self.notifier.check_and_update_signals()  # TP/SL vuruldu mu?
                 await self.notifier.check_active_position_risks()  # Risk var mı?
+                
+                # ═══════════════════════════════════════════════════════════════
+                # PHASE 200: UNIFIED BRAIN - YENİ MİMARİ (PRIMARY SYSTEM)
+                # Tüm eski brain sistemlerini tek noktada birleştiren yeni yapı
+                # ═══════════════════════════════════════════════════════════════
+                try:
+                    unified_brain = get_unified_brain()
+                    warning_system = get_warning_system()
+                    
+                    # Her 5 dakikada bir erken uyarı taraması
+                    if not hasattr(self, 'last_warning_scan'):
+                        self.last_warning_scan = datetime.now() - timedelta(minutes=10)
+                    
+                    if (datetime.now() - self.last_warning_scan).total_seconds() >= 300:
+                        warnings = await warning_system.scan_all()
+                        
+                        if warnings:
+                            # Sadece HIGH ve CRITICAL uyarıları gönder
+                            critical_warnings = [w for w in warnings if w.severity in ['HIGH', 'CRITICAL']]
+                            if critical_warnings:
+                                msg = warning_system.format_warnings(critical_warnings)
+                                await self.notifier.send_message_raw(msg)
+                                logger.info(f"⚠️ {len(critical_warnings)} erken uyarı gönderildi")
+                        
+                        self.last_warning_scan = datetime.now()
+                    
+                    # Her 15 dakikada bir Unified Brain analizi
+                    if not hasattr(self, 'last_unified_analysis'):
+                        self.last_unified_analysis = datetime.now() - timedelta(minutes=20)
+                    
+                    if (datetime.now() - self.last_unified_analysis).total_seconds() >= 900:
+                        for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:
+                            signal = await unified_brain.analyze(symbol)
+                            
+                            if signal:
+                                msg = unified_brain.format_for_telegram(signal)
+                                await self.notifier.send_message_raw(msg)
+                                logger.info(f"🧠 UNIFIED BRAIN: {symbol} {signal.direction} %{signal.confidence:.0f}")
+                        
+                        self.last_unified_analysis = datetime.now()
+                        
+                except Exception as unified_err:
+                    logger.debug(f"Unified Brain skipped: {unified_err}")
+                
+                # ═══════════════════════════════════════════════════════════════
+                # LEGACY SYSTEMS (Eski sistemler - Unified Brain'e yedek)
+                # ═══════════════════════════════════════════════════════════════
                 
                 # PHASE 127: AI REASONING ENGINE - Gerçek Akıl Yürütme
                 # Tüm modülleri birleştirip DÜŞÜNEN bir AI

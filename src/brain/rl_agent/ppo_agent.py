@@ -24,7 +24,7 @@ class TransformerFeatureExtractor(BaseFeaturesExtractor):
     def __init__(self, observation_space, features_dim: int = 64):
         super().__init__(observation_space, features_dim)
         
-        n_input_features = observation_space.shape[0]  # 28
+        n_input_features = observation_space.shape[0]  # 37 (FIXED)
         
         # Input projection (Giriş projeksiyon)
         self.input_proj = nn.Linear(n_input_features, 64)
@@ -53,7 +53,7 @@ class TransformerFeatureExtractor(BaseFeaturesExtractor):
         (Transformer'dan ileri geçiş)
         
         Args:
-            observations: (batch, 28) - State vector
+            observations: (batch, 37) - State vector (FIXED)
         Returns:
             features: (batch, 64) - Encoded features
         """
@@ -193,7 +193,7 @@ class RLAgent:
         (Mevcut durumdan aksiyon tahmin et)
         
         Args:
-            state: (28,) state vector (durum vektörü)
+            state: (37,) state vector (durum vektörü) - FIXED
             deterministic: Use deterministic policy (Deterministik politika kullan)
         
         Returns:
