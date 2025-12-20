@@ -347,16 +347,16 @@ class BotEngine:
                             logger.debug(f"Technical signal error: {tech_err}")
                     
                     # ═══════════════════════════════════════════════════════════════
-                    # 4️⃣ AI GÖZ ANALİZİ (15 dakika - ThinkingBrain LONG/SHORT)
+                    # 4️⃣ AI GÖZ ANALİZİ (1 SAAT - ThinkingBrain LONG/SHORT)
                     # ═══════════════════════════════════════════════════════════════
                     if not hasattr(self, 'last_ai_vision'):
                         self.last_ai_vision = {}
                     
                     for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:  # 4 coin
                         if symbol not in self.last_ai_vision:
-                            self.last_ai_vision[symbol] = datetime.now() - timedelta(minutes=20)
+                            self.last_ai_vision[symbol] = datetime.now() - timedelta(hours=2)
                         
-                        if (datetime.now() - self.last_ai_vision[symbol]).total_seconds() >= 900:
+                        if (datetime.now() - self.last_ai_vision[symbol]).total_seconds() >= 3600:  # 1 saat
                             try:
                                 # ThinkingBrain'den karar al (LONG/SHORT/WAIT)
                                 thinking_brain = get_thinking_brain()
