@@ -1,0 +1,12 @@
+[
+  {
+    "id": "pred_20251220_133105",
+    "symbol": "BTCUSDT",
+    "prediction": "WAIT",
+    "reasoning": "KARARIM: BEKLIYORUM (60% guven)\nSartlarim:\n  - Whale'ler aliciya donerse LONG dusunurum\n  - $86,453 altina duserse stop",
+    "result": "PENDING",
+    "pnl_percent": 0,
+    "lesson": "",
+    "timestamp": "2025-12-20T13:31:05.560780"
+  }
+]

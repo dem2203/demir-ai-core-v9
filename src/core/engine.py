@@ -44,6 +44,9 @@ from src.brain.auto_trainer import get_trainer, start_training_background
 from src.brain.signal_performance import get_performance_tracker
 from src.brain.predictive_engine import get_predictive_engine
 
+# PHASE 205: THINKING BRAIN - Gercek Dusunen AI
+from src.thinking_brain.brain import get_thinking_brain
+
 logger = logging.getLogger("DEMIR_AI_CORE_ENGINE")
 
 class BotEngine:
@@ -220,23 +223,25 @@ class BotEngine:
                         
                         self.last_warning_scan = datetime.now()
                     
-                    # Her 15 dakikada bir PREDICTIVE ENGINE analizi (GERÇEK AI)
+                    # Her 15 dakikada bir THINKING BRAIN analizi (GERCEK DUSUNEN AI)
                     if not hasattr(self, 'last_unified_analysis'):
                         self.last_unified_analysis = datetime.now() - timedelta(minutes=20)
                     
-                    performance_tracker = get_performance_tracker()
-                    predictive_engine = get_predictive_engine()
+                    thinking_brain = get_thinking_brain()
                     
                     if (datetime.now() - self.last_unified_analysis).total_seconds() >= 900:
                         for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:
-                            # Predictive Engine: Gerçek AI tahmin (yön + hedef + neden)
-                            prediction = await predictive_engine.predict(symbol)
+                            # Thinking Brain: Gercek dusunen AI (gozlem + hafiza + celiski + karar)
+                            decision = await thinking_brain.think(symbol)
                             
-                            if prediction:
-                                # Telegram'a gönder
-                                msg = predictive_engine.format_telegram(prediction)
+                            # Sadece LONG veya SHORT kararlari gonder (WAIT gondermiyoruz)
+                            if decision.action in ['LONG', 'SHORT']:
+                                msg = thinking_brain.format_telegram(decision)
                                 await self.notifier.send_message_raw(msg)
-                                logger.info(f"🎯 PREDICTION: {symbol} {prediction.direction} -> ${prediction.target_price:,.0f} ({prediction.confidence:.0f}%)")
+                                logger.info(f"🧠 THINKING: {symbol} {decision.action} ({decision.confidence*100:.0f}%)")
+                            else:
+                                # WAIT kararlari da logla
+                                logger.info(f"🧠 THINKING: {symbol} WAIT - {decision.conditions}")
                         
                         self.last_unified_analysis = datetime.now()
                     
