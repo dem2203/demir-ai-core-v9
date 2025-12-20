@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-DEMIR AI - Telegram Notification Manager V2
-============================================
+DEMIR AI - Telegram Notification Manager V3 (INSTITUTIONAL GRADE)
+=================================================================
+17 Veri Kaynağı + 13 Tetikleyici Entegre
+
 4 Bildirim Kategorisi:
 1. TEKNİK SİNYAL - Matematiksel indikatör bazlı
-2. CANLI VERİ TAHMİNİ - Web scraping bazlı (Whale, Liq, OB)
-3. ANİ HAREKET UYARISI - Volatilite ve risk tespiti
+2. CANLI VERİ TAHMİNİ - 17 kaynak entegre
+3. ANİ HAREKET UYARISI - 13 tetikleyici
 4. AI GÖZ ANALİZİ - Düşünen yapay zeka perspektifi
 """
 import logging
@@ -20,7 +22,7 @@ logger = logging.getLogger("NOTIFICATION_MANAGER")
 
 class NotificationManager:
     """
-    DEMIR AI V2.0 - 4-Katmanlı Bildirim Sistemi
+    DEMIR AI V3.0 - Kurumsal Seviye Bildirim Sistemi
     """
     
     def __init__(self):
@@ -29,7 +31,7 @@ class NotificationManager:
         self.telegram_url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage" if self.telegram_token else None
         
         if self.telegram_token and self.telegram_chat_id:
-            logger.info("✅ Telegram V2 Ready (4 Notification Types)")
+            logger.info("✅ Telegram V3 Ready (17 Sources + 13 Triggers)")
         else:
             logger.warning("⚠️ Telegram credentials not configured")
 
@@ -38,7 +40,7 @@ class NotificationManager:
     # =========================================
     
     async def send_message_raw(self, text: str):
-        """Temel mesaj gönderme - Tüm metodların temeli."""
+        """Temel mesaj gönderme."""
         if not self.telegram_token or not self.telegram_chat_id:
             return
         
@@ -63,28 +65,21 @@ class NotificationManager:
     async def send_technical_signal(
         self,
         symbol: str,
-        direction: str,  # "LONG" or "SHORT"
+        direction: str,
         entry: float,
         tp1: float,
         tp2: float,
         sl: float,
-        strong_indicators: List[Dict],  # [{"name": "RSI", "value": 78, "reason": "Aşırı Alım"}]
+        strong_indicators: List[Dict],
         confidence: float
     ):
-        """
-        Teknik/Matematiksel indikatör bazlı sinyal.
-        Sadece %70+ güven veren indikatörler gösterilir.
-        """
+        """Teknik/Matematiksel indikatör bazlı sinyal."""
         dir_emoji = "🟢 LONG" if direction == "LONG" else "🔴 SHORT"
         
-        # Risk/Reward hesapla
         risk = abs(entry - sl)
-        reward1 = abs(tp1 - entry)
-        rr1 = round(reward1 / risk, 1) if risk > 0 else 0
-        reward2 = abs(tp2 - entry)
-        rr2 = round(reward2 / risk, 1) if risk > 0 else 0
+        rr1 = round(abs(tp1 - entry) / risk, 1) if risk > 0 else 0
+        rr2 = round(abs(tp2 - entry) / risk, 1) if risk > 0 else 0
         
-        # Güçlü indikatörleri listele
         indicator_lines = ""
         for ind in strong_indicators:
             indicator_lines += f"• {ind['name']}: {ind['value']:.0f}% ({ind['reason']})\n"
@@ -103,131 +98,233 @@ class NotificationManager:
 ⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}"""
         
         await self.send_message_raw(msg)
-        logger.info(f"📊 Technical Signal sent: {symbol} {direction} {confidence:.0f}%")
+        logger.info(f"📊 Technical Signal: {symbol} {direction}")
 
     # =========================================
-    # 2️⃣ CANLI VERİ TAHMİNİ
+    # 2️⃣ CANLI VERİ TAHMİNİ (17 KAYNAK)
     # =========================================
     
-    async def send_live_prediction(
-        self,
-        symbol: str,
-        prediction: str,  # "YUKARI" or "ASAGI"
-        target_price: float,
-        timeframe: str,  # "1-4 saat", "24 saat", etc.
-        data_sources: Dict,  # {"whale": {...}, "orderbook": {...}, "liq": {...}, ...}
-        confidence: float
-    ):
+    async def send_live_prediction(self, symbol: str = "BTCUSDT"):
         """
-        Canlı veri bazlı tahmin.
-        Whale, Order Book, Liquidation, Kurumsal akış kullanır.
+        17 kaynaktan toplanan verilerle tahmin gönder.
+        InstitutionalAggregator'dan veri çeker.
         """
-        pred_emoji = "📈 YUKARI" if prediction == "YUKARI" else "📉 AŞAĞI"
-        
-        # Veri kaynakları
-        whale = data_sources.get('whale', {})
-        orderbook = data_sources.get('orderbook', {})
-        liq = data_sources.get('liq', {})
-        funding = data_sources.get('funding', {})
-        institutional = data_sources.get('institutional', {})
-        
-        source_lines = ""
-        
-        # Whale
-        if whale.get('net_flow'):
-            flow = whale['net_flow']
-            flow_type = "ALIŞ" if flow > 0 else "SATIŞ"
-            source_lines += f"🐋 Whale: ${abs(flow)/1e6:.1f}M NET {flow_type}\n"
-        
-        # Order Book
-        if orderbook.get('imbalance'):
-            imb = orderbook['imbalance']
-            imb_type = "BID ağırlıklı" if imb > 1 else "ASK ağırlıklı"
-            source_lines += f"📊 Order Book: {imb:.1f}x {imb_type}\n"
-        
-        # Liquidation
-        if liq.get('nearest_level'):
-            liq_dir = liq.get('direction', '')
-            liq_amount = liq.get('amount', 0)
-            source_lines += f"💧 Liq Zones: ${liq['nearest_level']:,.0f} ({liq_dir}, ${liq_amount/1e6:.0f}M)\n"
-        
-        # Funding
-        if funding.get('rate'):
-            rate = funding['rate']
-            risk = "Short Squeeze riski" if rate < -0.01 else "Long Squeeze riski" if rate > 0.05 else ""
-            source_lines += f"📉 Funding: {rate:.3f}% {risk}\n"
-        
-        # Institutional
-        if institutional.get('exchanges'):
-            exchanges = institutional['exchanges']
-            source_lines += f"🏦 Kurumsal: {', '.join(exchanges)}\n"
-        
-        if not source_lines:
-            source_lines = "• Veri toplanıyor...\n"
-        
-        msg = f"""🐋 *CANLI VERİ TAHMİNİ - {symbol}*
+        try:
+            from src.brain.institutional_aggregator import get_aggregator
+            agg = get_aggregator()
+            snapshot = await agg.get_live_snapshot(symbol)
+            
+            # Yön analizi
+            bullish_score = 0
+            bearish_score = 0
+            sources = []
+            
+            # 1. Whale
+            if snapshot.whale_net_flow > 500000:
+                bullish_score += 1
+                sources.append(f"🐋 Whale: +${snapshot.whale_net_flow/1e6:.1f}M net alım")
+            elif snapshot.whale_net_flow < -500000:
+                bearish_score += 1
+                sources.append(f"🐋 Whale: ${abs(snapshot.whale_net_flow)/1e6:.1f}M net satış")
+            
+            # 2. Order Book
+            if snapshot.orderbook_imbalance > 1.3:
+                bullish_score += 1
+                sources.append(f"📊 Order Book: {snapshot.orderbook_imbalance:.2f}x BID ağırlıklı")
+            elif snapshot.orderbook_imbalance < 0.7:
+                bearish_score += 1
+                sources.append(f"📊 Order Book: {1/snapshot.orderbook_imbalance:.2f}x ASK ağırlıklı")
+            
+            # 3. Liquidation
+            if snapshot.liq_long_total > snapshot.liq_short_total * 1.5:
+                bearish_score += 1
+                sources.append(f"💧 Liq: Long ağırlıklı (${snapshot.liq_long_total/1e6:.0f}M)")
+            elif snapshot.liq_short_total > snapshot.liq_long_total * 1.5:
+                bullish_score += 1
+                sources.append(f"💧 Liq: Short ağırlıklı (${snapshot.liq_short_total/1e6:.0f}M)")
+            
+            # 4. Funding
+            if snapshot.funding_rate > 0.03:
+                bearish_score += 1
+                sources.append(f"💸 Funding: +{snapshot.funding_rate:.3f}% (Long squeeze riski)")
+            elif snapshot.funding_rate < -0.02:
+                bullish_score += 1
+                sources.append(f"💸 Funding: {snapshot.funding_rate:.3f}% (Short squeeze riski)")
+            
+            # 5. OI Change
+            if snapshot.oi_change_1h > 5:
+                sources.append(f"📈 OI: +{snapshot.oi_change_1h:.1f}% (1h)")
+            elif snapshot.oi_change_1h < -5:
+                sources.append(f"📉 OI: {snapshot.oi_change_1h:.1f}% (1h)")
+            
+            # 6. Long/Short Ratio
+            if snapshot.long_short_ratio > 1.5:
+                bearish_score += 1
+                sources.append(f"📊 L/S Ratio: {snapshot.long_short_ratio:.2f} (Kalabalık long)")
+            elif snapshot.long_short_ratio < 0.7:
+                bullish_score += 1
+                sources.append(f"📊 L/S Ratio: {snapshot.long_short_ratio:.2f} (Kalabalık short)")
+            
+            # 7. CVD
+            if snapshot.cvd_trend == "BULLISH":
+                bullish_score += 1
+                sources.append(f"📊 CVD: BULLISH ({snapshot.cvd_value:,.0f})")
+            elif snapshot.cvd_trend == "BEARISH":
+                bearish_score += 1
+                sources.append(f"📊 CVD: BEARISH ({snapshot.cvd_value:,.0f})")
+            
+            # 8. Exchange Flow
+            if snapshot.exchange_netflow < -100:
+                bullish_score += 1
+                sources.append(f"🏦 Exchange: Outflow (${abs(snapshot.exchange_netflow):.0f}M)")
+            elif snapshot.exchange_netflow > 100:
+                bearish_score += 1
+                sources.append(f"🏦 Exchange: Inflow (${snapshot.exchange_netflow:.0f}M)")
+            
+            # 9-10. Stablecoin (eğer veri varsa)
+            if snapshot.usdt_supply_change > 0:
+                sources.append(f"💵 USDT: +${snapshot.usdt_supply_change/1e6:.0f}M basıldı")
+            
+            # 11. DeFi TVL
+            if snapshot.defi_tvl_change_24h > 5:
+                bullish_score += 0.5
+                sources.append(f"🔗 DeFi TVL: +{snapshot.defi_tvl_change_24h:.1f}%")
+            
+            # 12. Options
+            if snapshot.put_call_ratio > 1.3:
+                bearish_score += 0.5
+                sources.append(f"📈 Put/Call: {snapshot.put_call_ratio:.2f} (Hedge ağırlıklı)")
+            elif snapshot.put_call_ratio < 0.7:
+                bullish_score += 0.5
+                sources.append(f"📈 Put/Call: {snapshot.put_call_ratio:.2f} (Call ağırlıklı)")
+            
+            # 13. CME Gap
+            if not snapshot.cme_gap_filled and snapshot.cme_gap_price > 0:
+                sources.append(f"📊 CME Gap: ${snapshot.cme_gap_price:,.0f} ({snapshot.cme_gap_direction})")
+            
+            # 14. Cross-Exchange
+            if abs(snapshot.coinbase_premium) > 0.2:
+                direction = "premium" if snapshot.coinbase_premium > 0 else "discount"
+                sources.append(f"🏦 Coinbase: {abs(snapshot.coinbase_premium):.2f}% {direction}")
+            
+            # 15. ETF
+            if abs(snapshot.etf_flow_daily) > 100:
+                flow_type = "inflow" if snapshot.etf_flow_daily > 0 else "outflow"
+                sources.append(f"📊 ETF: ${abs(snapshot.etf_flow_daily):.0f}M {flow_type}")
+            
+            # 16. Fear & Greed
+            if snapshot.fear_greed_index < 25:
+                bullish_score += 0.5
+                sources.append(f"😱 Fear&Greed: {snapshot.fear_greed_index} (Extreme Fear)")
+            elif snapshot.fear_greed_index > 75:
+                bearish_score += 0.5
+                sources.append(f"🤑 Fear&Greed: {snapshot.fear_greed_index} (Extreme Greed)")
+            
+            # 17. Taker
+            if snapshot.taker_buy_ratio > 0.6:
+                bullish_score += 1
+                sources.append(f"📊 Taker: {snapshot.taker_buy_ratio*100:.0f}% alıcı")
+            elif snapshot.taker_buy_ratio < 0.4:
+                bearish_score += 1
+                sources.append(f"📊 Taker: {(1-snapshot.taker_buy_ratio)*100:.0f}% satıcı")
+            
+            # Sonuç hesapla
+            total = bullish_score + bearish_score
+            if total == 0:
+                prediction = "NÖTR"
+                confidence = 50
+            elif bullish_score > bearish_score:
+                prediction = "YUKARI"
+                confidence = min(85, 50 + (bullish_score - bearish_score) * 10)
+            else:
+                prediction = "AŞAĞI"
+                confidence = min(85, 50 + (bearish_score - bullish_score) * 10)
+            
+            pred_emoji = "📈" if prediction == "YUKARI" else "📉" if prediction == "AŞAĞI" else "↔️"
+            
+            # Kaynak listesi
+            source_text = "\n".join(sources[:10])  # Max 10 kaynak göster
+            if not source_text:
+                source_text = "• Veri toplanıyor..."
+            
+            msg = f"""🏦 *CANLI VERİ TAHMİNİ - {symbol}*
 ━━━━━━━━━━━━━━━━━━
-{pred_emoji}
-🎯 Hedef: `${target_price:,.2f}`
-⏱️ Süre: {timeframe}
-
-━━━ VERİ KAYNAKLARI ━━━
-{source_lines}━━━━━━━━━━━━━━━━━━
+{pred_emoji} *Tahmin: {prediction}*
 🧠 AI Güven: *{confidence:.0f}%*
+
+━━━ 17 VERİ KAYNAĞI ━━━
+{source_text}
+
+━━━ ÖZET ━━━
+🟢 Bullish Sinyaller: {int(bullish_score)}
+🔴 Bearish Sinyaller: {int(bearish_score)}
+━━━━━━━━━━━━━━━━━━
 ⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}"""
-        
-        await self.send_message_raw(msg)
-        logger.info(f"🐋 Live Prediction sent: {symbol} {prediction} {confidence:.0f}%")
+            
+            await self.send_message_raw(msg)
+            logger.info(f"🏦 Live Prediction: {symbol} → {prediction} ({confidence:.0f}%)")
+            
+        except Exception as e:
+            logger.error(f"Live prediction error: {e}")
 
     # =========================================
-    # 3️⃣ ANİ HAREKET UYARISI
+    # 3️⃣ ANİ HAREKET UYARISI (13 TETİKLEYİCİ)
     # =========================================
     
-    async def send_sudden_alert(
-        self,
-        symbol: str,
-        alert_type: str,  # "FIRSAT" or "RİSK"
-        direction: str,  # "YUKARI" or "ASAGI"
-        potential_price: float,
-        potential_pct: float,
-        triggers: List[Dict],  # [{"name": "Bollinger Squeeze", "value": "0.8%", "status": "PATLAMA YAKLAŞIYOR"}]
-        expected_time: str,  # "15-60 dakika"
-        warning: str = None  # Optional risk warning
-    ):
+    async def send_sudden_alert(self, symbol: str = "BTCUSDT"):
         """
-        Ani hareket öncesi uyarı.
-        Volatilite spike, squeeze, cascade tespiti.
+        13 tetikleyiciyi kontrol edip uyarı gönder.
+        InstitutionalAggregator'dan veri çeker.
         """
-        type_emoji = "💡 FIRSAT" if alert_type == "FIRSAT" else "⚠️ RİSK"
-        dir_emoji = "📈 YUKARI" if direction == "YUKARI" else "📉 AŞAĞI"
-        pct_sign = "+" if potential_pct > 0 else ""
-        
-        # Tetikleyiciler
-        trigger_lines = ""
-        for t in triggers:
-            trigger_lines += f"• {t['name']}: {t['value']} ({t['status']})\n"
-        
-        if not trigger_lines:
-            trigger_lines = "• Çoklu sinyal uyumu\n"
-        
-        msg = f"""⚡ *ANİ HAREKET UYARISI!*
+        try:
+            from src.brain.institutional_aggregator import get_aggregator
+            agg = get_aggregator()
+            alert = await agg.check_sudden_triggers(symbol)
+            
+            if not alert.should_alert:
+                return  # Uyarı gerekmiyor
+            
+            # Tetikleyici listesi
+            trigger_lines = ""
+            for t in alert.triggers[:5]:  # Max 5 tetikleyici
+                severity_emoji = {
+                    "CRITICAL": "🔴",
+                    "HIGH": "🟠",
+                    "MEDIUM": "🟡",
+                    "LOW": "⚪"
+                }.get(t.severity, "⚪")
+                
+                direction_emoji = "📈" if t.direction == "BULLISH" else "📉" if t.direction == "BEARISH" else "↔️"
+                
+                trigger_lines += f"{severity_emoji} *{t.name}*: {t.value}\n   {direction_emoji} _{t.message}_\n\n"
+            
+            # Yön emojisi
+            dir_emoji = "📈 YUKARI" if alert.dominant_direction == "BULLISH" else "📉 AŞAĞI" if alert.dominant_direction == "BEARISH" else "↔️ NÖTR"
+            
+            # Severity emojisi
+            sev_emoji = {
+                "CRITICAL": "🚨 KRİTİK",
+                "HIGH": "⚠️ YÜKSEK",
+                "MEDIUM": "🟡 ORTA",
+                "LOW": "⚪ DÜŞÜK"
+            }.get(alert.overall_severity, "⚪")
+            
+            msg = f"""⚡ *ANİ HAREKET UYARISI!*
 ━━━━━━━━━━━━━━━━━━
-🚨 {type_emoji}
 📍 Coin: *{symbol}*
 {dir_emoji}
-🎯 Potansiyel: `${potential_price:,.2f}` ({pct_sign}{potential_pct:.1f}%)
+{sev_emoji} RİSK
 
-━━━ TETİKLEYİCİLER ━━━
+━━━ AKTİF TETİKLEYİCİLER ({alert.active_trigger_count}/13) ━━━
 {trigger_lines}━━━━━━━━━━━━━━━━━━
-⏱️ Beklenen Süre: {expected_time}"""
-        
-        if warning:
-            msg += f"\n⚠️ Dikkat: _{warning}_"
-        
-        msg += f"\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}"
-        
-        await self.send_message_raw(msg)
-        logger.info(f"⚡ Sudden Alert sent: {symbol} {alert_type} {direction}")
+⏱️ Hemen dikkat edin!
+⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}"""
+            
+            await self.send_message_raw(msg)
+            logger.info(f"⚡ Sudden Alert: {symbol} ({alert.active_trigger_count} triggers)")
+            
+        except Exception as e:
+            logger.error(f"Sudden alert error: {e}")
 
     # =========================================
     # 4️⃣ AI GÖZ ANALİZİ
@@ -236,17 +333,13 @@ class NotificationManager:
     async def send_ai_vision(
         self,
         symbol: str,
-        overview: str,  # Genel görünüm paragrafı
-        bull_scenario: Dict,  # {"probability": 40, "condition": "$96k kırılırsa", "target": "$98k"}
-        bear_scenario: Dict,  # {"probability": 60, "condition": "$94k kırılırsa", "target": "$91k"}
-        recommendation: str,  # "BEKLE", "AL", "SAT"
+        overview: str,
+        bull_scenario: Dict,
+        bear_scenario: Dict,
+        recommendation: str,
         recommendation_reason: str
     ):
-        """
-        Düşünen yapay zeka perspektifi.
-        Piyasayı bir analist gibi değerlendirir.
-        """
-        # Öneriye göre emoji
+        """Düşünen yapay zeka perspektifi."""
         rec_map = {
             "BEKLE": "⏳ BEKLE",
             "AL": "🟢 AL",
@@ -276,20 +369,13 @@ _{recommendation_reason}_
 ━━━━━━━━━━━━━━━━━━"""
         
         await self.send_message_raw(msg)
-        logger.info(f"🧠 AI Vision sent: {symbol} → {recommendation}")
+        logger.info(f"🧠 AI Vision: {symbol} → {recommendation}")
 
     # =========================================
-    # YARDIMCI: Model Update Bildirimi
+    # YARDIMCI: Model Update
     # =========================================
     
-    async def send_model_update(
-        self,
-        model_type: str,  # "LSTM" or "RL"
-        symbol: str,
-        accuracy: float,
-        loss: float,
-        samples: int
-    ):
+    async def send_model_update(self, model_type: str, symbol: str, accuracy: float, loss: float, samples: int):
         """Model eğitim tamamlandı bildirimi."""
         msg = f"""🧠 *MODEL GÜNCELLENDİ*
 ━━━━━━━━━━━━━━━━━━
@@ -299,7 +385,6 @@ _{recommendation_reason}_
 📉 Loss: {loss:.4f}
 📚 Samples: {samples:,}
 ━━━━━━━━━━━━━━━━━━
-⏰ Sonraki eğitim: 24 saat
-"""
+⏰ Sonraki eğitim: 24 saat"""
         await self.send_message_raw(msg)
-        logger.info(f"🧠 Model Update sent: {model_type} {symbol}")
+        logger.info(f"🧠 Model Update: {model_type} {symbol}")
