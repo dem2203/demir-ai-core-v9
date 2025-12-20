@@ -530,10 +530,42 @@ if page == "📡 Live Market Intelligence":
     data = load_json("dashboard_data.json")
 
     if not data:
-        st.warning("📡 Waiting for Live Data Stream... (No Mock Data Displayed)")
-        st.info("System is in 'Zero-Mock' mode. If markets are closed or API is down, no data will be shown.")
-        time.sleep(2)
-        st.rerun()
+        # FALLBACK: Generate initial data from Binance API if engine hasn't written yet
+        st.info("🔄 Engine initializing... Fetching live prices directly from Binance...")
+        try:
+            import requests
+            fallback_data = {}
+            for coin in Config.TARGET_COINS:
+                symbol = coin.replace("/", "")  # BTC/USDT -> BTCUSDT
+                try:
+                    resp = requests.get(f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}", timeout=5)
+                    if resp.status_code == 200:
+                        ticker = resp.json()
+                        fallback_data[symbol] = {
+                            'symbol': symbol,
+                            'price': float(ticker.get('lastPrice', 0)),
+                            'change_24h': float(ticker.get('priceChangePercent', 0)),
+                            'volume': float(ticker.get('volume', 0)),
+                            'ai_decision': 'INITIALIZING',
+                            'ai_confidence': 0,
+                            'status': 'Engine starting up...'
+                        }
+                except:
+                    pass
+            
+            if fallback_data:
+                data = fallback_data
+                st.success("✅ Live prices loaded. AI analysis starting soon...")
+            else:
+                st.warning("📡 Waiting for Live Data Stream... (No Mock Data Displayed)")
+                st.info("System is in 'Zero-Mock' mode. If markets are closed or API is down, no data will be shown.")
+                time.sleep(2)
+                st.rerun()
+        except Exception as e:
+            st.warning("📡 Waiting for Live Data Stream... (No Mock Data Displayed)")
+            st.info("System is in 'Zero-Mock' mode. If markets are closed or API is down, no data will be shown.")
+            time.sleep(2)
+            st.rerun()
     else:
         # Ana Gösterge Paneli
         main_symbol = Config.TARGET_COINS[0] 
