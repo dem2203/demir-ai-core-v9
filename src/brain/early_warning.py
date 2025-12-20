@@ -55,6 +55,101 @@ class EarlyWarningSystem:
         self.last_warnings: Dict[str, datetime] = {}  # warning_key -> last time
         self.active_warnings: List[Warning] = []
     
+    @staticmethod
+    def analyze_for_early_warnings(symbol: str, snapshot: Dict, visual_analysis: Dict = None) -> List[Dict]:
+        """
+        Synchronous static method for market_analyzer.py integration.
+        Analyzes snapshot data for early warning signals.
+        """
+        warnings = []
+        
+        try:
+            # 1. Check L/S Ratio extreme
+            ls_ratio = snapshot.get('long_short_ratio', 1.0)
+            if ls_ratio >= 1.8:
+                warnings.append({
+                    'priority': 'HIGH',
+                    'title': f'L/S Ratio Extreme ({ls_ratio:.2f})',
+                    'type': 'LS_EXTREME',
+                    'direction': 'SHORT',
+                    'message': 'Çok fazla long pozisyon. Düşüş riski.'
+                })
+            elif ls_ratio <= 0.55:
+                warnings.append({
+                    'priority': 'CRITICAL',
+                    'title': f'Short Squeeze Risk ({ls_ratio:.2f})',
+                    'type': 'LS_EXTREME',
+                    'direction': 'LONG',
+                    'message': 'Çok fazla short. SHORT SQUEEZE riski!'
+                })
+            
+            # 2. Check Funding extreme
+            funding = snapshot.get('funding_rate', 0)
+            if abs(funding) >= 0.05:
+                direction = 'SHORT' if funding > 0 else 'LONG'
+                warnings.append({
+                    'priority': 'MEDIUM',
+                    'title': f'Funding Extreme ({funding:.3f}%)',
+                    'type': 'FUNDING_EXTREME',
+                    'direction': direction,
+                    'message': f'Funding rate aşırı. {"Longlar" if funding > 0 else "Shortlar"} ödüyor.'
+                })
+            
+            # 3. Check volume spike from snapshot
+            volume_signal = snapshot.get('volume_signal', 'N/A')
+            if volume_signal in ['STRONG_BUY', 'STRONG_SELL']:
+                warnings.append({
+                    'priority': 'HIGH',
+                    'title': f'Volume Signal: {volume_signal}',
+                    'type': 'VOLUME_SPIKE',
+                    'direction': 'LONG' if 'BUY' in volume_signal else 'SHORT',
+                    'message': 'Hacim anomalisi tespit edildi.'
+                })
+            
+            # 4. Check Wyckoff phase
+            wyckoff = snapshot.get('wyckoff', {})
+            phase = wyckoff.get('phase', '') if isinstance(wyckoff, dict) else ''
+            if phase == 'DISTRIBUTION':
+                warnings.append({
+                    'priority': 'MEDIUM',
+                    'title': 'Wyckoff Distribution',
+                    'type': 'PATTERN',
+                    'direction': 'SHORT',
+                    'message': 'Dağıtım fazı. Satış baskısı artabilir.'
+                })
+            elif phase == 'ACCUMULATION':
+                warnings.append({
+                    'priority': 'MEDIUM',
+                    'title': 'Wyckoff Accumulation',
+                    'type': 'PATTERN',
+                    'direction': 'LONG',
+                    'message': 'Birikim fazı. Alım fırsatı.'
+                })
+            
+            # 5. Check candlestick patterns
+            candle = snapshot.get('candlestick_latest')
+            if candle and 'THREE_BLACK_CROWS' in str(candle):
+                warnings.append({
+                    'priority': 'HIGH',
+                    'title': 'Three Black Crows Pattern',
+                    'type': 'PATTERN',
+                    'direction': 'SHORT',
+                    'message': 'Güçlü düşüş formasyonu tespit edildi.'
+                })
+            elif candle and 'THREE_WHITE_SOLDIERS' in str(candle):
+                warnings.append({
+                    'priority': 'HIGH',
+                    'title': 'Three White Soldiers Pattern',
+                    'type': 'PATTERN',
+                    'direction': 'LONG',
+                    'message': 'Güçlü yükseliş formasyonu tespit edildi.'
+                })
+                
+        except Exception as e:
+            logger.debug(f"Early warning analysis error: {e}")
+        
+        return warnings
+    
     async def scan_all(self, symbols: List[str] = None) -> List[Warning]:
         """Tüm coinleri tara ve uyarıları topla."""
         if symbols is None:

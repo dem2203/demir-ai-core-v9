@@ -553,7 +553,10 @@ class MarketAnalyzer:
             try:
                 # RL agent predicts using the unified state vector
                 # Uses RLAgent.predict() wrapper for proper handling
-                action, rl_confidence = rl_agent.predict(state_vector, deterministic=True)
+                # NOTE: Saved models expect 28 features, current state_builder produces 37
+                # Trim to first 28 features for compatibility with v5 models
+                state_vector_trimmed = state_vector[:28] if len(state_vector) > 28 else state_vector
+                action, rl_confidence = rl_agent.predict(state_vector_trimmed, deterministic=True)
                 rl_action = int(action)
                 
                 # Decode action: 0=SELL, 1=HOLD, 2=BUY

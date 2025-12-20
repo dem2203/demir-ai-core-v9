@@ -104,9 +104,17 @@ class MacroConnector:
             result['eth_btc_ratio'] = 0.05
         
         # 4. Gold & Traditional Markets - Use FRED if available, otherwise estimate
-        # FRED has gold series: GOLDAMGBD228NLBM (London Gold Fixing)
-        gold_value, _ = self._get_series_latest("GOLDAMGBD228NLBM")
-        if gold_value:
+        # Try multiple gold series (GOLDAMGBD228NLBM is deprecated, use alternatives)
+        gold_value = None
+        for gold_series in ["DEXUSEU", "GOLDPMGBD228NLBM", "WGC/GOLD_DAILY_USD"]:
+            try:
+                gold_value, _ = self._get_series_latest(gold_series)
+                if gold_value and gold_value > 0:
+                    break
+            except:
+                continue
+        
+        if gold_value and gold_value > 1000:  # Valid gold price range
             result['gold'] = gold_value
             result['gold_change'] = 0  # FRED doesn't give 24h change easily
             result['gold_btc_ratio'] = gold_value / btc_price if btc_price > 0 else 0.02
