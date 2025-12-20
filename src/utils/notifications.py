@@ -388,3 +388,28 @@ _{recommendation_reason}_
 ⏰ Sonraki eğitim: 24 saat"""
         await self.send_message_raw(msg)
         logger.info(f"🧠 Model Update: {model_type} {symbol}")
+
+    # =========================================
+    # LEGACY COMPATIBILITY STUBS
+    # Eski engine.py çağrıları için boş metodlar
+    # =========================================
+    
+    async def check_telegram_commands(self, money_flow_analyzer=None):
+        """Legacy stub - Telegram komutları devre dışı."""
+        pass
+    
+    async def check_and_update_signals(self):
+        """Legacy stub - Signal gate kontrolü devre dışı."""
+        pass
+    
+    async def check_active_position_risks(self):
+        """Legacy stub - Pozisyon risk kontrolü devre dışı."""
+        pass
+    
+    async def send_signal(self, signal: dict, snapshot: dict = None):
+        """Legacy stub - Eski sinyal gönderme devre dışı."""
+        pass
+    
+    async def send_heartbeat(self, price_info: dict):
+        """Legacy stub - Heartbeat devre dışı."""
+        pass

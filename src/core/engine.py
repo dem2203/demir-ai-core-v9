@@ -235,7 +235,7 @@ class BotEngine:
                         try:
                             aggregator = get_aggregator()
                             
-                            for symbol in ['BTCUSDT', 'ETHUSDT']:  # Ana coinler
+                            for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:  # 4 ana coin
                                 # 1. Ani Hareket Tetikleyicilerini Kontrol Et (13 Triggers)
                                 alert_snapshot = await aggregator.check_sudden_triggers(symbol)
                                 
