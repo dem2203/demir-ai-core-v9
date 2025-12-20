@@ -494,22 +494,34 @@ class InstitutionalAggregator:
             return {}
     
     async def _fetch_exchange_flow(self, symbol: str) -> Dict:
-        """8. Exchange Inflow/Outflow"""
-        # This would ideally come from Glassnode or similar
-        # For now, approximate from order book changes
-        return {
-            'inflow': 0,
-            'outflow': 0,
-            'netflow': 0
-        }
+        """8. Exchange Inflow/Outflow - WEB SCRAPING"""
+        try:
+            from src.brain.web_scrapers import get_web_scraper
+            scraper = get_web_scraper()
+            base = symbol.replace('USDT', '')
+            data = await scraper.scrape_exchange_flow(base)
+            return {
+                'inflow': data.get('inflow', 0),
+                'outflow': data.get('outflow', 0),
+                'netflow': data.get('netflow', 0)
+            }
+        except Exception as e:
+            logger.debug(f"Exchange flow scrape error: {e}")
+            return {'inflow': 0, 'outflow': 0, 'netflow': 0}
     
     async def _fetch_stablecoin_supply(self) -> Dict:
-        """9. Stablecoin Supply Changes"""
-        # Would need Glassnode/DefiLlama API
-        return {
-            'usdt_change': 0,
-            'usdc_change': 0
-        }
+        """9. Stablecoin Supply Changes - WEB SCRAPING"""
+        try:
+            from src.brain.web_scrapers import get_web_scraper
+            scraper = get_web_scraper()
+            data = await scraper.scrape_stablecoin_supply()
+            return {
+                'usdt_change': data.get('usdt_change', 0),
+                'usdc_change': data.get('usdc_change', 0)
+            }
+        except Exception as e:
+            logger.debug(f"Stablecoin scrape error: {e}")
+            return {'usdt_change': 0, 'usdc_change': 0}
     
     async def _fetch_defi_tvl(self) -> Dict:
         """10. DeFi TVL"""
@@ -529,21 +541,34 @@ class InstitutionalAggregator:
             return {}
     
     async def _fetch_options_data(self, symbol: str) -> Dict:
-        """11. Options Market"""
-        # Would need Deribit API
-        return {
-            'put_call': 1.0,
-            'max_pain': 0
-        }
+        """11. Options Market - WEB SCRAPING"""
+        try:
+            from src.brain.web_scrapers import get_web_scraper
+            scraper = get_web_scraper()
+            base = symbol.replace('USDT', '')
+            data = await scraper.scrape_options_data(base)
+            return {
+                'put_call': data.get('put_call', 1.0),
+                'max_pain': data.get('max_pain', 0)
+            }
+        except Exception as e:
+            logger.debug(f"Options scrape error: {e}")
+            return {'put_call': 1.0, 'max_pain': 0}
     
     async def _fetch_cme_gap(self, symbol: str) -> Dict:
-        """12. CME Gap"""
-        # Would need CME data or TradingView scraping
-        return {
-            'gap_price': 0,
-            'filled': True,
-            'direction': ''
-        }
+        """12. CME Gap - WEB SCRAPING"""
+        try:
+            from src.brain.web_scrapers import get_web_scraper
+            scraper = get_web_scraper()
+            data = await scraper.scrape_cme_gap()
+            return {
+                'gap_price': data.get('gap_price', 0),
+                'filled': data.get('filled', True),
+                'direction': data.get('direction', '')
+            }
+        except Exception as e:
+            logger.debug(f"CME gap scrape error: {e}")
+            return {'gap_price': 0, 'filled': True, 'direction': ''}
     
     async def _fetch_cross_exchange(self, symbol: str) -> Dict:
         """13. Cross-Exchange Premium"""
@@ -575,12 +600,19 @@ class InstitutionalAggregator:
             return {}
     
     async def _fetch_etf_flow(self) -> Dict:
-        """14. ETF/Grayscale Flow"""
-        # Would need alternative data provider
-        return {
-            'daily_flow': 0,
-            'gbtc_premium': 0
-        }
+        """14. ETF/Grayscale Flow - WEB SCRAPING"""
+        try:
+            from src.brain.web_scrapers import get_web_scraper
+            scraper = get_web_scraper()
+            etf_data = await scraper.scrape_etf_flow()
+            gbtc_data = await scraper.scrape_grayscale_premium()
+            return {
+                'daily_flow': etf_data.get('daily_flow', 0),
+                'gbtc_premium': gbtc_data.get('premium', 0)
+            }
+        except Exception as e:
+            logger.debug(f"ETF flow scrape error: {e}")
+            return {'daily_flow': 0, 'gbtc_premium': 0}
     
     async def _fetch_fear_greed(self) -> Dict:
         """15. Fear & Greed Index"""
@@ -603,13 +635,19 @@ class InstitutionalAggregator:
             return {}
     
     async def _fetch_network_metrics(self, symbol: str) -> Dict:
-        """16. Network Metrics"""
-        # Would need Glassnode or blockchain API
-        return {
-            'active_addresses': 0,
-            'hash_rate': 0,
-            'hash_change': 0
-        }
+        """16. Network Metrics - WEB SCRAPING"""
+        try:
+            from src.brain.web_scrapers import get_web_scraper
+            scraper = get_web_scraper()
+            data = await scraper.scrape_network_metrics()
+            return {
+                'active_addresses': data.get('active_addresses', 0),
+                'hash_rate': data.get('hash_rate', 0),
+                'hash_change': data.get('hash_change', 0)
+            }
+        except Exception as e:
+            logger.debug(f"Network metrics scrape error: {e}")
+            return {'active_addresses': 0, 'hash_rate': 0, 'hash_change': 0}
     
     async def _fetch_taker_volume(self, symbol: str) -> Dict:
         """17. Taker Buy/Sell Ratio"""
