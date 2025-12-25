@@ -183,18 +183,24 @@ class SmartNotifier:
             rsi = snapshot.rsi_1h
             rsi_4h = snapshot.rsi_4h
             
-            if rsi < 30:
-                rsi_status = "🔥 AŞIRI SATIM - Alım fırsatı olabilir"
-            elif rsi < 40:
-                rsi_status = "🟢 Düşük - Potansiyel dip"
-            elif rsi > 70:
-                rsi_status = "⚠️ AŞIRI ALIM - Satış baskısı olabilir"
-            elif rsi > 60:
-                rsi_status = "🟡 Yüksek - Tepe yakınlaşıyor"
+            # -1 = veri yok (şeffaf göster)
+            if rsi < 0:
+                rsi_status = "❌ VERİ YOK"
+                lines.append(f"📊 RSI: VERİ YOK")
             else:
-                rsi_status = "➡️ Normal aralık"
-            
-            lines.append(f"📊 RSI: 1s:{rsi:.0f} | 4s:{rsi_4h:.0f} → {rsi_status}")
+                if rsi < 30:
+                    rsi_status = "🔥 AŞIRI SATIM - Alım fırsatı olabilir"
+                elif rsi < 40:
+                    rsi_status = "🟢 Düşük - Potansiyel dip"
+                elif rsi > 70:
+                    rsi_status = "⚠️ AŞIRI ALIM - Satış baskısı olabilir"
+                elif rsi > 60:
+                    rsi_status = "🟡 Yüksek - Tepe yakınlaşıyor"
+                else:
+                    rsi_status = "➡️ Normal aralık"
+                
+                rsi_4h_str = f"{rsi_4h:.0f}" if rsi_4h >= 0 else "N/A"
+                lines.append(f"📊 RSI: 1s:{rsi:.0f} | 4s:{rsi_4h_str} → {rsi_status}")
             
             # === EMA TREND ===
             if snapshot.ema_20 > 0 and snapshot.ema_50 > 0:
@@ -208,13 +214,17 @@ class SmartNotifier:
             
             # === ORDER BOOK ===
             ratio = snapshot.bid_ask_ratio
-            if ratio > 1.5:
+            if ratio < 0:  # -1 = veri yok
+                lines.append(f"📗 Order Book: ❌ VERİ YOK")
+            elif ratio > 1.5:
                 ob_status = f"🟢 Alıcı dominantı ({ratio:.2f}x BID)"
+                lines.append(f"📗 Order Book: {ob_status}")
             elif ratio < 0.67:
                 ob_status = f"🔴 Satıcı dominantı ({1/ratio:.2f}x ASK)"
+                lines.append(f"📗 Order Book: {ob_status}")
             else:
                 ob_status = f"⚪ Dengeli ({ratio:.2f}x)"
-            lines.append(f"📗 Order Book: {ob_status}")
+                lines.append(f"📗 Order Book: {ob_status}")
             
             # === SUPPORT / RESISTANCE (Kline-based pivots) ===
             if snapshot.support > 0:
@@ -232,26 +242,33 @@ class SmartNotifier:
             
             # === FUNDING RATE ===
             fr = snapshot.funding_rate
-            if fr < -0.02:
+            if fr <= -900:  # -999 = veri yok
+                lines.append(f"💰 Funding: ❌ VERİ YOK")
+            elif fr < -0.02:
                 fr_status = "🚀 Negatif (Short squeeze potansiyeli)"
+                lines.append(f"💰 Funding: {fr:.4f}% → {fr_status}")
             elif fr > 0.05:
                 fr_status = "⚠️ Yüksek (Long squeeze riski)"
+                lines.append(f"💰 Funding: {fr:.4f}% → {fr_status}")
             else:
-                fr_status = "Normal"
-            lines.append(f"💰 Funding: {fr:.4f}% → {fr_status}")
+                lines.append(f"💰 Funding: {fr:.4f}% → Normal")
             
             # === WHALE AKTİVİTESİ ===
             whale = snapshot.whale_net_flow
             large_buys = snapshot.large_buys
             large_sells = snapshot.large_sells
             
-            if whale > 2:
-                whale_status = f"🐋 Net ALIM (+{whale})"
+            if whale <= -900 or large_buys < 0:  # -999/-1 = veri yok
+                lines.append(f"🐋 Whale: ❌ VERİ YOK")
+            elif whale > 2:
+                whale_status = f"🐋 Net ALIM (+{whale:.0f})"
+                lines.append(f"Whale: {whale_status} | Büyük: {large_buys}↑ {large_sells}↓")
             elif whale < -2:
-                whale_status = f"🐋 Net SATIM ({whale})"
+                whale_status = f"🐋 Net SATIM ({whale:.0f})"
+                lines.append(f"Whale: {whale_status} | Büyük: {large_buys}↑ {large_sells}↓")
             else:
                 whale_status = f"🐋 Dengeli ({whale:+.0f})"
-            lines.append(f"Whale: {whale_status} | Büyük: {large_buys}↑ {large_sells}↓")
+                lines.append(f"Whale: {whale_status} | Büyük: {large_buys}↑ {large_sells}↓")
             
             # === ÖNERİ ===
             recommendation = self._generate_recommendation(snapshot)
@@ -266,27 +283,32 @@ class SmartNotifier:
         return self._send_message("\n".join(lines))
     
     def _generate_recommendation(self, snapshot) -> str:
-        """Snapshot'tan öneri üret"""
+        """Snapshot'tan öneri üret - VERİ YOKSA SKORU ETKİLEMEZ"""
         score = 0
+        data_points = 0  # Kaç veri noktası kullandık
         
-        # RSI
-        if snapshot.rsi_1h < 30:
-            score += 2
-        elif snapshot.rsi_1h < 40:
-            score += 1
-        elif snapshot.rsi_1h > 70:
-            score -= 2
-        elif snapshot.rsi_1h > 60:
-            score -= 1
+        # RSI (sadece geçerli ise)
+        if snapshot.rsi_1h >= 0:
+            data_points += 1
+            if snapshot.rsi_1h < 30:
+                score += 2
+            elif snapshot.rsi_1h < 40:
+                score += 1
+            elif snapshot.rsi_1h > 70:
+                score -= 2
+            elif snapshot.rsi_1h > 60:
+                score -= 1
         
-        # Trend
-        if snapshot.trend == "BULLISH":
-            score += 1
-        elif snapshot.trend == "BEARISH":
-            score -= 1
+        # Trend (sadece UNKNOWN değilse)
+        if snapshot.trend not in ["UNKNOWN", ""]:
+            data_points += 1
+            if snapshot.trend == "BULLISH":
+                score += 1
+            elif snapshot.trend == "BEARISH":
+                score -= 1
         
-        # Order book
-        if snapshot.bid_ask_ratio > 1.5:
+        # Order book (sadece geçerli ise)
+        if snapshot.bid_ask_ratio >= 0:
             score += 1
         elif snapshot.bid_ask_ratio < 0.67:
             score -= 1

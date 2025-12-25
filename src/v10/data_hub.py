@@ -42,7 +42,7 @@ class MarketSnapshot:
     status: DataStatus = DataStatus.NO_DATA
     errors: List[str] = field(default_factory=list)
     
-    # Price Data
+    # Price Data (0 = veri yok)
     price: float = 0
     price_change_1h: float = 0
     price_change_4h: float = 0
@@ -50,10 +50,10 @@ class MarketSnapshot:
     high_24h: float = 0
     low_24h: float = 0
     
-    # Order Book
-    bid_volume: float = 0          # Top 20 bids USD
-    ask_volume: float = 0          # Top 20 asks USD
-    bid_ask_ratio: float = 1.0     # bid/ask
+    # Order Book (-1 = veri yok, ASLA default değil)
+    bid_volume: float = -1         # -1 = veri yok
+    ask_volume: float = -1         # -1 = veri yok
+    bid_ask_ratio: float = -1      # -1 = veri yok (ESKİ: 1.0 default YANLIŞ!)
     best_bid: float = 0
     best_ask: float = 0
     spread_pct: float = 0
@@ -66,32 +66,32 @@ class MarketSnapshot:
     major_support: float = 0        # 7 günlük majör destek
     major_resistance: float = 0     # 7 günlük majör direnç
     
-    # Derivatives (Futures)
-    funding_rate: float = 0
-    open_interest: float = 0       # USD cinsinden
+    # Derivatives (Futures) (-1 = veri yok)
+    funding_rate: float = -999      # -999 = veri yok (0 geçerli bir değer)
+    open_interest: float = -1       # -1 = veri yok
     oi_change_1h: float = 0
-    long_ratio: float = 0.5        # 0-1
-    short_ratio: float = 0.5
+    long_ratio: float = -1          # -1 = veri yok (ESKİ: 0.5 YANLIŞ!)
+    short_ratio: float = -1         # -1 = veri yok (ESKİ: 0.5 YANLIŞ!)
     
-    # Volume
-    volume_24h: float = 0
-    buy_volume: float = 0
-    sell_volume: float = 0
-    taker_buy_ratio: float = 0.5
+    # Volume (-1 = veri yok)
+    volume_24h: float = -1
+    buy_volume: float = -1
+    sell_volume: float = -1
+    taker_buy_ratio: float = -1     # -1 = veri yok (ESKİ: 0.5 YANLIŞ!)
     
-    # Whale Activity
-    large_buys: int = 0            # Son 1 saatte büyük alım sayısı
-    large_sells: int = 0           # Son 1 saatte büyük satış sayısı
-    whale_net_flow: float = 0      # Net whale akışı (pozitif = alım)
+    # Whale Activity (0 = whale yok, -1 = veri yok)
+    large_buys: int = -1            # -1 = veri yok
+    large_sells: int = -1           # -1 = veri yok  
+    whale_net_flow: float = -999    # -999 = veri yok (0 geçerli)
     
-    # Technical Indicators
-    rsi_1h: float = 50
-    rsi_4h: float = 50
+    # Technical Indicators (-1 = veri yok)
+    rsi_1h: float = -1              # -1 = veri yok (ESKİ: 50 YANLIŞ!)
+    rsi_4h: float = -1              # -1 = veri yok (ESKİ: 50 YANLIŞ!)
     ema_20: float = 0
     ema_50: float = 0
     ema_200: float = 0
-    macd_signal: str = "NEUTRAL"   # "BUY", "SELL", "NEUTRAL"
-    trend: str = "NEUTRAL"         # "BULLISH", "BEARISH", "NEUTRAL"
+    macd_signal: str = "UNKNOWN"    # "UNKNOWN" = veri yok (ESKİ: NEUTRAL YANLIŞ!)
+    trend: str = "UNKNOWN"          # "UNKNOWN" = veri yok (ESKİ: NEUTRAL YANLIŞ!)
     
     @property
     def is_valid(self) -> bool:
