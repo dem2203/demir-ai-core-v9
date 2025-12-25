@@ -107,6 +107,16 @@ class DataHub:
     HATA YUTULMAZ - Her hata açıkça loglanır ve raporlanır.
     """
     
+    # Binance Futures API (daha güvenilir, Railway'de 403 almaz)
+    FUTURES_BASE = "https://fapi.binance.com"
+    
+    # User-Agent header (403 önlemek için)
+    HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+    
     SUPPORTED_COINS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'LTCUSDT']
     
     def __init__(self):
@@ -114,13 +124,14 @@ class DataHub:
         self._last_snapshots: Dict[str, MarketSnapshot] = {}
         self._error_count: int = 0
         self._success_count: int = 0
-        logger.info("📡 Data Hub initialized - NO MOCK DATA MODE")
+        logger.info("📡 Data Hub initialized - FUTURES API MODE - NO MOCK DATA")
     
     async def _get_session(self) -> aiohttp.ClientSession:
-        """HTTP session al - timeout'lu"""
+        """HTTP session al - timeout'lu + User-Agent header'lı"""
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=10)
+                timeout=aiohttp.ClientTimeout(total=15),
+                headers=self.HEADERS
             )
         return self._session
     
@@ -199,10 +210,11 @@ class DataHub:
     # =========================================
     
     async def _fetch_ticker(self, symbol: str) -> Dict:
-        """24hr ticker - HATA YUTULMAZ"""
+        """24hr ticker from FUTURES API - HATA YUTULMAZ"""
         session = await self._get_session()
         
-        url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}"
+        # FUTURES API kullan (403 önlemek için)
+        url = f"{self.FUTURES_BASE}/fapi/v1/ticker/24hr?symbol={symbol}"
         async with session.get(url) as resp:
             if resp.status != 200:
                 raise Exception(f"Ticker API error: {resp.status}")
@@ -217,10 +229,11 @@ class DataHub:
         }
     
     async def _fetch_orderbook(self, symbol: str) -> Dict:
-        """Order book depth - HATA YUTULMAZ"""
+        """Order book depth from FUTURES API - HATA YUTULMAZ"""
         session = await self._get_session()
         
-        url = f"https://api.binance.com/api/v3/depth?symbol={symbol}&limit=100"
+        # FUTURES API kullan
+        url = f"{self.FUTURES_BASE}/fapi/v1/depth?symbol={symbol}&limit=100"
         async with session.get(url) as resp:
             if resp.status != 200:
                 raise Exception(f"Orderbook API error: {resp.status}")
@@ -320,11 +333,11 @@ class DataHub:
         }
     
     async def _fetch_klines_for_technicals(self, symbol: str) -> Dict:
-        """Klines for technical indicators - HATA YUTULMAZ"""
+        """Klines for technical indicators from FUTURES API - HATA YUTULMAZ"""
         session = await self._get_session()
         
-        # 1h klines
-        url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1h&limit=200"
+        # 1h klines - FUTURES API kullan
+        url = f"{self.FUTURES_BASE}/fapi/v1/klines?symbol={symbol}&interval=1h&limit=200"
         async with session.get(url) as resp:
             if resp.status != 200:
                 raise Exception(f"Klines API error: {resp.status}")
@@ -414,17 +427,19 @@ class DataHub:
         }
     
     async def _fetch_trades_for_whales(self, symbol: str) -> Dict:
-        """Recent trades for whale detection - HATA YUTULMAZ"""
+        """Recent trades for whale detection from FUTURES API - HATA YUTULMAZ"""
         session = await self._get_session()
         
-        url = f"https://api.binance.com/api/v3/trades?symbol={symbol}&limit=500"
+        # FUTURES API kullan (aggregated trades, daha verimli)
+        url = f"{self.FUTURES_BASE}/fapi/v1/aggTrades?symbol={symbol}&limit=500"
         async with session.get(url) as resp:
             if resp.status != 200:
                 raise Exception(f"Trades API error: {resp.status}")
             trades = await resp.json()
         
-        # Get current price
-        current_price = float(trades[-1]['price']) if trades else 0
+        # Get current price from last trade
+        # aggTrades format: {p: price, q: qty, m: was buyer maker}
+        current_price = float(trades[-1]['p']) if trades else 0
         
         # Whale threshold (>$50K for BTC, scaled for others)
         whale_threshold = 50000 if 'BTC' in symbol else 20000
@@ -435,17 +450,21 @@ class DataHub:
         sell_volume = 0
         
         for trade in trades:
-            qty = float(trade['qty'])
-            price = float(trade['price'])
+            # aggTrades format: q=quantity, p=price, m=was buyer maker
+            qty = float(trade.get('q', 0))
+            price = float(trade.get('p', 0))
             value = qty * price
             
-            is_buyer_maker = trade.get('isBuyerMaker', False)
+            # m=True means buyer was maker (so trade was SELL taker)
+            is_maker_buy = trade.get('m', False)
             
-            if is_buyer_maker:
+            if is_maker_buy:
+                # Buyer was maker = seller was taker = SELL
                 sell_volume += value
                 if value >= whale_threshold:
                     large_sells += 1
             else:
+                # Buyer was taker = BUY
                 buy_volume += value
                 if value >= whale_threshold:
                     large_buys += 1
@@ -458,7 +477,7 @@ class DataHub:
             'whale_net_flow': large_buys - large_sells,
             'buy_volume': buy_volume,
             'sell_volume': sell_volume,
-            'taker_buy_ratio': buy_volume / total if total > 0 else 0.5
+            'taker_buy_ratio': buy_volume / total if total > 0 else -1  # -1 = veri yok
         }
     
     # =========================================
