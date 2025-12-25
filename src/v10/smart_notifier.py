@@ -159,6 +159,156 @@ class SmartNotifier:
         
         return self._send_message("\n".join(lines))
     
+    def send_technical_analysis(self, snapshots: dict) -> bool:
+        """
+        Detaylı teknik analiz bildirimi gönder.
+        Her coin için: RSI, EMA, Support/Resistance, Funding, Whale, Öneri
+        """
+        lines = ["📈 *TEKNİK ANALİZ RAPORU*", "━━━━━━━━━━━━━━━━━━━━━━━"]
+        
+        for symbol, snapshot in snapshots.items():
+            if not snapshot.is_valid:
+                lines.append(f"\n❌ *{symbol}*: Veri alınamadı")
+                continue
+            
+            # === COIN HEADER ===
+            trend_emoji = {"BULLISH": "📈", "BEARISH": "📉", "NEUTRAL": "➡️"}.get(snapshot.trend, "❓")
+            change = snapshot.price_change_24h
+            change_emoji = "🟢" if change > 0 else "🔴" if change < 0 else "⚪"
+            
+            lines.append(f"\n{trend_emoji} *{symbol}*")
+            lines.append(f"💰 Fiyat: ${snapshot.price:,.0f} ({change_emoji}{change:+.2f}%)")
+            
+            # === RSI ANALİZİ ===
+            rsi = snapshot.rsi_1h
+            rsi_4h = snapshot.rsi_4h
+            
+            if rsi < 30:
+                rsi_status = "🔥 AŞIRI SATIM - Alım fırsatı olabilir"
+            elif rsi < 40:
+                rsi_status = "🟢 Düşük - Potansiyel dip"
+            elif rsi > 70:
+                rsi_status = "⚠️ AŞIRI ALIM - Satış baskısı olabilir"
+            elif rsi > 60:
+                rsi_status = "🟡 Yüksek - Tepe yakınlaşıyor"
+            else:
+                rsi_status = "➡️ Normal aralık"
+            
+            lines.append(f"📊 RSI: 1s:{rsi:.0f} | 4s:{rsi_4h:.0f} → {rsi_status}")
+            
+            # === EMA TREND ===
+            if snapshot.ema_20 > 0 and snapshot.ema_50 > 0:
+                if snapshot.price > snapshot.ema_20 > snapshot.ema_50:
+                    ema_status = "🟢 BULLISH - EMA20 > EMA50, fiyat üstünde"
+                elif snapshot.price < snapshot.ema_20 < snapshot.ema_50:
+                    ema_status = "🔴 BEARISH - EMA20 < EMA50, fiyat altında"
+                else:
+                    ema_status = "🟡 KARARSIZ - Cross bekleniyor"
+                lines.append(f"📉 Trend: {ema_status}")
+            
+            # === ORDER BOOK ===
+            ratio = snapshot.bid_ask_ratio
+            if ratio > 1.5:
+                ob_status = f"🟢 Alıcı dominantı ({ratio:.2f}x BID)"
+            elif ratio < 0.67:
+                ob_status = f"🔴 Satıcı dominantı ({1/ratio:.2f}x ASK)"
+            else:
+                ob_status = f"⚪ Dengeli ({ratio:.2f}x)"
+            lines.append(f"📗 Order Book: {ob_status}")
+            
+            # === SUPPORT / RESISTANCE ===
+            if snapshot.strong_bids:
+                support = min(snapshot.strong_bids)
+                lines.append(f"🟢 Destek: ${support:,.0f} (büyük alım duvarı)")
+            if snapshot.strong_asks:
+                resistance = max(snapshot.strong_asks)
+                lines.append(f"🔴 Direnç: ${resistance:,.0f} (büyük satım duvarı)")
+            
+            # === FUNDING RATE ===
+            fr = snapshot.funding_rate
+            if fr < -0.02:
+                fr_status = "🚀 Negatif (Short squeeze potansiyeli)"
+            elif fr > 0.05:
+                fr_status = "⚠️ Yüksek (Long squeeze riski)"
+            else:
+                fr_status = "Normal"
+            lines.append(f"💰 Funding: {fr:.4f}% → {fr_status}")
+            
+            # === WHALE AKTİVİTESİ ===
+            whale = snapshot.whale_net_flow
+            large_buys = snapshot.large_buys
+            large_sells = snapshot.large_sells
+            
+            if whale > 2:
+                whale_status = f"🐋 Net ALIM (+{whale})"
+            elif whale < -2:
+                whale_status = f"🐋 Net SATIM ({whale})"
+            else:
+                whale_status = f"🐋 Dengeli ({whale:+.0f})"
+            lines.append(f"Whale: {whale_status} | Büyük: {large_buys}↑ {large_sells}↓")
+            
+            # === ÖNERİ ===
+            recommendation = self._generate_recommendation(snapshot)
+            lines.append(f"📌 *Öneri:* {recommendation}")
+            
+            lines.append("─" * 25)
+        
+        # Footer
+        lines.append(f"\n⏰ {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+        lines.append("📡 *DEMIR AI v10 - LIVE DATA*")
+        
+        return self._send_message("\n".join(lines))
+    
+    def _generate_recommendation(self, snapshot) -> str:
+        """Snapshot'tan öneri üret"""
+        score = 0
+        
+        # RSI
+        if snapshot.rsi_1h < 30:
+            score += 2
+        elif snapshot.rsi_1h < 40:
+            score += 1
+        elif snapshot.rsi_1h > 70:
+            score -= 2
+        elif snapshot.rsi_1h > 60:
+            score -= 1
+        
+        # Trend
+        if snapshot.trend == "BULLISH":
+            score += 1
+        elif snapshot.trend == "BEARISH":
+            score -= 1
+        
+        # Order book
+        if snapshot.bid_ask_ratio > 1.5:
+            score += 1
+        elif snapshot.bid_ask_ratio < 0.67:
+            score -= 1
+        
+        # Funding (contrarian)
+        if snapshot.funding_rate < -0.01:
+            score += 1
+        elif snapshot.funding_rate > 0.03:
+            score -= 1
+        
+        # Whale
+        if snapshot.whale_net_flow > 2:
+            score += 1
+        elif snapshot.whale_net_flow < -2:
+            score -= 1
+        
+        # Karar
+        if score >= 3:
+            return "🚀 GÜÇLÜ LONG bölgesi"
+        elif score >= 1:
+            return "🟢 LONG eğilimli"
+        elif score <= -3:
+            return "💀 GÜÇLÜ SHORT bölgesi"
+        elif score <= -1:
+            return "🔴 SHORT eğilimli"
+        else:
+            return "⏸️ BEKLE - Net sinyal yok"
+    
     def send_error_alert(self, error_message: str) -> bool:
         """
         Hata bildirimi gönder.

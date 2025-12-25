@@ -102,7 +102,19 @@ class V10Engine:
             except Exception as e:
                 logger.error(f"❌ {symbol} processing error: {e}")
         
-        # 3. Döngü istatistikleri
+        # 3. TEKNİK ANALİZ BİLDİRİMİ (15 dakikada bir)
+        if not hasattr(self, '_last_ta_time'):
+            self._last_ta_time = datetime.now() - timedelta(minutes=20)
+        
+        if (datetime.now() - self._last_ta_time).total_seconds() >= 15 * 60:
+            try:
+                logger.info("📈 Sending Technical Analysis...")
+                self.notifier.send_technical_analysis(snapshots)
+                self._last_ta_time = datetime.now()
+            except Exception as e:
+                logger.error(f"❌ Technical Analysis error: {e}")
+        
+        # 4. Döngü istatistikleri
         cycle_time = (datetime.now() - cycle_start).total_seconds()
         stats = self.data_hub.get_stats()
         
