@@ -216,13 +216,19 @@ class SmartNotifier:
                 ob_status = f"⚪ Dengeli ({ratio:.2f}x)"
             lines.append(f"📗 Order Book: {ob_status}")
             
-            # === SUPPORT / RESISTANCE ===
-            if snapshot.strong_bids:
-                support = min(snapshot.strong_bids)
-                lines.append(f"🟢 Destek: ${support:,.0f} (büyük alım duvarı)")
-            if snapshot.strong_asks:
-                resistance = max(snapshot.strong_asks)
-                lines.append(f"🔴 Direnç: ${resistance:,.0f} (büyük satım duvarı)")
+            # === SUPPORT / RESISTANCE (Kline-based pivots) ===
+            if snapshot.support > 0:
+                distance_pct = ((snapshot.price - snapshot.support) / snapshot.price) * 100
+                lines.append(f"🟢 Destek: ${snapshot.support:,.0f} ({distance_pct:.1f}% uzakta)")
+            if snapshot.resistance > 0:
+                distance_pct = ((snapshot.resistance - snapshot.price) / snapshot.price) * 100
+                lines.append(f"🔴 Direnç: ${snapshot.resistance:,.0f} ({distance_pct:.1f}% uzakta)")
+            
+            # Majör seviyeler (7 günlük)
+            if snapshot.major_support > 0 and snapshot.major_support != snapshot.support:
+                lines.append(f"🟩 Majör Destek: ${snapshot.major_support:,.0f} (7g)")
+            if snapshot.major_resistance > 0 and snapshot.major_resistance != snapshot.resistance:
+                lines.append(f"🟥 Majör Direnç: ${snapshot.major_resistance:,.0f} (7g)")
             
             # === FUNDING RATE ===
             fr = snapshot.funding_rate

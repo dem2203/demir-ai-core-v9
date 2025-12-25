@@ -58,9 +58,13 @@ class MarketSnapshot:
     best_ask: float = 0
     spread_pct: float = 0
     
-    # Support/Resistance from Order Book
-    strong_bids: List[float] = field(default_factory=list)   # Büyük alım duvarları
-    strong_asks: List[float] = field(default_factory=list)   # Büyük satış duvarları
+    # Support/Resistance (Kline-based pivots, not order book)
+    strong_bids: List[float] = field(default_factory=list)   # Order book büyük alımlar (referans)
+    strong_asks: List[float] = field(default_factory=list)   # Order book büyük satışlar (referans)
+    support: float = 0              # 24s pivot destek (en az %1 uzak)
+    resistance: float = 0           # 24s pivot direnç (en az %1 uzak)
+    major_support: float = 0        # 7 günlük majör destek
+    major_resistance: float = 0     # 7 günlük majör direnç
     
     # Derivatives (Futures)
     funding_rate: float = 0
@@ -362,6 +366,36 @@ class DataHub:
         price_change_1h = ((closes[-1] - closes[-2]) / closes[-2] * 100) if len(closes) >= 2 else 0
         price_change_4h = ((closes[-1] - closes[-5]) / closes[-5] * 100) if len(closes) >= 5 else 0
         
+        # === GERÇEK DESTEK/DİRENÇ HESAPLA ===
+        # Son 24 saatlik (24 mum) high/low'lardan pivot seviyeleri bul
+        current = closes[-1]
+        highs = [float(k[2]) for k in klines[-24:]]
+        lows = [float(k[3]) for k in klines[-24:]]
+        
+        # Destek: Fiyatın EN AZ %1 altındaki en yüksek dip
+        # Direnç: Fiyatın EN AZ %1 üstündeki en düşük tepe
+        min_distance_pct = 0.01  # %1 minimum mesafe
+        
+        # Potansiyel destek seviyeleri (fiyatın altında, en az %1 uzak)
+        potential_supports = [low for low in lows if low < current * (1 - min_distance_pct)]
+        # En yakın güçlü destek
+        support = max(potential_supports) if potential_supports else current * 0.98
+        
+        # Potansiyel direnç seviyeleri (fiyatın üstünde, en az %1 uzak)
+        potential_resistances = [high for high in highs if high > current * (1 + min_distance_pct)]
+        # En yakın güçlü direnç
+        resistance = min(potential_resistances) if potential_resistances else current * 1.02
+        
+        # Son 7 günlük majör seviyeler (haftalık pivot)
+        if len(klines) >= 168:
+            weekly_highs = [float(k[2]) for k in klines[-168:]]
+            weekly_lows = [float(k[3]) for k in klines[-168:]]
+            major_resistance = max(weekly_highs)
+            major_support = min(weekly_lows)
+        else:
+            major_resistance = resistance
+            major_support = support
+        
         return {
             'rsi_1h': rsi_1h,
             'rsi_4h': rsi_4h,
@@ -371,7 +405,12 @@ class DataHub:
             'trend': trend,
             'macd_signal': macd_signal,
             'price_change_1h': price_change_1h,
-            'price_change_4h': price_change_4h
+            'price_change_4h': price_change_4h,
+            # Yeni: Gerçek S/R seviyeleri
+            'support': support,
+            'resistance': resistance,
+            'major_support': major_support,
+            'major_resistance': major_resistance
         }
     
     async def _fetch_trades_for_whales(self, symbol: str) -> Dict:
@@ -465,6 +504,11 @@ class DataHub:
             snapshot.macd_signal = data.get('macd_signal', 'NEUTRAL')
             snapshot.price_change_1h = data.get('price_change_1h', 0)
             snapshot.price_change_4h = data.get('price_change_4h', 0)
+            # Yeni S/R seviyeleri (kline-based)
+            snapshot.support = data.get('support', 0)
+            snapshot.resistance = data.get('resistance', 0)
+            snapshot.major_support = data.get('major_support', 0)
+            snapshot.major_resistance = data.get('major_resistance', 0)
         
         elif key == 'whales':
             snapshot.large_buys = data.get('large_buys', 0)
