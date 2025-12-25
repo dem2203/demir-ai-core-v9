@@ -352,8 +352,8 @@ class InstitutionalAggregator:
         else:
             alert.overall_severity = "LOW"
         
-        # Alert gönderilmeli mi?
-        alert.should_alert = alert.active_trigger_count >= 2 or critical
+        # Alert gönderilmeli mi? (1 trigger yeterli - daha hassas)
+        alert.should_alert = alert.active_trigger_count >= 1 or critical
         
         return alert
 
@@ -714,12 +714,12 @@ class InstitutionalAggregator:
             
             ratio = current_vol / avg_vol if avg_vol > 0 else 1
             
-            if ratio > 2.5:
+            if ratio > 1.5:
                 return AlertTrigger(
                     name="Volume Spike",
                     active=True,
                     value=f"{ratio:.1f}x",
-                    severity="HIGH" if ratio > 4 else "MEDIUM",
+                    severity="HIGH" if ratio > 2.5 else "MEDIUM",
                     direction="NEUTRAL",
                     message=f"Hacim normal seviyenin {ratio:.1f} katı!"
                 )
@@ -783,8 +783,43 @@ class InstitutionalAggregator:
         return AlertTrigger(name="Exchange Divergence", active=False)
     
     async def _check_oi_spike(self, symbol: str) -> AlertTrigger:
-        """5. Sudden OI Spike/Drop"""
-        # Would need historical comparison
+        """5. Sudden OI Spike/Drop - AKTIF"""
+        try:
+            session = await self._get_session()
+            url = f"https://fapi.binance.com/fapi/v1/openInterest?symbol={symbol}"
+            async with session.get(url) as resp:
+                data = await resp.json()
+            oi_current = float(data.get('openInterest', 0))
+            
+            # Get price
+            async with session.get(f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}") as resp:
+                price_data = await resp.json()
+            price = float(price_data.get('price', 0))
+            oi_usd = oi_current * price
+            
+            # Store for comparison
+            if not hasattr(self, '_last_oi'):
+                self._last_oi = {}
+            
+            if symbol in self._last_oi:
+                last_oi = self._last_oi[symbol]
+                change_pct = ((oi_usd - last_oi) / last_oi * 100) if last_oi > 0 else 0
+                
+                if abs(change_pct) > 5:  # 5%+ OI change
+                    direction = "BULLISH" if change_pct > 0 else "BEARISH"
+                    self._last_oi[symbol] = oi_usd
+                    return AlertTrigger(
+                        name="OI Spike" if change_pct > 0 else "OI Drop",
+                        active=True,
+                        value=f"{change_pct:+.1f}%",
+                        severity="HIGH" if abs(change_pct) > 10 else "MEDIUM",
+                        direction=direction,
+                        message=f"Open Interest {change_pct:+.1f}% değişti! (${oi_usd/1e9:.1f}B)"
+                    )
+            
+            self._last_oi[symbol] = oi_usd
+        except Exception as e:
+            logger.debug(f"OI spike check error: {e}")
         return AlertTrigger(name="OI Spike", active=False)
     
     async def _check_funding_extreme(self, symbol: str) -> AlertTrigger:
@@ -793,7 +828,7 @@ class InstitutionalAggregator:
             data = await self._fetch_funding(symbol)
             rate = data.get('rate', 0)
             
-            if abs(rate) > 0.1:
+            if abs(rate) > 0.05:  # Eşik düşürüldü (0.1 → 0.05)
                 direction = "BEARISH" if rate > 0 else "BULLISH"
                 squeeze_type = "Long" if rate > 0 else "Short"
                 return AlertTrigger(
