@@ -189,6 +189,185 @@ def fetch_live_market_data():
     
     return result
 
+# ==========================================
+# PHASE 500: LIVE VERIFICATION HELPERS
+# ==========================================
+
+def fetch_live_verification(symbol: str = "BTCUSDT") -> dict:
+    """Canlı doğrulama verileri - RSI, EMA, Order Book, Funding."""
+    import requests
+    result = {
+        'rsi': None,
+        'rsi_status': 'N/A',
+        'ema9': None,
+        'ema21': None,
+        'trend': 'N/A',
+        'orderbook_imbalance': None,
+        'orderbook_status': 'N/A',
+        'funding': None,
+        'funding_status': 'N/A'
+    }
+    
+    try:
+        # Klines -> RSI, EMA
+        resp = requests.get(
+            f"https://fapi.binance.com/fapi/v1/klines",
+            params={"symbol": symbol, "interval": "1h", "limit": 50},
+            timeout=5
+        )
+        if resp.status_code == 200:
+            klines = resp.json()
+            closes = [float(k[4]) for k in klines]
+            current = closes[-1]
+            
+            # RSI calculation
+            if len(closes) > 14:
+                gains, losses = [], []
+                for i in range(1, len(closes)):
+                    c = closes[i] - closes[i-1]
+                    gains.append(c if c > 0 else 0)
+                    losses.append(abs(c) if c < 0 else 0)
+                avg_g = sum(gains[-14:]) / 14
+                avg_l = sum(losses[-14:]) / 14
+                if avg_l > 0:
+                    rsi = 100 - (100 / (1 + avg_g / avg_l))
+                else:
+                    rsi = 100
+                result['rsi'] = round(rsi, 1)
+                result['rsi_status'] = 'Oversold' if rsi < 30 else 'Overbought' if rsi > 70 else 'Normal'
+            
+            # EMA
+            if len(closes) >= 21:
+                result['ema9'] = round(sum(closes[-9:]) / 9, 2)
+                result['ema21'] = round(sum(closes[-21:]) / 21, 2)
+                result['trend'] = 'UP' if current > result['ema21'] else 'DOWN'
+        
+        # Order Book
+        resp = requests.get(
+            f"https://fapi.binance.com/fapi/v1/depth",
+            params={"symbol": symbol, "limit": 20},
+            timeout=5
+        )
+        if resp.status_code == 200:
+            ob = resp.json()
+            bid = sum(float(b[1]) for b in ob['bids'])
+            ask = sum(float(a[1]) for a in ob['asks'])
+            if bid + ask > 0:
+                imb = (bid - ask) / (bid + ask) * 100
+                result['orderbook_imbalance'] = round(imb, 1)
+                result['orderbook_status'] = 'Buy Heavy' if imb > 10 else 'Sell Heavy' if imb < -10 else 'Balanced'
+        
+        # Funding
+        resp = requests.get(
+            "https://fapi.binance.com/fapi/v1/fundingRate",
+            params={"symbol": symbol, "limit": 1},
+            timeout=5
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if data:
+                fr = float(data[-1]['fundingRate']) * 100
+                result['funding'] = round(fr, 4)
+                result['funding_status'] = 'High' if abs(fr) > 0.03 else 'Normal'
+    
+    except Exception as e:
+        pass
+    
+    return result
+
+
+def fetch_signal_history():
+    """Sinyal geçmişini ve istatistikleri getir."""
+    try:
+        from src.v10.signal_history import get_recent_signals, get_statistics
+        return {
+            'signals': get_recent_signals(10),
+            'stats': get_statistics()
+        }
+    except Exception as e:
+        return {
+            'signals': [],
+            'stats': {'total': 0, 'wins': 0, 'losses': 0, 'pending': 0, 'win_rate': 0}
+        }
+
+
+def fetch_leading_indicators(symbol: str = "BTCUSDT") -> dict:
+    """Leading indicators doğrudan Binance'den."""
+    import requests
+    result = {
+        'whale': 0,
+        'orderbook': 0,
+        'oi_divergence': 0,
+        'funding': 0,
+        'volume': 0,
+        'direction': 'NEUTRAL',
+        'strength': 0
+    }
+    
+    try:
+        # Order Book Imbalance
+        resp = requests.get(
+            f"https://fapi.binance.com/fapi/v1/depth",
+            params={"symbol": symbol, "limit": 20},
+            timeout=5
+        )
+        if resp.status_code == 200:
+            ob = resp.json()
+            bid = sum(float(b[1]) for b in ob['bids'])
+            ask = sum(float(a[1]) for a in ob['asks'])
+            if bid + ask > 0:
+                result['orderbook'] = round((bid - ask) / (bid + ask) * 100, 1)
+        
+        # Funding Rate
+        resp = requests.get(
+            "https://fapi.binance.com/fapi/v1/fundingRate",
+            params={"symbol": symbol, "limit": 1},
+            timeout=5
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if data:
+                fr = float(data[-1]['fundingRate']) * 100
+                if fr > 0.03:
+                    result['funding'] = -20  # Bearish (too many longs)
+                elif fr < -0.03:
+                    result['funding'] = 20   # Bullish (too many shorts)
+        
+        # Whale detection (large trades)
+        resp = requests.get(
+            f"https://fapi.binance.com/fapi/v1/aggTrades",
+            params={"symbol": symbol, "limit": 500},
+            timeout=5
+        )
+        if resp.status_code == 200:
+            trades = resp.json()
+            big_buys = 0
+            big_sells = 0
+            for t in trades:
+                val = float(t['q']) * float(t['p'])
+                if val > 50000:
+                    if t['m']:
+                        big_sells += val
+                    else:
+                        big_buys += val
+            total = big_buys + big_sells
+            if total > 0:
+                result['whale'] = round((big_buys - big_sells) / total * 100, 1)
+        
+        # Calculate direction
+        score = result['orderbook'] * 0.4 + result['whale'] * 0.3 + result['funding'] * 0.3
+        if score > 15:
+            result['direction'] = 'BULLISH'
+        elif score < -15:
+            result['direction'] = 'BEARISH'
+        result['strength'] = min(100, abs(score))
+        
+    except Exception as e:
+        pass
+    
+    return result
+
+
 risk_manager = RiskManager()
 
 # ==========================================
@@ -643,66 +822,146 @@ if page == "📡 Live Market Intelligence":
             st.caption(f"_Veri doğrulama geçici olarak kullanılamıyor_")
         
         # ======================================
-        # LEADING INDICATORS (EARLY SIGNAL ENGINE)
+        # LEADING INDICATORS (HER ZAMAN GÖSTER)
         # ======================================
+        st.markdown("---")
+        st.markdown("### 🎯 Öncü Göstergeler (Leading Indicators)")
+        st.caption("_Hareket BAŞLAMADAN ÖNCE sinyal veren göstergeler - Canlı Binance verisi_")
+        
+        # Dashboard data'dan al, yoksa doğrudan fetch et
         leading_data = main_info.get('leading_indicators', {})
-        if leading_data and main_info.get('signal_type') == 'EARLY_SIGNAL':
-            st.markdown("---")
-            st.markdown("### 🎯 Öncü Göstergeler (Early Signal)")
-            st.caption("_Hareket BAŞLAMADAN ÖNCE sinyal veren göstergeler_")
-            
-            lead_cols = st.columns(5)
-            indicators = leading_data.get('indicators', {})
-            
-            # Whale Accumulation
-            whale = indicators.get('whale', 0)
-            lead_cols[0].metric(
-                "🐋 Whale",
-                f"{whale:+.0f}" if whale != 0 else "N/A",
-                "Bullish" if whale > 15 else "Bearish" if whale < -15 else "Neutral"
-            )
-            
-            # Order Book
-            orderbook = indicators.get('orderbook', 0)
-            lead_cols[1].metric(
-                "📖 Order Book",
-                f"{orderbook:+.0f}" if orderbook != 0 else "N/A",
-                "Alım Ağır" if orderbook > 15 else "Satım Ağır" if orderbook < -15 else "Dengeli"
-            )
-            
-            # OI Divergence
-            oi_div = indicators.get('oi_divergence', 0)
-            lead_cols[2].metric(
-                "📊 OI Divergence",
-                f"{oi_div:+.0f}" if oi_div != 0 else "N/A",
-                "Hidden Long" if oi_div > 10 else "Hidden Short" if oi_div < -10 else "Normal"
-            )
-            
-            # Funding
-            funding = indicators.get('funding', 0)
-            lead_cols[3].metric(
-                "💰 Funding",
-                f"{funding:+.0f}" if funding != 0 else "N/A",
-                "Squeeze Risk" if abs(funding) > 20 else "Normal"
-            )
-            
-            # Volume Precursor
-            volume = indicators.get('volume', 0)
-            lead_cols[4].metric(
-                "📈 Volume",
-                f"{volume:+.0f}" if volume != 0 else "N/A",
-                "Birikim" if volume != 0 else "Normal"
-            )
-            
-            # Sinyal özeti
-            direction = leading_data.get('direction', 'NEUTRAL')
-            strength = leading_data.get('strength', 0)
-            if 'BULLISH' in direction:
-                st.success(f"🟢 **{direction}** | Güç: {strength:.0f}%")
-            elif 'BEARISH' in direction:
-                st.error(f"🔴 **{direction}** | Güç: {strength:.0f}%")
-            else:
-                st.info(f"⚪ **{direction}** | Güç: {strength:.0f}%")
+        if not leading_data or not leading_data.get('direction'):
+            leading_data = fetch_leading_indicators(main_symbol)
+        
+        lead_cols = st.columns(5)
+        indicators = leading_data.get('indicators', leading_data)
+        
+        # Whale Accumulation
+        whale = indicators.get('whale', 0)
+        lead_cols[0].metric(
+            "🐋 Whale",
+            f"{whale:+.0f}" if whale != 0 else "0",
+            "Bullish" if whale > 15 else "Bearish" if whale < -15 else "Neutral"
+        )
+        
+        # Order Book
+        orderbook = indicators.get('orderbook', 0)
+        lead_cols[1].metric(
+            "📖 Order Book",
+            f"{orderbook:+.0f}" if orderbook != 0 else "0",
+            "Alım Ağır" if orderbook > 15 else "Satım Ağır" if orderbook < -15 else "Dengeli"
+        )
+        
+        # OI Divergence
+        oi_div = indicators.get('oi_divergence', 0)
+        lead_cols[2].metric(
+            "📊 OI Div",
+            f"{oi_div:+.0f}" if oi_div != 0 else "0",
+            "Hidden Long" if oi_div > 10 else "Hidden Short" if oi_div < -10 else "Normal"
+        )
+        
+        # Funding
+        funding = indicators.get('funding', 0)
+        lead_cols[3].metric(
+            "💰 Funding",
+            f"{funding:+.0f}" if funding != 0 else "0",
+            "Squeeze Risk" if abs(funding) > 20 else "Normal"
+        )
+        
+        # Volume Precursor
+        volume = indicators.get('volume', 0)
+        lead_cols[4].metric(
+            "📈 Volume",
+            f"{volume:+.0f}" if volume != 0 else "0",
+            "Birikim" if volume != 0 else "Normal"
+        )
+        
+        # Sinyal özeti
+        direction = leading_data.get('direction', 'NEUTRAL')
+        strength = leading_data.get('strength', 0)
+        if 'BULLISH' in str(direction):
+            st.success(f"🟢 **{direction}** | Güç: {strength:.0f}%")
+        elif 'BEARISH' in str(direction):
+            st.error(f"🔴 **{direction}** | Güç: {strength:.0f}%")
+        else:
+            st.info(f"⚪ **{direction}** | Güç: {strength:.0f}%")
+        
+        # ======================================
+        # LIVE VERIFICATION (YENİ)
+        # ======================================
+        st.markdown("---")
+        st.markdown("### 📊 Canlı Doğrulama (Live Verification)")
+        st.caption("_RSI, EMA, Order Book - Doğrudan Binance API_")
+        
+        verification = fetch_live_verification(main_symbol)
+        
+        ver_cols = st.columns(4)
+        
+        # RSI
+        rsi = verification.get('rsi')
+        ver_cols[0].metric(
+            "RSI (14)",
+            f"{rsi:.1f}" if rsi else "N/A",
+            verification.get('rsi_status', 'N/A')
+        )
+        
+        # Trend
+        ver_cols[1].metric(
+            "Trend",
+            verification.get('trend', 'N/A'),
+            f"EMA21: ${verification.get('ema21', 0):,.0f}" if verification.get('ema21') else ""
+        )
+        
+        # Order Book
+        ob_imb = verification.get('orderbook_imbalance')
+        ver_cols[2].metric(
+            "Order Book",
+            f"{ob_imb:+.1f}%" if ob_imb is not None else "N/A",
+            verification.get('orderbook_status', 'N/A')
+        )
+        
+        # Funding
+        funding_val = verification.get('funding')
+        ver_cols[3].metric(
+            "Funding Rate",
+            f"{funding_val:.4f}%" if funding_val is not None else "N/A",
+            verification.get('funding_status', 'N/A')
+        )
+        
+        # ======================================
+        # SIGNAL HISTORY & WIN RATE (YENİ)
+        # ======================================
+        st.markdown("---")
+        st.markdown("### 📈 Sinyal Geçmişi & Performans")
+        
+        history_data = fetch_signal_history()
+        stats = history_data.get('stats', {})
+        signals = history_data.get('signals', [])
+        
+        # Win Rate Stats
+        stat_cols = st.columns(5)
+        stat_cols[0].metric("Toplam Sinyal", stats.get('total', 0))
+        stat_cols[1].metric("Kazanç", stats.get('wins', 0), delta_color="normal")
+        stat_cols[2].metric("Kayıp", stats.get('losses', 0), delta_color="inverse")
+        stat_cols[3].metric("Beklemede", stats.get('pending', 0))
+        
+        win_rate = stats.get('win_rate', 0)
+        win_color = "normal" if win_rate >= 50 else "inverse"
+        stat_cols[4].metric("Win Rate", f"{win_rate:.1f}%", delta_color=win_color)
+        
+        # Signal History Table
+        if signals:
+            with st.expander("Son 10 Sinyal", expanded=False):
+                for s in signals[:10]:
+                    outcome = s.get('outcome', 'PENDING')
+                    emoji = "🟢" if outcome == 'WIN' else "🔴" if outcome == 'LOSS' else "⏳"
+                    action_emoji = "📈" if s.get('action') == 'BUY' else "📉" if s.get('action') == 'SELL' else "⏸️"
+                    st.text(
+                        f"{emoji} {s.get('symbol', '?')} | {action_emoji} {s.get('action', '?')} | "
+                        f"Güven: {s.get('confidence', 0):.0f}% | {s.get('timestamp', '')[:16]}"
+                    )
+        else:
+            st.info("Henüz sinyal geçmişi yok. Sistem çalıştıkça sinyaller kaydedilecek.")
         
         # ======================================
         # MARKET CORRELATIONS & DERIVATIVES (DXY/VIX'in hemen altında)

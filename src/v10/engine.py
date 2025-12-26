@@ -17,6 +17,7 @@ from src.v10.smart_notifier import get_notifier
 from src.v10.performance_tracker import get_performance_tracker
 from src.v10.lstm_predictor import get_lstm_predictor
 from src.v10.early_signal_engine import get_early_signal_engine
+from src.v10.signal_history import record_early_signal
 
 logger = logging.getLogger("V10_ENGINE")
 
@@ -173,6 +174,13 @@ DOGRULAMA:
                     self.notifier._send_message(msg)
                     self._last_signal_time[symbol] = datetime.now()
                     self._signal_count += 1
+                    
+                    # Sinyal geçmişine kaydet
+                    try:
+                        record_early_signal(early_signal, symbol)
+                    except Exception as e:
+                        logger.warning(f"Signal history error: {e}")
+                    
                     logger.info(f"[SIGNAL] Early Signal sent: {symbol}")
                     return
                     
