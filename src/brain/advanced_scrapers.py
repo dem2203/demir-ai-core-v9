@@ -427,6 +427,29 @@ class AdvancedMarketScrapers:
             'timestamp': datetime.now()
         }
     
+    def get_realtime_price(self, symbol: str) -> float:
+        """
+        TradingView scanner üzerinden canlı fiyat çek (API Fallback).
+        API key gerektirmez, public endpoint.
+        """
+        try:
+            url = "https://scanner.tradingview.com/crypto/scan"
+            tv_symbol = f"BINANCE:{symbol}"
+            
+            payload = {
+                "symbols": {"tickers": [tv_symbol], "query": {"types": []}},
+                "columns": ["close"]
+            }
+            
+            response = requests.post(url, json=payload, timeout=5, headers=self.HEADERS)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('data'):
+                    return float(data['data'][0]['d'][0])
+        except Exception as e:
+            logger.debug(f"TV price fetch failed: {e}")
+        return 0.0
+    
     # =========================================
     # AGGREGATE ALL DATA
     # =========================================
