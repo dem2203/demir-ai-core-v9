@@ -8,7 +8,7 @@ Connects the Rule-Based Engine with Deep Learning Models (RL & LSTM).
 import logging
 import numpy as np
 import pandas as pd
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from src.brain.rl_agent.ppo_agent import RLAgent
 from src.brain.feature_engineering import FeatureEngineer
