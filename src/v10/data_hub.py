@@ -93,6 +93,9 @@ class MarketSnapshot:
     macd_signal: str = "UNKNOWN"    # "UNKNOWN" = veri yok (ESKİ: NEUTRAL YANLIŞ!)
     trend: str = "UNKNOWN"          # "UNKNOWN" = veri yok (ESKİ: NEUTRAL YANLIŞ!)
     
+    # Raw Data for AI
+    raw_klines: List[Any] = field(default_factory=list) # Raw OHLCV data for Feature Engineering
+    
     @property
     def is_valid(self) -> bool:
         """Veri geçerli mi?"""
@@ -423,7 +426,8 @@ class DataHub:
             'support': support,
             'resistance': resistance,
             'major_support': major_support,
-            'major_resistance': major_resistance
+            'major_resistance': major_resistance,
+            'raw_klines': klines # Raw Binance klines
         }
     
     async def _fetch_trades_for_whales(self, symbol: str) -> Dict:
@@ -528,6 +532,7 @@ class DataHub:
             snapshot.resistance = data.get('resistance', 0)
             snapshot.major_support = data.get('major_support', 0)
             snapshot.major_resistance = data.get('major_resistance', 0)
+            snapshot.raw_klines = data.get('raw_klines', [])
         
         elif key == 'whales':
             snapshot.large_buys = data.get('large_buys', 0)

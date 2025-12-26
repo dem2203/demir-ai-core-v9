@@ -18,6 +18,7 @@ from src.v10.performance_tracker import get_performance_tracker
 from src.v10.lstm_predictor import get_lstm_predictor
 from src.v10.early_signal_engine import get_early_signal_engine
 from src.v10.signal_history import record_early_signal
+from src.v10.ai_integration import get_ai_bridge  # RL Agent Integration
 
 logger = logging.getLogger("V10_ENGINE")
 
@@ -57,8 +58,12 @@ class V10Engine:
     async def start(self):
         """Ana donguyu baslat"""
         self._running = True
+        
+        # Initialize AI Brain (RL Agent)
+        await get_ai_bridge().initialize()
+        
         self.notifier.send_startup_message()
-        logger.info("[RUN] V10 Engine started with Early Signal...")
+        logger.info("[RUN] V10 Engine started with Early Signal + RL Brain...")
         
         while self._running:
             try:
@@ -187,8 +192,33 @@ DOGRULAMA:
         except Exception as e:
             logger.error(f"[ERROR] Early Signal: {symbol}: {e}")
         
-        # LEGACY FALLBACK
+        # LEGACY FALLBACK + AI BRAIN FUSION
+        
+        # 1. Get Legacy Signal
         signal = await self.predictor.generate_signal_async(snapshot)
+        
+        # 2. Get AI Brain Consensus
+        ai_bridge = get_ai_bridge()
+        ai_decision = await ai_bridge.get_consensus(symbol, snapshot)
+        
+        if ai_decision['action'] != 'HOLD':
+            logger.info(f"🧠 [AI BRAIN] {symbol}: {ai_decision['direction']} (Conf: {ai_decision['confidence']:.1f}%)")
+            
+            # FUSION: If AI is confident, boost the signal or create new one
+            if not signal.is_valid and ai_decision['confidence'] > 60:
+                # Create AI-Driven Signal
+                from src.v10.predictor import TradingSignal, SignalType
+                signal = TradingSignal(
+                    symbol=symbol,
+                    signal_type=SignalType.LONG if ai_decision['action'] == 'BUY' else SignalType.SHORT,
+                    entry_low=snapshot.price * 0.999,
+                    entry_high=snapshot.price * 1.001,
+                    tp1=snapshot.price * (1.02 if ai_decision['action'] == 'BUY' else 0.98),
+                    tp2=snapshot.price * (1.05 if ai_decision['action'] == 'BUY' else 0.95),
+                    stop_loss=snapshot.price * (0.98 if ai_decision['action'] == 'BUY' else 1.02),
+                    reasons=ai_decision['reasoning']
+                )
+                logger.info(f"✨ AI OVERRIDE: Generated signal based on Brain Logic!")
         
         if signal.is_valid:
             logger.info(f"[LEGACY] {symbol} {signal.signal_type.value} %{signal.confidence:.0f}")
