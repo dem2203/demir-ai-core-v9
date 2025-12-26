@@ -152,17 +152,23 @@ class V10Engine:
                     action_tr = "AL" if early_signal.action == "BUY" else "SAT"
                     tag = "[BUY]" if early_signal.action == "BUY" else "[SELL]"
                     
+                    # Dogrulama verileri topla
+                    verification = await self._get_verification_data(symbol)
+                    
                     msg = f"""{tag} EARLY SIGNAL: {symbol}
 
-Sinyal: {action_tr}
-Guven: {early_signal.confidence:.0f}%
+Sinyal: {action_tr} | Guven: {early_signal.confidence:.0f}%
 R/R: {early_signal.risk_reward:.1f}x
 
 Giris: ${early_signal.entry_zone[0]:,.0f} - ${early_signal.entry_zone[1]:,.0f}
 SL: ${early_signal.stop_loss:,.0f}
 TP: ${early_signal.take_profit:,.0f}
 
-Gostergeler: {early_signal.reasoning}"""
+Oncu Gostergeler:
+{early_signal.reasoning}
+
+DOGRULAMA:
+{verification}"""
                     
                     self.notifier._send_message(msg)
                     self._last_signal_time[symbol] = datetime.now()
@@ -188,6 +194,89 @@ Gostergeler: {early_signal.reasoning}"""
                     self.performance_tracker.record_signal(signal)
                 except Exception as e:
                     logger.warning(f"Performance tracking error: {e}")
+    
+    async def _get_verification_data(self, symbol: str) -> str:
+        """Sinyal icin dogrulama verileri topla."""
+        try:
+            import aiohttp
+            
+            lines = []
+            warnings = []
+            
+            async with aiohttp.ClientSession() as session:
+                # 1. Klines -> RSI, EMA
+                url = f"https://fapi.binance.com/fapi/v1/klines"
+                params = {"symbol": symbol, "interval": "1h", "limit": 50}
+                async with session.get(url, params=params) as resp:
+                    if resp.status == 200:
+                        klines = await resp.json()
+                        closes = [float(k[4]) for k in klines]
+                        current = closes[-1]
+                        
+                        # RSI
+                        rsi = self._calc_rsi(closes)
+                        if rsi:
+                            status = "Dusuk" if rsi < 40 else "Yuksek" if rsi > 60 else "Notr"
+                            lines.append(f"RSI: {rsi:.0f} ({status})")
+                            if rsi > 70:
+                                warnings.append("RSI overbought")
+                            elif rsi < 30:
+                                warnings.append("RSI oversold")
+                        
+                        # EMA Trend
+                        ema21 = sum(closes[-21:]) / 21
+                        trend = "Yukari" if current > ema21 else "Asagi"
+                        lines.append(f"Trend: {trend} (vs EMA21)")
+                
+                # 2. Order Book
+                url = f"https://fapi.binance.com/fapi/v1/depth"
+                params = {"symbol": symbol, "limit": 20}
+                async with session.get(url, params=params) as resp:
+                    if resp.status == 200:
+                        ob = await resp.json()
+                        bid = sum(float(b[1]) for b in ob['bids'])
+                        ask = sum(float(a[1]) for a in ob['asks'])
+                        imb = (bid - ask) / (bid + ask) * 100
+                        status = "Alim agir" if imb > 10 else "Satim agir" if imb < -10 else "Dengeli"
+                        lines.append(f"Order Book: {imb:+.0f}% ({status})")
+                        if imb < -20:
+                            warnings.append("Guclu satis baskisi")
+                        elif imb > 20:
+                            warnings.append("Guclu alim")
+                
+                # 3. Funding
+                url = "https://fapi.binance.com/fapi/v1/fundingRate"
+                params = {"symbol": symbol, "limit": 1}
+                async with session.get(url, params=params) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if data:
+                            fr = float(data[-1]['fundingRate']) * 100
+                            lines.append(f"Funding: {fr:.4f}%")
+            
+            result = "\n".join(f"  {l}" for l in lines)
+            if warnings:
+                result += "\n  [!] " + ", ".join(warnings)
+            
+            return result
+            
+        except Exception as e:
+            return f"  Dogrulama hatasi: {e}"
+    
+    def _calc_rsi(self, closes, period=14):
+        """RSI hesapla."""
+        if len(closes) < period + 1:
+            return None
+        gains, losses = [], []
+        for i in range(1, len(closes)):
+            c = closes[i] - closes[i-1]
+            gains.append(c if c > 0 else 0)
+            losses.append(abs(c) if c < 0 else 0)
+        avg_g = sum(gains[-period:]) / period
+        avg_l = sum(losses[-period:]) / period
+        if avg_l == 0:
+            return 100
+        return 100 - (100 / (1 + avg_g / avg_l))
     
     def _is_on_cooldown(self, symbol: str) -> bool:
         if symbol not in self._last_signal_time:
