@@ -117,6 +117,13 @@ class V10Engine:
             await self.early_signal_engine.close()
         logger.info("[STOP] V10 Engine stopped")
     
+import json
+import os
+import aiohttp
+from dataclasses import asdict
+
+# ... existing imports ...
+
     async def _scan_cycle(self):
         """Tek bir tarama dongusu"""
         self._cycle_count += 1
@@ -132,6 +139,37 @@ class V10Engine:
             except Exception as e:
                 logger.error(f"[ERROR] {symbol}: {e}")
         
+        # Export data for Dashboard
+        try:
+            import json
+            export_data = {
+                'updated_at': datetime.now().isoformat(),
+                'coins': {}
+            }
+            
+            for s, snapshot in snapshots.items():
+                if snapshot.is_valid:
+                    s_data = {
+                        'price': snapshot.price,
+                        'volume': snapshot.volume,
+                        'change_24h': snapshot.change_24h,
+                        'timestamp': datetime.now().timestamp(),
+                        'rsi': 50, 
+                        'trend': 'NEUTRAL'
+                    }
+                    export_data['coins'][s] = s_data
+            
+            with open("dashboard_data.json", "w") as f:
+                json.dump(export_data, f)
+        except Exception as e:
+            logger.error(f"Dashboard export error: {e}")
+        
+        # SAVE DASHBOARD DATA
+        try:
+            self._save_dashboard_data(snapshots)
+        except Exception as e:
+            logger.error(f"Dashboard data save error: {e}")
+
         # Technical Analysis (15 dakikada bir)
         if not hasattr(self, '_last_ta_time'):
             self._last_ta_time = datetime.now() - timedelta(minutes=20)
@@ -155,12 +193,30 @@ class V10Engine:
                 logger.error(f"[ERROR] Performance report: {e}")
         
         cycle_time = (datetime.now() - cycle_start).total_seconds()
-        stats = self.data_hub.get_stats()
         
         logger.info(
             f"[OK] Cycle #{self._cycle_count}: {cycle_time:.1f}s | "
             f"Signals: {self._signal_count} | Errors: {self._error_count}"
         )
+        
+    def _save_dashboard_data(self, snapshots: Dict[str, MarketSnapshot]):
+        """Snapshots verisini dashboard icin JSON'a kaydet."""
+        data = {}
+        for symbol, snap in snapshots.items():
+             # Convert dataclass to dict
+             snap_dict = asdict(snap)
+             # Remove raw_klines to keep file size small (dashboard fetches its own history if needed, or we keep it?)
+             # Dashboard likely needs basic info.
+             if 'raw_klines' in snap_dict:
+                 del snap_dict['raw_klines']
+             
+             data[symbol] = snap_dict
+             
+        try:
+            with open("dashboard_data.json", "w") as f:
+                json.dump(data, f, indent=2, default=str)
+        except Exception as e:
+            logger.error(f"Failed to write dashboard_data.json: {e}")
     
     async def _process_coin(self, symbol: str, snapshot: MarketSnapshot):
         """Tek coin icin sinyal kontrolu - EARLY SIGNAL ENGINE"""

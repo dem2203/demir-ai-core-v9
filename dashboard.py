@@ -4,6 +4,7 @@ import json
 import os
 import time
 import asyncio
+from datetime import datetime, timedelta
 from src.config.settings import Config
 from src.execution.paper_trader import PaperTrader
 from src.core.risk_manager import RiskManager # Yeni
@@ -197,6 +198,7 @@ def fetch_live_market_data():
 def fetch_live_verification(symbol: str = "BTCUSDT") -> dict:
     """Canlı doğrulama verileri - RSI, EMA, Order Book, Funding."""
     import requests
+    # Fallback init
     result = {
         'rsi': None,
         'rsi_status': 'N/A',
@@ -209,7 +211,18 @@ def fetch_live_verification(symbol: str = "BTCUSDT") -> dict:
         'funding_status': 'N/A'
     }
     
+    # Try reading from engine file first (faster & no rate limit)
+    engine_data = load_json("dashboard_data.json")
+    coin_data = engine_data.get('coins', {}).get(symbol, {})
+    if coin_data:
+        # If engine runs, use its data as base
+        result['rsi'] = coin_data.get('rsi')
+        result['trend'] = coin_data.get('trend')
+        if result['rsi']:
+             result['rsi_status'] = 'Normal' # Simplified
+    
     try:
+        # Try API for fresher verification
         # Klines -> RSI, EMA
         resp = requests.get(
             f"https://fapi.binance.com/fapi/v1/klines",
