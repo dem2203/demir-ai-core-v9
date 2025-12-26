@@ -8,8 +8,10 @@ PHASE 400: Early Signal Engine - Leading indicators kullanır.
 """
 import logging
 import asyncio
+import json
+import os
 from datetime import datetime, timedelta
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 
 from src.v10.data_hub import get_data_hub, MarketSnapshot
 from src.v10.enhanced_predictor import get_enhanced_predictor, SignalType
@@ -117,13 +119,6 @@ class V10Engine:
             await self.early_signal_engine.close()
         logger.info("[STOP] V10 Engine stopped")
     
-import json
-import os
-import aiohttp
-from dataclasses import asdict
-
-# ... existing imports ...
-
     async def _scan_cycle(self):
         """Tek bir tarama dongusu"""
         self._cycle_count += 1
@@ -222,13 +217,16 @@ from dataclasses import asdict
         if not hasattr(self, '_last_ta_time'):
             self._last_ta_time = datetime.now() - timedelta(minutes=20)
         
-        if (datetime.now() - self._last_ta_time).total_seconds() >= 15 * 60:
+        if (datetime.now() - self._last_ta_time).total_seconds() >= 60 * 60: # Hourly updates
             try:
-                logger.info("[TA] Sending Technical Analysis...")
-                self.notifier.send_technical_analysis(snapshots)
+                logger.info("[TA] Sending Hourly Analysis...")
                 self._last_ta_time = datetime.now()
+                
+                for s, snapshot in snapshots.items():
+                    if snapshot.is_valid:
+                        await self.notifier.send_live_prediction(s, snapshot)
             except Exception as e:
-                logger.error(f"[ERROR] Technical Analysis: {e}")
+                logger.error(f"Notification error: {e}")
         
         # Performance report (4 saatte bir)
         if (datetime.now() - self._last_performance_report).total_seconds() >= self.PERFORMANCE_REPORT_INTERVAL:

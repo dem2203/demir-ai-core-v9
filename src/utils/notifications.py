@@ -104,20 +104,21 @@ class NotificationManager:
     # 2️⃣ CANLI VERİ TAHMİNİ (17 KAYNAK)
     # =========================================
     
-    async def send_live_prediction(self, symbol: str = "BTCUSDT"):
+    async def send_live_prediction(self, symbol: str = "BTCUSDT", snapshot=None):
         """
         17 kaynaktan toplanan verilerle TAKTİKSEL tahmin gönder.
-        ✅ Hangi kaynaklar GÜÇLÜ sinyal veriyor?
-        ✅ Şimdi giriş yapmalı mı?
-        ✅ Hedefler neler?
-        ✅ Data validation ile mock/fallback tespit
+        Snapshot verilirse onu kullanır (API fetch yapmaz).
         """
         try:
             from src.brain.institutional_aggregator import get_aggregator
             from src.brain.data_validator import get_data_validator
             
-            agg = get_aggregator()
-            snapshot = await agg.get_live_snapshot(symbol)
+            # Eğer snapshot verilmediyse fetch et
+            if snapshot is None:
+                agg = get_aggregator()
+                snapshot = await agg.get_live_snapshot(symbol)
+            
+            # ═══ DATA VALIDATION CHECK ═══
             
             # ═══ DATA VALIDATION CHECK ═══
             validator = get_data_validator()
