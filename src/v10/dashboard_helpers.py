@@ -175,10 +175,10 @@ def fetch_system_health() -> Dict[str, Any]:
         stats['disk_usage'] = psutil.disk_usage('/').percent
         bt = datetime.fromtimestamp(psutil.boot_time())
         stats['boot_time'] = bt.strftime("%Y-%m-%d %H:%M:%S")
-    except ImportError:
-        logger.warning("psutil not installed, using mock/dummy stats")
-        stats['cpu_usage'] = 15
-        stats['ram_usage'] = 45 # Approximate valid values
+    except Exception as e:
+        logger.warning(f"System stats error: {e}")
+        stats['cpu_usage'] = 0
+        stats['ram_usage'] = 0
         
     return stats
 

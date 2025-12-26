@@ -139,7 +139,7 @@ from dataclasses import asdict
             except Exception as e:
                 logger.error(f"[ERROR] {symbol}: {e}")
         
-        # Export data for Dashboard
+        # Export data for Dashboard - REAL DATA ONLY
         try:
             import json
             export_data = {
@@ -149,13 +149,15 @@ from dataclasses import asdict
             
             for s, snapshot in snapshots.items():
                 if snapshot.is_valid:
+                    metrics = self._calculate_real_metrics(snapshot)
                     s_data = {
                         'price': snapshot.price,
                         'volume': snapshot.volume,
                         'change_24h': snapshot.change_24h,
                         'timestamp': datetime.now().timestamp(),
-                        'rsi': 50, 
-                        'trend': 'NEUTRAL'
+                        'rsi': metrics.get('rsi'),
+                        'trend': metrics.get('trend'),
+                        'ema21': metrics.get('ema21')
                     }
                     export_data['coins'][s] = s_data
             
@@ -163,6 +165,52 @@ from dataclasses import asdict
                 json.dump(export_data, f)
         except Exception as e:
             logger.error(f"Dashboard export error: {e}")
+
+    def _calculate_real_metrics(self, snapshot: MarketSnapshot) -> Dict[str, Any]:
+        """Calculate real metrics from snapshot - NO MOCK DATA"""
+        metrics = {
+            'rsi': None,
+            'trend': 'UNKNOWN',
+            'ema21': None
+        }
+        
+        # 1. Use DataHub metrics if available and valid
+        if hasattr(snapshot, 'rsi_1h') and snapshot.rsi_1h > 0:
+            metrics['rsi'] = snapshot.rsi_1h
+        
+        if hasattr(snapshot, 'trend') and snapshot.trend != 'UNKNOWN':
+            metrics['trend'] = snapshot.trend
+            
+        # 2. If missing, calculate from raw_klines
+        if metrics['rsi'] is None and hasattr(snapshot, 'raw_klines') and snapshot.raw_klines:
+            try:
+                closes = [float(k[4]) for k in snapshot.raw_klines]
+                if len(closes) > 14:
+                    metrics['rsi'] = self._calc_rsi(closes)
+                    
+                    # Trend via EMA21
+                    if len(closes) > 21:
+                        ema_values = self._calc_ema(closes, 21)
+                        if ema_values:
+                            ema21 = ema_values[-1]
+                            current = closes[-1]
+                            metrics['ema21'] = ema21
+                            metrics['trend'] = "UP" if current > ema21 else "DOWN"
+            except Exception:
+                pass
+                
+        return metrics
+
+    def _calc_ema(self, data: list, period: int) -> list:
+        if len(data) < period: return []
+        c = 2.0 / (period + 1)
+        # Start with SMA
+        current_ema = sum(data[:period]) / period
+        ema_values = [current_ema]
+        for value in data[period:]:
+            current_ema = (c * value) + ((1 - c) * current_ema)
+            ema_values.append(current_ema)
+        return ema_values
         
         # SAVE DASHBOARD DATA
         try:
