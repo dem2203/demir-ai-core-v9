@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-DEMIR AI - API Fallback System
-API hataları için yedek veri kaynakları.
+DEMIR AI - API Fallback System (FAIL FAST MODE)
+API hataları için yedek CANLI veri kaynakları.
+
+⚠️ FAIL FAST: Tüm kaynaklar başarısız olursa None döner!
+   Cache veya hardcoded değer KULLANILMAZ.
+   Sinyal üretimi bu verilere bağlıysa DURDURULMALIDIR.
 
 PHASE 113: API Fallbacks
-- Multiple data source fallbacks
+- Multiple data source fallbacks (sadece CANLI kaynaklar)
 - Retry logic with exponential backoff
 - Error recovery
 - Rate limit handling
@@ -22,9 +26,10 @@ logger = logging.getLogger("API_FALLBACK")
 
 class APIFallbackSystem:
     """
-    API Yedekleme Sistemi
+    API Yedekleme Sistemi (FAIL FAST MODE)
     
-    Birincil API başarısız olduğunda yedek kaynaklara geçer.
+    Birincil API başarısız olduğunda yedek CANLI kaynaklara geçer.
+    Tüm kaynaklar başarısız = None döner (cache/hardcoded YOK!)
     """
     
     # Veri kaynakları (öncelik sırasına göre)

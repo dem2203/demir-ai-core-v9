@@ -59,7 +59,19 @@ logger = logging.getLogger("MARKET_ANALYZER_PRO")
 class MarketAnalyzer:
     """
     DEMIR AI V20.0 - INSTITUTIONAL STRATEGIST
+    
+    ⚠️ DEPRECATED: Bu sistem pasif!
+    ================================
+    Yeni sistem: src/v10/early_signal_engine.py
+    
+    Eski LSTM/RL tabanlı sistem artık kullanılmıyor.
+    Early Signal Engine (leading indicators) aktif.
+    
+    Bu dosya geriye uyumluluk için korunuyor.
     """
+    
+    # DEPRECATED FLAG
+    _DEPRECATED = True
     
     LSTM_DIR = "src/brain/models/storage"
     RL_MODEL_PATH = "src/brain/models/storage/rl_agent_v2_recurrent"
@@ -315,9 +327,16 @@ class MarketAnalyzer:
         df_1h = mtf_data['1h']  # Ana analiz 1H üzerinden döner
         last_row = df_1h.iloc[-1]
 
-        # 2. MAKRO VERİ & FÜZYON (using safe helper function)
+        # 2. MAKRO VERİ & FÜZYON (FAIL FAST - None dönebilir)
         from src.brain.macro_helpers import fetch_and_merge_macro
-        df = await fetch_and_merge_macro(self.macro, df_1h)
+        df_merged = await fetch_and_merge_macro(self.macro, df_1h)
+        
+        # FAIL FAST: Makro veri yoksa crypto-only devam et ama uyar
+        if df_merged is None:
+            logger.warning("⚠️ FAIL FAST: Makro veri yok, crypto-only analiz yapılıyor")
+            df = df_1h  # Sadece crypto data ile devam
+        else:
+            df = df_merged
         
         # 3. PİYASA REJİMİ
         current_regime = self.regime_classifier.identify_regime(df)
@@ -576,26 +595,19 @@ class MarketAnalyzer:
                 logger.info(f"🧠 AI DECISION: {ai_decision} (Confidence: {ai_confidence:.1f}%) | State dim: {state_vector.shape}")
                 
             except Exception as e:
-                logger.error(f"RL prediction failed: {e}, using Secondary Model")
-                # Fallback to LSTM-only if RL fails
-                if lstm_prob > 0.6:
-                    ai_decision = "BUY"
-                    ai_confidence = (lstm_prob - 0.5) * 200
-                    reason = "Secondary: LSTM Bullish"
-                elif lstm_prob < 0.4:
-                    ai_decision = "SELL"
-                    ai_confidence = (0.5 - lstm_prob) * 200
-                    reason = "Secondary: LSTM Bearish"
+                # 🛑 FAIL FAST: RL prediction başarısız, FALLBACK YOK!
+                logger.error(f"❌ FAIL FAST: RL prediction failed: {e}")
+                logger.warning("⚠️ Sinyal ÜRETİLMEDİ - RL model çalışmadı, LSTM fallback DEVRE DIŞI")
+                ai_decision = "NEUTRAL"
+                ai_confidence = 0.0
+                reason = "FAIL FAST: RL model error - no signal"
         else:
-            # No RL agent - use LSTM as fallback
-            if lstm_prob > 0.6:
-                ai_decision = "BUY"
-                ai_confidence = (lstm_prob - 0.5) * 200
-                reason = "LSTM Only: Bullish"
-            elif lstm_prob < 0.4:
-                ai_decision = "SELL"
-                ai_confidence = (0.5 - lstm_prob) * 200
-                reason = "LSTM Only: Bearish"
+            # 🛑 FAIL FAST: RL agent yok, sinyal ÜRETİLMİYOR!
+            logger.warning("❌ FAIL FAST: RL agent yüklü değil veya trained değil")
+            logger.warning("⚠️ Sinyal ÜRETİLMEDİ - LSTM fallback DEVRE DIŞI")
+            ai_decision = "NEUTRAL" 
+            ai_confidence = 0.0
+            reason = "FAIL FAST: No RL model - no signal"
 
         # --- DASHBOARD VERİSİ ---
         

@@ -56,6 +56,9 @@ from src.thinking_brain.instant_alert import get_instant_alert_system
 # PHASE 300: INSTITUTIONAL AGGREGATOR - 17 Sources + 13 Triggers
 from src.brain.institutional_aggregator import get_aggregator
 
+# PHASE 400: EARLY SIGNAL ENGINE - Leading Indicators (YENİ SİSTEM)
+from src.v10.early_signal_engine import get_early_signal_engine, EarlySignal
+
 logger = logging.getLogger("DEMIR_AI_CORE_ENGINE")
 
 class BotEngine:
@@ -131,7 +134,12 @@ class BotEngine:
         # 14. PHASE 129: Continuous Monitor - 4 coin, WebSocket, anti-spam
         self.continuous_monitor = None  # Lazy init after notifier is ready
         
+        # 15. PHASE 400: EARLY SIGNAL ENGINE - Leading Indicators (YENİ ANA SİSTEM)
+        self.early_signal_engine = None  # Lazy async init
+        self._use_early_signal = True  # Yeni sistemi kullan
+        
         logger.info("✅ All Sub-systems Initialized Successfully.")
+        logger.info("🚀 EARLY SIGNAL ENGINE: ACTIVE (Leading Indicators)")
 
     async def start(self):
         """
@@ -816,15 +824,91 @@ class BotEngine:
 
         symbol = ticker_data[0]['symbol']
         
+        # ==========================================
+        # PHASE 400: EARLY SIGNAL ENGINE (YENİ SİSTEM)
+        # ==========================================
+        if self._use_early_signal:
+            try:
+                # Lazy init
+                if self.early_signal_engine is None:
+                    self.early_signal_engine = await get_early_signal_engine()
+                
+                # Early Signal analizi
+                early_signal = await self.early_signal_engine.analyze(symbol)
+                
+                if early_signal:
+                    # Dashboard data oluştur
+                    snapshot = {
+                        'symbol': symbol,
+                        'price': early_signal.entry_zone[0],
+                        'ai_decision': early_signal.action,
+                        'ai_confidence': early_signal.confidence,
+                        'reason': early_signal.reasoning,
+                        'stop_loss': early_signal.stop_loss,
+                        'take_profit': early_signal.take_profit,
+                        'risk_reward': early_signal.risk_reward,
+                        'leading_indicators': early_signal.leading_signal.to_dict(),
+                        'signal_type': 'EARLY_SIGNAL',
+                        'timestamp': datetime.now().isoformat()
+                    }
+                    
+                    # Dashboard'a kaydet
+                    try:
+                        dashboard_path = "dashboard_data.json"
+                        if os.path.exists(dashboard_path):
+                            with open(dashboard_path, 'r') as f:
+                                db = json.load(f)
+                        else:
+                            db = {}
+                        db[symbol] = snapshot
+                        with open(dashboard_path, 'w') as f:
+                            json.dump(db, f, indent=2, default=str)
+                    except Exception as e:
+                        logger.warning(f"Dashboard save error: {e}")
+                    
+                    # Sinyal log
+                    direction = early_signal.leading_signal.direction.value
+                    logger.info(
+                        f"🎯 EARLY SIGNAL: {symbol} | {early_signal.action} | "
+                        f"Conf: {early_signal.confidence:.0f}% | {direction} | "
+                        f"RR: {early_signal.risk_reward:.1f}"
+                    )
+                    
+                    # PHASE 208: ThinkingBrain entegrasyonu
+                    signal = {
+                        'symbol': symbol,
+                        'action': early_signal.action,
+                        'confidence': early_signal.confidence,
+                        'stop_loss': early_signal.stop_loss,
+                        'take_profit': early_signal.take_profit
+                    }
+                    await self._handle_early_signal(symbol, early_signal, signal)
+                    return
+                    
+            except Exception as e:
+                logger.error(f"❌ Early Signal Engine error: {e}")
+                # Fallback to old system is disabled
+                return
+        
+        # ==========================================
+        # DEPRECATED: ESKİ SİSTEM (MarketAnalyzer)
+        # ==========================================
+        # Bu kod sadece _use_early_signal=False ise çalışır
+        
         # --- BEYİN KATMANI (Brain Layer) ---
         result = await self.analyzer.analyze_market(symbol, ticker_data)
         
-        # FIX: Handle case where analyze_market returns None
+        # FAIL FAST: analyze_market None döndüyse sinyal üretilmedi
         if result is None:
-            logger.warning(f"analyze_market returned None for {symbol}")
+            logger.warning(f"⚠️ FAIL FAST: {symbol} - analyze_market returned None, sinyal yok")
             return
         
         signal, snapshot = result
+        
+        # FAIL FAST: Signal veya snapshot None ise atla
+        if signal is None or snapshot is None:
+            logger.warning(f"⚠️ FAIL FAST: {symbol} - Eksik veri, sinyal üretilmedi")
+            return
         
         # PHASE 32: Inject derivatives and sentiment data into snapshot for early_warning
         if snapshot:
@@ -899,12 +983,86 @@ class BotEngine:
         # Advisory modunda olduğumuz için sadece 'Paper Trade' yapıyoruz ve bildiriyoruz.
         # Gerçek borsaya emir GİTMİYOR.
         trade_executed = self.paper_trader.execute_trade(signal)
-        
         if trade_executed:
             # await self.notifier.send_signal(signal, snapshot)  <-- DISABLED LEGACY
             logger.info(f"✅ SIGNAL BROADCASTED (Internal): {signal['side']} {symbol}")
         else:
             logger.info(f"⏸️ SIGNAL SKIPPED: {symbol} (Already in position or Insufficient Funds)")
+
+    async def _handle_early_signal(self, symbol: str, early_signal: 'EarlySignal', signal: Dict):
+        """
+        Early Signal işleme.
+        ThinkingBrain ile entegre eder ve bildirim gönderir.
+        """
+        try:
+            # PHASE 208: ThinkingBrain ile analiz et
+            thinking_brain = get_thinking_brain()
+            
+            # Leading indicators'ı context olarak hazırla
+            context = {
+                'symbol': symbol,
+                'action': early_signal.action,
+                'confidence': early_signal.confidence,
+                'entry_zone': early_signal.entry_zone,
+                'stop_loss': early_signal.stop_loss,
+                'take_profit': early_signal.take_profit,
+                'risk_reward': early_signal.risk_reward,
+                'leading_indicators': {
+                    ind.name: {
+                        'value': ind.value,
+                        'direction': ind.direction.value
+                    } for ind in early_signal.leading_signal.indicators
+                },
+                'reasoning': early_signal.reasoning
+            }
+            
+            # ThinkingBrain analizi
+            analysis = await thinking_brain.think(
+                symbol=symbol,
+                price=early_signal.entry_zone[0],
+                change_pct=0,
+                extra_context=context
+            )
+            
+            # Sinyal yeterince güçlü mü?
+            if early_signal.confidence >= 60 and early_signal.action != 'HOLD':
+                # Telegram bildirimi
+                message = self._format_early_signal_message(symbol, early_signal, analysis)
+                await self.notifier.send_message_raw(message)
+                logger.info(f"📣 Early Signal sent to Telegram: {symbol} {early_signal.action}")
+            else:
+                logger.debug(f"📊 Early Signal logged (low confidence): {symbol}")
+                
+        except Exception as e:
+            logger.error(f"Early signal handling error: {e}")
+    
+    def _format_early_signal_message(self, symbol: str, early_signal: 'EarlySignal', analysis: Optional[Dict]) -> str:
+        """
+        Early Signal için Telegram mesajı formatla.
+        """
+        emoji = "🟢" if early_signal.action == "BUY" else "🔴" if early_signal.action == "SELL" else "⚪"
+        action_tr = "AL" if early_signal.action == "BUY" else "SAT" if early_signal.action == "SELL" else "BEKLE"
+        
+        msg = f"""{emoji} **EARLY SIGNAL: {symbol}**
+
+📊 **Sinyal:** {action_tr}
+💪 **Güven:** {early_signal.confidence:.0f}%
+📈 **R/R:** {early_signal.risk_reward:.1f}x
+
+**Seviyeleri:**
+• Giriş: ${early_signal.entry_zone[0]:,.2f} - ${early_signal.entry_zone[1]:,.2f}
+• Stop Loss: ${early_signal.stop_loss:,.2f}
+• Take Profit: ${early_signal.take_profit:,.2f}
+
+**Öncü Göstergeler:**
+{early_signal.reasoning}
+"""
+        
+        # ThinkingBrain analizi varsa ekle
+        if analysis and analysis.get('summary'):
+            msg += f"\n**🧠 AI Analiz:**\n{analysis['summary'][:300]}..."
+        
+        return msg
 
     async def stop(self):
         """Sistemi güvenli kapatır."""

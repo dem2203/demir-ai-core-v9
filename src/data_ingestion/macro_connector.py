@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-DEMIR AI - Macro Connector (yfinance-free version)
+DEMIR AI - Macro Connector (FAIL FAST MODE)
 FRED API + CoinGecko + Binance for all market data.
 NO YFINANCE - Production safe.
+
+⚠️ FAIL FAST: Veri alınamazsa None döner, HARDCODED DEĞER YOK!
 """
 import logging
 import pandas as pd
@@ -117,12 +119,13 @@ class MacroConnector:
         if gold_value and gold_value > 1000:  # Valid gold price range
             result['gold'] = gold_value
             result['gold_change'] = 0  # FRED doesn't give 24h change easily
-            result['gold_btc_ratio'] = gold_value / btc_price if btc_price > 0 else 0.02
+            result['gold_btc_ratio'] = gold_value / btc_price if btc_price > 0 else None
         else:
-            # Fallback - approximate gold price
-            result['gold'] = 2650  # Approximate current gold price
-            result['gold_change'] = 0
-            result['gold_btc_ratio'] = 2650 / btc_price if btc_price > 0 else 0.02
+            # FAIL FAST: Veri yok, hardcoded değer KULLANILMIYOR
+            logger.warning("❌ FAIL FAST: Gold verisi alınamadı, veri YOK")
+            result['gold'] = None
+            result['gold_change'] = None
+            result['gold_btc_ratio'] = None
         
         # 5. Nasdaq - Use FRED NASDAQCOM series
         nasdaq_value, _ = self._get_series_latest("NASDAQCOM")
@@ -130,15 +133,19 @@ class MacroConnector:
             result['nasdaq'] = nasdaq_value
             result['nasdaq_change'] = 0
         else:
-            result['nasdaq'] = 20000  # Approximate
-            result['nasdaq_change'] = 0
+            # FAIL FAST: Veri yok, hardcoded değer KULLANILMIYOR
+            logger.warning("❌ FAIL FAST: Nasdaq verisi alınamadı, veri YOK")
+            result['nasdaq'] = None
+            result['nasdaq_change'] = None
         
         # 6. S&P 500 proxy - Use FRED SP500 series
         sp500_value, _ = self._get_series_latest("SP500")
         if sp500_value:
-            result['sp500_btc_ratio'] = sp500_value / (btc_price / 1000) if btc_price > 0 else 5.0
+            result['sp500_btc_ratio'] = sp500_value / (btc_price / 1000) if btc_price > 0 else None
         else:
-            result['sp500_btc_ratio'] = 5.0
+            # FAIL FAST: Veri yok, hardcoded değer KULLANILMIYOR
+            logger.warning("❌ FAIL FAST: SP500 verisi alınamadı, veri YOK")
+            result['sp500_btc_ratio'] = None
         
         # Store errors in result for debug
         if errors:

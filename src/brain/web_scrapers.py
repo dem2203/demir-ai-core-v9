@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-DEMIR AI - WEB SCRAPER COLLECTION
-=================================
+DEMIR AI - WEB SCRAPER COLLECTION (FAIL FAST MODE)
+====================================================
 API Key gerektiren verileri web scraping ile toplayan modül.
 Playwright kullanarak gerçek tarayıcı ile veri kazır.
 
-⚠️ RAILWAY WARNING: Playwright is DISABLED on Railway due to thread limits.
-   All scraper methods return fallback data on Railway.
+⚠️ FAIL FAST: Veri alınamazsa None döner, FALLBACK YOK!
+   Railway'de veya Playwright yoksa tüm metodlar None döner.
+   Sinyal üretimi bu verilere bağlıysa DURDURULMALIDIR.
 
 Hedef Siteler:
 1. CoinGlass - Exchange Flow, Options
@@ -96,19 +97,23 @@ class WebScraperManager:
     # 1. EXCHANGE FLOW (CoinGlass)
     # =========================================
     
-    async def scrape_exchange_flow(self, symbol: str = "BTC") -> Dict:
+    async def scrape_exchange_flow(self, symbol: str = "BTC") -> Optional[Dict]:
         """
         CoinGlass'tan exchange inflow/outflow verisi kazı.
         URL: https://www.coinglass.com/exchange-flow
+        
+        FAIL FAST: Veri alınamazsa None döner.
         """
-        # Railway fallback - return neutral data
+        # FAIL FAST: Disabled ise None döndür, fallback YOK
         if self._disabled:
-            return {'inflow': 0, 'outflow': 0, 'netflow': 0, 'source': 'fallback'}
+            logger.warning("❌ FAIL FAST: Exchange flow - Playwright disabled, veri YOK")
+            return None
             
         try:
             page = await self._new_page()
             if not page:
-                return {'inflow': 0, 'outflow': 0, 'netflow': 0, 'source': 'fallback'}
+                logger.error("❌ FAIL FAST: Exchange flow - Page oluşturulamadı")
+                return None
                 
             await page.goto(f'https://www.coinglass.com/exchange-flow/{symbol}', wait_until='networkidle', timeout=30000)
             
@@ -158,25 +163,29 @@ class WebScraperManager:
             return data
             
         except Exception as e:
-            logger.warning(f"Exchange flow scrape failed: {e}")
-            return {'inflow': 0, 'outflow': 0, 'netflow': 0}
+            logger.error(f"❌ FAIL FAST: Exchange flow scrape failed: {e}")
+            return None
 
     # =========================================
     # 2. STABLECOIN SUPPLY (DefiLlama)
     # =========================================
     
-    async def scrape_stablecoin_supply(self) -> Dict:
+    async def scrape_stablecoin_supply(self) -> Optional[Dict]:
         """
         DefiLlama'dan stablecoin supply değişikliklerini kazı.
         URL: https://defillama.com/stablecoins
+        
+        FAIL FAST: Veri alınamazsa None döner.
         """
         if self._disabled:
-            return {'usdt_change': 0, 'usdc_change': 0, 'total_supply': 0, 'source': 'fallback'}
+            logger.warning("❌ FAIL FAST: Stablecoin supply - Playwright disabled, veri YOK")
+            return None
             
         try:
             page = await self._new_page()
             if not page:
-                return {'usdt_change': 0, 'usdc_change': 0, 'total_supply': 0, 'source': 'fallback'}
+                logger.error("❌ FAIL FAST: Stablecoin supply - Page oluşturulamadı")
+                return None
             await page.goto('https://defillama.com/stablecoins', wait_until='networkidle', timeout=30000)
             
             await asyncio.sleep(3)
@@ -227,25 +236,29 @@ class WebScraperManager:
             return data
             
         except Exception as e:
-            logger.warning(f"Stablecoin scrape failed: {e}")
-            return {'usdt_change': 0, 'usdc_change': 0, 'total_supply': 0}
+            logger.error(f"❌ FAIL FAST: Stablecoin scrape failed: {e}")
+            return None
 
     # =========================================
     # 3. OPTIONS DATA (CoinGlass)
     # =========================================
     
-    async def scrape_options_data(self, symbol: str = "BTC") -> Dict:
+    async def scrape_options_data(self, symbol: str = "BTC") -> Optional[Dict]:
         """
         CoinGlass'tan options put/call ratio kazı.
         URL: https://www.coinglass.com/options
+        
+        FAIL FAST: Veri alınamazsa None döner.
         """
         if self._disabled:
-            return {'put_call': 1.0, 'max_pain': 0, 'source': 'fallback'}
+            logger.warning("❌ FAIL FAST: Options data - Playwright disabled, veri YOK")
+            return None
             
         try:
             page = await self._new_page()
             if not page:
-                return {'put_call': 1.0, 'max_pain': 0, 'source': 'fallback'}
+                logger.error("❌ FAIL FAST: Options data - Page oluşturulamadı")
+                return None
             await page.goto(f'https://www.coinglass.com/options/{symbol}', wait_until='networkidle', timeout=30000)
             
             await asyncio.sleep(2)
@@ -279,25 +292,29 @@ class WebScraperManager:
             return data
             
         except Exception as e:
-            logger.warning(f"Options scrape failed: {e}")
-            return {'put_call': 1.0, 'max_pain': 0}
+            logger.error(f"❌ FAIL FAST: Options scrape failed: {e}")
+            return None
 
     # =========================================
     # 4. CME GAP (TradingView Widget)
     # =========================================
     
-    async def scrape_cme_gap(self) -> Dict:
+    async def scrape_cme_gap(self) -> Optional[Dict]:
         """
         CME BTC Futures gap analizi.
         Cuma kapanış vs Pazartesi açılış karşılaştırması.
+        
+        FAIL FAST: Veri alınamazsa None döner.
         """
         if self._disabled:
-            return {'gap_price': 0, 'filled': True, 'direction': '', 'source': 'fallback'}
+            logger.warning("❌ FAIL FAST: CME gap - Playwright disabled, veri YOK")
+            return None
             
         try:
             page = await self._new_page()
             if not page:
-                return {'gap_price': 0, 'filled': True, 'direction': '', 'source': 'fallback'}
+                logger.error("❌ FAIL FAST: CME gap - Page oluşturulamadı")
+                return None
             # CME BTC verisi için Binance Futures kullan (CME direkt erişilemez)
             await page.goto('https://www.binance.com/en/futures/BTCUSDT', wait_until='networkidle', timeout=30000)
             
@@ -325,25 +342,29 @@ class WebScraperManager:
             return data
             
         except Exception as e:
-            logger.warning(f"CME gap scrape failed: {e}")
-            return {'gap_price': 0, 'filled': True, 'direction': ''}
+            logger.error(f"❌ FAIL FAST: CME gap scrape failed: {e}")
+            return None
 
     # =========================================
     # 5. ETF FLOW (SoSoValue)
     # =========================================
     
-    async def scrape_etf_flow(self) -> Dict:
+    async def scrape_etf_flow(self) -> Optional[Dict]:
         """
         SoSoValue'dan Bitcoin ETF akış verisi kazı.
         URL: https://sosovalue.xyz/assets/etf/us-btc-spot
+        
+        FAIL FAST: Veri alınamazsa None döner.
         """
         if self._disabled:
-            return {'daily_flow': 0, 'total_aum': 0, 'gbtc_premium': 0, 'source': 'fallback'}
+            logger.warning("❌ FAIL FAST: ETF flow - Playwright disabled, veri YOK")
+            return None
             
         try:
             page = await self._new_page()
             if not page:
-                return {'daily_flow': 0, 'total_aum': 0, 'gbtc_premium': 0, 'source': 'fallback'}
+                logger.error("❌ FAIL FAST: ETF flow - Page oluşturulamadı")
+                return None
             await page.goto('https://sosovalue.xyz/assets/etf/us-btc-spot', wait_until='networkidle', timeout=30000)
             
             await asyncio.sleep(3)
@@ -381,25 +402,29 @@ class WebScraperManager:
             return data
             
         except Exception as e:
-            logger.warning(f"ETF flow scrape failed: {e}")
-            return {'daily_flow': 0, 'total_aum': 0, 'gbtc_premium': 0}
+            logger.error(f"❌ FAIL FAST: ETF flow scrape failed: {e}")
+            return None
 
     # =========================================
     # 6. NETWORK METRICS (Blockchain.com)
     # =========================================
     
-    async def scrape_network_metrics(self) -> Dict:
+    async def scrape_network_metrics(self) -> Optional[Dict]:
         """
         Blockchain.com'dan ağ metrikleri kazı.
         URL: https://www.blockchain.com/explorer/charts
+        
+        FAIL FAST: Veri alınamazsa None döner.
         """
         if self._disabled:
-            return {'hash_rate': 0, 'active_addresses': 0, 'hash_change': 0, 'source': 'fallback'}
+            logger.warning("❌ FAIL FAST: Network metrics - Playwright disabled, veri YOK")
+            return None
             
         try:
             page = await self._new_page()
             if not page:
-                return {'hash_rate': 0, 'active_addresses': 0, 'hash_change': 0, 'source': 'fallback'}
+                logger.error("❌ FAIL FAST: Network metrics - Page oluşturulamadı")
+                return None
             await page.goto('https://www.blockchain.com/explorer/charts/hash-rate', wait_until='networkidle', timeout=30000)
             
             await asyncio.sleep(2)
@@ -437,24 +462,28 @@ class WebScraperManager:
             return data
             
         except Exception as e:
-            logger.warning(f"Network metrics scrape failed: {e}")
-            return {'hash_rate': 0, 'active_addresses': 0, 'hash_change': 0}
+            logger.error(f"❌ FAIL FAST: Network metrics scrape failed: {e}")
+            return None
 
     # =========================================
     # 7. GRAYSCALE PREMIUM
     # =========================================
     
-    async def scrape_grayscale_premium(self) -> Dict:
+    async def scrape_grayscale_premium(self) -> Optional[Dict]:
         """
         Grayscale GBTC premium/discount kazı.
+        
+        FAIL FAST: Veri alınamazsa None döner.
         """
         if self._disabled:
-            return {'premium': 0, 'source': 'fallback'}
+            logger.warning("❌ FAIL FAST: Grayscale premium - Playwright disabled, veri YOK")
+            return None
             
         try:
             page = await self._new_page()
             if not page:
-                return {'premium': 0, 'source': 'fallback'}
+                logger.error("❌ FAIL FAST: Grayscale premium - Page oluşturulamadı")
+                return None
             await page.goto('https://ycharts.com/companies/GBTC/discount_or_premium_to_nav', wait_until='networkidle', timeout=30000)
             
             await asyncio.sleep(2)
@@ -482,8 +511,8 @@ class WebScraperManager:
             return data
             
         except Exception as e:
-            logger.warning(f"Grayscale scrape failed: {e}")
-            return {'premium': 0}
+            logger.error(f"❌ FAIL FAST: Grayscale scrape failed: {e}")
+            return None
 
 
 # =========================================

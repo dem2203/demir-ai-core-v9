@@ -595,16 +595,27 @@ if page == "📡 Live Market Intelligence":
         c2.metric("😨 VIX Index", f"{vix:.2f}" if vix > 0 else "N/A")
         c3.metric(f"₿ {display_symbol}", f"${price:,.2f}" if price > 0 else "N/A")
         
-        # AI Signal - Türkçe ve coin ismi belirtilmiş
+        # AI Signal - Türkçe ve coin ismi belirtilmiş (FAIL FAST destekli)
         dec = main_info.get('ai_decision', 'NEUTRAL')
         conf = main_info.get('ai_confidence', 0)
         
-        signal_tr = "AL" if dec == "BUY" else "SAT" if dec == "SELL" else "BEKLE"
-        delta_color = "off"
-        if dec == "BUY": delta_color = "normal"
-        elif dec == "SELL": delta_color = "inverse"
+        # FAIL FAST: Confidence 0 ise model yok veya veri yok
+        if conf == 0:
+            signal_tr = "⚠️ VERİ YOK"
+            delta_color = "off"
+            conf_text = "Model Yok"
+        else:
+            signal_tr = "AL" if dec == "BUY" else "SAT" if dec == "SELL" else "BEKLE"
+            delta_color = "off"
+            if dec == "BUY": delta_color = "normal"
+            elif dec == "SELL": delta_color = "inverse"
+            conf_text = f"{conf:.1f}% Güven"
         
-        c4.metric(f"🧠 {display_symbol} Sinyal", signal_tr, f"{conf:.1f}% Güven", delta_color=delta_color)
+        c4.metric(f"🧠 {display_symbol} Sinyal", signal_tr, conf_text, delta_color=delta_color)
+        
+        # FAIL FAST Banner - Model yok veya veri yok uyarısı
+        if conf == 0:
+            st.error("⚠️ **FAIL FAST MOD**: RL model yüklü değil veya veri alınamadı. Sinyal üretilmiyor.")
         
         # ======================================
         # DATA VALIDATION STATUS
@@ -630,6 +641,68 @@ if page == "📡 Live Market Intelligence":
                         st.text(f"{status} {r.metric}: {r.our_value:.2f} vs {r.reference_value:.2f} ({r.reference_source})")
         except Exception as e:
             st.caption(f"_Veri doğrulama geçici olarak kullanılamıyor_")
+        
+        # ======================================
+        # LEADING INDICATORS (EARLY SIGNAL ENGINE)
+        # ======================================
+        leading_data = main_info.get('leading_indicators', {})
+        if leading_data and main_info.get('signal_type') == 'EARLY_SIGNAL':
+            st.markdown("---")
+            st.markdown("### 🎯 Öncü Göstergeler (Early Signal)")
+            st.caption("_Hareket BAŞLAMADAN ÖNCE sinyal veren göstergeler_")
+            
+            lead_cols = st.columns(5)
+            indicators = leading_data.get('indicators', {})
+            
+            # Whale Accumulation
+            whale = indicators.get('whale', 0)
+            lead_cols[0].metric(
+                "🐋 Whale",
+                f"{whale:+.0f}" if whale != 0 else "N/A",
+                "Bullish" if whale > 15 else "Bearish" if whale < -15 else "Neutral"
+            )
+            
+            # Order Book
+            orderbook = indicators.get('orderbook', 0)
+            lead_cols[1].metric(
+                "📖 Order Book",
+                f"{orderbook:+.0f}" if orderbook != 0 else "N/A",
+                "Alım Ağır" if orderbook > 15 else "Satım Ağır" if orderbook < -15 else "Dengeli"
+            )
+            
+            # OI Divergence
+            oi_div = indicators.get('oi_divergence', 0)
+            lead_cols[2].metric(
+                "📊 OI Divergence",
+                f"{oi_div:+.0f}" if oi_div != 0 else "N/A",
+                "Hidden Long" if oi_div > 10 else "Hidden Short" if oi_div < -10 else "Normal"
+            )
+            
+            # Funding
+            funding = indicators.get('funding', 0)
+            lead_cols[3].metric(
+                "💰 Funding",
+                f"{funding:+.0f}" if funding != 0 else "N/A",
+                "Squeeze Risk" if abs(funding) > 20 else "Normal"
+            )
+            
+            # Volume Precursor
+            volume = indicators.get('volume', 0)
+            lead_cols[4].metric(
+                "📈 Volume",
+                f"{volume:+.0f}" if volume != 0 else "N/A",
+                "Birikim" if volume != 0 else "Normal"
+            )
+            
+            # Sinyal özeti
+            direction = leading_data.get('direction', 'NEUTRAL')
+            strength = leading_data.get('strength', 0)
+            if 'BULLISH' in direction:
+                st.success(f"🟢 **{direction}** | Güç: {strength:.0f}%")
+            elif 'BEARISH' in direction:
+                st.error(f"🔴 **{direction}** | Güç: {strength:.0f}%")
+            else:
+                st.info(f"⚪ **{direction}** | Güç: {strength:.0f}%")
         
         # ======================================
         # MARKET CORRELATIONS & DERIVATIVES (DXY/VIX'in hemen altında)

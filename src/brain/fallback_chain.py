@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-DEMIR AI - MULTI-SOURCE FALLBACK CHAIN
-=======================================
-Birincil kaynak başarısız olursa alternatif kaynaklara geç.
-Her veri için en az 2-3 alternatif kaynak sağlar.
+DEMIR AI - MULTI-SOURCE FALLBACK CHAIN (FAIL FAST MODE)
+=========================================================
+Birincil kaynak başarısız olursa alternatif API kaynaklara geç.
+Her veri için en az 2-3 alternatif CANLI kaynak sağlar.
 
-Zincir: Primary API → Backup API → Web Scraping → Cached data
+⚠️ FAIL FAST: Cache fallback KALDIRILDI!
+   Tüm kaynaklar başarısız olursa FAILED döner, eski cache KULLANILMAZ.
+   Sinyal üretimi bu verilere bağlıysa DURDURULMALIDIR.
+
+Zincir: Primary API → Backup API → FAILED (cache yok!)
 
 API KEY GEREKMİYOR - Tüm public kaynaklar!
 """
@@ -32,17 +36,20 @@ class DataResult:
 
 class FallbackChain:
     """
-    Multi-Source Fallback Chain
+    Multi-Source Fallback Chain (FAIL FAST MODE)
     
-    Her veri için birden fazla kaynak tanımlar.
+    Her veri için birden fazla CANLI kaynak tanımlar.
     Birincil başarısız olursa otomatik olarak yedek kaynağa geçer.
+    
+    ⚠️ FAIL FAST: Cache fallback KULLANILMIYOR!
+       Tüm kaynaklar başarısız = FAILED (eski veri dönmez)
     """
     
     def __init__(self):
         self._session: Optional[aiohttp.ClientSession] = None
-        self._cache: Dict[str, DataResult] = {}
-        self._cache_ttl = 300  # 5 dakika (son çare olarak kullanılır)
-        logger.info("🔄 Multi-Source Fallback Chain initialized")
+        self._cache: Dict[str, DataResult] = {}  # Sadece başarılı sonuçları saklar (fallback için değil)
+        # self._cache_ttl = 300  # KALDIRILDI - Cache fallback KULLANILMIYOR
+        logger.info("🔄 Multi-Source Fallback Chain initialized (FAIL FAST MODE - no cache fallback)")
     
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -75,7 +82,7 @@ class FallbackChain:
                     result.quality = "REAL" if sources.index((source_name, fetch_func)) == 0 else "BACKUP"
                     result.is_live = True
                     
-                    # Cache it
+                    # Cache it (sadece loglama için, fallback değil)
                     self._cache[key] = result
                     logger.debug(f"✅ {key} from {source_name}: {data}")
                     return result
@@ -83,18 +90,11 @@ class FallbackChain:
                 logger.debug(f"⚠️ {key} failed from {source_name}: {e}")
                 continue
         
-        # Tüm kaynaklar başarısız - cache'e bak
-        if key in self._cache:
-            cached = self._cache[key]
-            age = (datetime.now() - cached.timestamp).total_seconds()
-            if age < self._cache_ttl:
-                cached.quality = "CACHED"
-                cached.is_live = False
-                logger.info(f"📦 {key} from cache ({age:.0f}s old)")
-                return cached
-        
-        result.error = "All sources failed"
+        # 🛑 FAIL FAST: Tüm kaynaklar başarısız - CACHE KULLANILMIYOR!
+        logger.error(f"❌ FAIL FAST: {key} - tüm kaynaklar başarısız, veri YOK")
+        result.error = "All sources failed - NO CACHE FALLBACK"
         result.quality = "FAILED"
+        result.is_live = False
         return result
     
     # =========================================

@@ -8,7 +8,10 @@ logger = logging.getLogger("SENTIMENT_ANALYZER")
 
 class SentimentAnalyzer:
     """
-    SENTIMENT ANALYSIS - Market Psychology Monitor
+    SENTIMENT ANALYSIS - Market Psychology Monitor (FAIL FAST MODE)
+    
+    ⚠️ FAIL FAST: Veri alınamazsa None döner, NEUTRAL FALLBACK YOK!
+       Sinyal üretimi sentiment verisine bağlıysa DURDURULMALIDIR.
     
     Data Sources:
     1. Fear & Greed Index (Alternative.me) - Free API
@@ -17,6 +20,7 @@ class SentimentAnalyzer:
     Outputs composite sentiment score (-1 to 1):
     - Negative: Fear, panic, bearish posts
     - Positive: Greed, euphoria, bullish posts
+    - None: Data unavailable (FAIL FAST)
     """
     
     def __init__(self):
@@ -61,6 +65,12 @@ class SentimentAnalyzer:
         
         # Fetch new sentiment
         fear_greed = self._get_fear_greed()
+        
+        # FAIL FAST: Fear & Greed alınamazsa None döndür
+        if fear_greed is None:
+            logger.warning("❌ FAIL FAST: Sentiment veri yok, sinyal üretilmemeli")
+            return None
+            
         reddit_score = self._get_reddit_sentiment(symbol) if self.reddit_available else 0
         
         # Composite calculation
@@ -95,10 +105,13 @@ class SentimentAnalyzer:
         logger.info(f"📊 Sentiment: {sentiment_label} | Score: {composite:.2f} | F&G: {fear_greed}")
         return result
         
-    def _get_fear_greed(self) -> int:
+    def _get_fear_greed(self) -> Optional[int]:
         """
         Fetch Fear & Greed Index from Alternative.me
-        Returns: 0 (Extreme Fear) to 100 (Extreme Greed)
+        
+        FAIL FAST: Veri alınamazsa None döner.
+        
+        Returns: 0 (Extreme Fear) to 100 (Extreme Greed), or None if unavailable
         """
         try:
             response = requests.get(self.fear_greed_url, timeout=10)
@@ -111,8 +124,8 @@ class SentimentAnalyzer:
             return fg_value
             
         except Exception as e:
-            logger.error(f"Failed to fetch Fear & Greed Index: {e}")
-            return 50  # Neutral fallback
+            logger.error(f"❌ FAIL FAST: Fear & Greed alınamadı: {e}")
+            return None  # FAIL FAST: Veri yok
             
     def _get_reddit_sentiment(self, symbol: str) -> float:
         """
