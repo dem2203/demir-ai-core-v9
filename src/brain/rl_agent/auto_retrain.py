@@ -93,28 +93,50 @@ class AutoRetrainPipeline:
         logger.info(f"AutoRetrainPipeline initialized: interval={retrain_interval_days}d, auto_deploy={enable_auto_deploy}")
     
     def check_retrain_needed(self) -> Dict[str, bool]:
-        """Check which models need retraining."""
+        """Check which models need retraining based on schedule AND live performance."""
+        from src.v10.performance_tracker import get_performance_tracker # Local import to avoid circular dependency
+        
         needs_retrain = {}
         now = datetime.now()
+        tracker = get_performance_tracker()
+        report = tracker.get_report()
+        
+        # Check Live Performance (Real Feedback Loop)
+        live_win_rate = report.win_rate
+        # Filter completed only
+        has_enough_data = report.completed_signals >= 5
         
         for symbol, config in self.model_configs.items():
             model_name = config["name"]
             
-            # Check last retrain date
+            # 1. Schedule Check
             last_train = self._get_last_training(model_name)
             
             if last_train:
                 days_since = (now - datetime.fromisoformat(last_train.timestamp)).days
-                needs_retrain[symbol] = days_since >= self.retrain_interval_days
+                schedule_trigger = days_since >= self.retrain_interval_days
             else:
-                needs_retrain[symbol] = True  # Never trained
+                schedule_trigger = True  # Never trained
             
-            # Also check performance degradation
-            if not needs_retrain[symbol]:
-                degradation = self._check_performance_degradation(model_name)
-                if degradation > self.performance_drop_threshold:
-                    logger.warning(f"{symbol} performance dropped {degradation:.1%}, triggering retrain")
-                    needs_retrain[symbol] = True
+            # 2. Performance Check (Degradation in Training)
+            degradation = self._check_performance_degradation(model_name)
+            training_drop_trigger = degradation > self.performance_drop_threshold
+            
+            # 3. Live Trading Failure Check (Real Learning Loop)
+            # If live win rate is below 40% (and we have sample size), trigger retrain!
+            live_fail_trigger = has_enough_data and live_win_rate < 40.0
+            
+            if live_fail_trigger:
+                logger.warning(f"🚨 {symbol} LIVE PERFORMANCE CRITICAL (WR: {live_win_rate:.1f}%), triggering EMERGENCY RETRAIN")
+            
+            needs_retrain[symbol] = schedule_trigger or training_drop_trigger or live_fail_trigger
+            
+            if needs_retrain[symbol]:
+                reason = []
+                if schedule_trigger: reason.append("schedule")
+                if training_drop_trigger: reason.append("training_drop")
+                if live_fail_trigger: reason.append("live_performance_fail")
+                logger.info(f"Retrain needed for {symbol}: {', '.join(reason)}")
         
         return needs_retrain
     

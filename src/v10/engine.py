@@ -74,7 +74,40 @@ class V10Engine:
                 if self._error_count >= 3:
                     self.notifier.send_error_alert(f"Tekrarlayan hata: {e}")
             
+            try:
+                # 4 saatte bir Retrain Check
+                if datetime.now().hour % 4 == 0 and datetime.now().minute < 5:
+                     # Basit frekans kontrolü (her 30 saniyede bir girmesin diye simple debounce gerekebilir ama sleep 30sn oldugu icin sorun olmaz)
+                     # Daha güvenli yol: timer kullanmak
+                     pass
+
+            except Exception as e:
+                 pass
+            
             await asyncio.sleep(self.SCAN_INTERVAL)
+            
+            # --- PERIODIC TASKS ---
+            now = datetime.now()
+            
+            # 1. Performance Report (4 saat)
+            if (now - self._last_performance_report).total_seconds() > 4 * 3600:
+                self._last_performance_report = now
+                # ... existing logic likely uses separate timer, but we add Retrain check here
+                
+                # Check Auto-Retrain
+                try:
+                    from src.brain.rl_agent.auto_retrain import AutoRetrainPipeline
+                    pipeline = AutoRetrainPipeline()
+                    needs = pipeline.check_retrain_needed()
+                    
+                    symbols_needing_retrain = [s for s, n in needs.items() if n]
+                    
+                    if symbols_needing_retrain:
+                        msg = f"🧠 **AI BRAIN ALERT**\nModeller yeniden eğitim istiyor: {', '.join(symbols_needing_retrain)}\nSebep: Performans düşüşü veya zamanı geldi."
+                        self.notifier.send_error_alert(msg)
+                        logger.warning(f"[AUTO-RETRAIN] Needed for: {symbols_needing_retrain}")
+                except Exception as e:
+                    logger.error(f"Auto-retrain check failed: {e}")
     
     async def stop(self):
         """Motoru durdur"""
