@@ -9,6 +9,7 @@ from src.execution.paper_trader import PaperTrader
 from src.core.risk_manager import RiskManager # Yeni
 from src.utils.translator import Translator  # Turkish explanations (Türkçe açıklamalar)
 from src.brain.turkish_narrative import TurkishNarrativeEngine  # AI Reasoning (AI Yorumları)
+from src.v10.dashboard_helpers import fetch_crypto_news, fetch_fear_and_greed, fetch_detailed_ta, fetch_system_health
 
 # --- Sayfa Ayarları ---
 st.set_page_config(
@@ -1679,6 +1680,18 @@ elif page == "🧠 Neural Brain Monitor":
     if not brain_state:
         st.info("Brain State not initialized yet. Waiting for first RL decision...")
     else:
+        # Fetch Real System Health
+        try:
+            sys_health = fetch_system_health()
+            st.sidebar.markdown("---")
+            st.sidebar.markdown("### 🖥️ System Resources")
+            st.sidebar.progress(sys_health['cpu_usage'] / 100, text=f"CPU: {sys_health['cpu_usage']}%")
+            st.sidebar.progress(sys_health['ram_usage'] / 100, text=f"RAM: {sys_health['ram_usage']}%")
+            st.sidebar.caption(f"OS: {sys_health['os_info']}")
+            st.sidebar.caption(f"Boot: {sys_health['boot_time']}")
+        except:
+            pass
+
         c1, c2 = st.columns([1, 2])
         
         with c1:
@@ -2162,26 +2175,31 @@ elif page == "🌐 Web Intelligence":
         with col1:
             st.subheader("😱 Fear & Greed Index")
             try:
-                fng = scrapers.get_fear_greed_index()
+                # Real API Data
+                fng = fetch_fear_and_greed()
                 fng_value = fng.get('value', 50)
                 fng_class = fng.get('classification', 'Neutral')
                 
                 # Color based on value
                 if fng_value <= 25:
-                    color = "#00ff00"  # Green - Extreme Fear = Buy
+                    color = "#00ff00"  # Green
                     emoji = "🟢"
+                    action = "Strong Buy Signal"
                 elif fng_value >= 75:
-                    color = "#ff0000"  # Red - Extreme Greed = Caution
+                    color = "#ff0000"  # Red
                     emoji = "🔴"
+                    action = "Extreme Greed - Caution"
                 else:
                     color = "#ffff00"  # Yellow
                     emoji = "🟡"
+                    action = "Neutral Market"
                 
                 st.metric("Fear & Greed", f"{emoji} {fng_value}", fng_class)
-                st.caption(fng.get('action', ''))
+                st.caption(f"_{action}_")
                 
                 # Progress bar
                 st.progress(fng_value / 100)
+                st.caption(f"Last update: {datetime.fromtimestamp(fng.get('timestamp', 0)).strftime('%H:%M')}")
             except Exception as e:
                 st.error(f"Veri alınamadı: {e}")
         
@@ -2274,30 +2292,18 @@ elif page == "🌐 Web Intelligence":
         st.divider()
         
         # Row 3: News Sentiment
-        st.subheader("📰 Haber Sentimenti")
+        # Row 3: Live Crypto News
+        st.subheader("📰 Canlı Kripto Haberleri (Google News RSS)")
         try:
-            news_sentiment = news_scraper.get_market_sentiment()
-            score = news_sentiment.get('score', 50)
+            news_items = fetch_crypto_news(limit=6)
             
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                mood = "🟢 BULLISH" if score > 60 else "🔴 BEARISH" if score < 40 else "⚪ NEUTRAL"
-                st.metric("Genel Mood", mood, f"Skor: {score:.0f}/100")
-            with col2:
-                st.metric("Pozitif Haberler", f"🟢 {news_sentiment.get('bullish_count', 0)}", "")
-            with col3:
-                st.metric("Negatif Haberler", f"🔴 {news_sentiment.get('bearish_count', 0)}", "")
-            with col4:
-                st.metric("Toplam Haber", news_sentiment.get('news_count', 0), "")
-            
-            # Show important news
-            important = news_scraper.get_important_news(5)
-            if important:
-                st.markdown("**Son Önemli Haberler:**")
-                for news in important:
-                    emoji = "🟢" if news.sentiment == 'BULLISH' else "🔴" if news.sentiment == 'BEARISH' else "⚪"
-                    impact = "⚡" if news.impact == 'HIGH' else ""
-                    st.markdown(f"- {emoji}{impact} **{news.title[:70]}...** _{news.source}_")
+            if news_items:
+                st.markdown(f"**Son {len(news_items)} Gelisme:**")
+                for news in news_items:
+                    st.markdown(f"- 🗞️ [{news['title']}]({news['link']}) _{news['published'][:16]}_")
+            else:
+                st.info("Şu an yeni haber yok.")
+                
         except Exception as e:
             st.error(f"Haber verisi alınamadı: {e}")
         
@@ -2834,30 +2840,37 @@ elif page == "🔮 AI Predictions":
     st.markdown("### 🐋 Whale Intelligence")
     st.caption("_Coinglass Hyperliquid - Büyük trader pozisyonları_")
     
+    st.markdown("### 🐋 Whale Intelligence & Order Flow")
+    st.caption("_Gerçek zamanlı Borsa Verisi (Binance Spot & Futures)_")
+    
     try:
-        from src.brain.coinglass_scraper import CoinglassScraper
+        # Use helper from dashboard.py (already imported or available)
+        # Note: fetch_leading_indicators is defined in dashboard.py, checking availability
+        # If not, we use the logic here directly
         
-        scraper = CoinglassScraper()
-        enhancement = scraper.get_signal_enhancement(current_price)
+        # Calling the function defined earlier in dashboard.py
+        whale_data = fetch_leading_indicators("BTCUSDT")
         
         w1, w2, w3, w4 = st.columns(4)
         
         with w1:
-            bias_emoji = "🟢" if enhancement['whale_bias'] == 'LONG' else "🔴" if enhancement['whale_bias'] == 'SHORT' else "⚪"
-            st.metric("🐋 Whale Yönelimi", f"{bias_emoji} {enhancement['whale_bias']}")
-        
+            direction = whale_data.get('direction', 'NEUTRAL')
+            dir_emoji = "🟢" if direction == 'BULLISH' else "🔴" if direction == 'BEARISH' else "⚪"
+            st.metric("🐋 Whale Yönelimi", f"{dir_emoji} {direction}")
+            
         with w2:
-            st.metric("💪 Güven Boost", f"+{enhancement['confidence_boost']}%")
-        
+            st.metric("💪 Sinyal Gücü", f"%{whale_data.get('strength', 0):.0f}")
+            
         with w3:
-            st.metric("👥 Whale Sayısı", enhancement.get('whale_count', 0))
-        
+            w_score = whale_data.get('whale', 0)
+            st.metric("Whale Volume Score", f"{w_score:.1f}")
+            
         with w4:
-            warning = enhancement.get('liquidation_warning', 'NONE')
-            warn_emoji = "⚠️" if warning != 'NONE' else "✅"
-            st.metric("⚠️ Likidasyon Riski", f"{warn_emoji} {warning.replace('_', ' ')}")
+            fund = whale_data.get('funding', 0)
+            f_emoji = "🔴" if fund > 0.01 else "🟢" if fund < 0 else "⚪"
+            st.metric("Funding Rate", f"{fund:.4f}%", f_emoji)
         
-        st.caption("_Veriler Coinglass Hyperliquid'den alınmaktadır_")
+        st.info(f"📊 **Analiz:** {whale_data.get('summary', 'Veri bekleniyor...')}")
         
     except Exception as e:
         st.warning(f"Whale intel kullanılamıyor: {e}")
@@ -2961,10 +2974,12 @@ elif page == "🔮 AI Predictions":
     
     # Whale signal
     try:
-        if enhancement['whale_bias'] == 'LONG':
+        # whale_data was fetched above using fetch_leading_indicators
+        target_dir = whale_data.get('direction', 'NEUTRAL')
+        if target_dir == 'BULLISH':
             signals.append(1)
             weights.append(0.5)
-        elif enhancement['whale_bias'] == 'SHORT':
+        elif target_dir == 'BEARISH':
             signals.append(-1)
             weights.append(0.5)
         else:
