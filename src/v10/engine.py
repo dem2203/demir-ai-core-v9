@@ -161,6 +161,50 @@ class V10Engine:
         except Exception as e:
             logger.error(f"Dashboard export error: {e}")
 
+
+        
+        # SAVE DASHBOARD DATA
+        try:
+            self._save_dashboard_data(snapshots)
+        except Exception as e:
+            logger.error(f"Dashboard data save error: {e}")
+
+        # Technical Analysis (15 dakikada bir)
+        if not hasattr(self, '_last_ta_time'):
+            self._last_ta_time = datetime.now() - timedelta(minutes=20)
+        
+        if (datetime.now() - self._last_ta_time).total_seconds() >= 60 * 60: # Hourly updates
+            try:
+                logger.info("[TA] Sending Hourly Analysis...")
+                self._last_ta_time = datetime.now()
+                
+                for s, snapshot in snapshots.items():
+                    if snapshot.is_valid:
+                        await self.notifier.send_live_prediction(s, snapshot)
+            except Exception as e:
+                logger.error(f"Notification error: {e}")
+        
+        # Performance report (4 saatte bir)
+        if (datetime.now() - self._last_performance_report).total_seconds() >= self.PERFORMANCE_REPORT_INTERVAL:
+            try:
+                await self.performance_tracker.check_outcomes()
+                report_msg = self.performance_tracker.format_report_message()
+                self.notifier._send_message(report_msg)
+                self._last_performance_report = datetime.now()
+            except Exception as e:
+                logger.error(f"[ERROR] Performance report: {e}")
+        
+        cycle_time = (datetime.now() - cycle_start).total_seconds()
+        
+        logger.info(
+            f"[OK] Cycle #{self._cycle_count}: {cycle_time:.1f}s | "
+            f"Signals: {self._signal_count} | Errors: {self._error_count}"
+        )
+        
+    def _save_dashboard_data(self, snapshots: Dict[str, MarketSnapshot]):
+        """Snapshots verisini dashboard icin JSON'a kaydet."""
+        data = {}
+
     def _calculate_real_metrics(self, snapshot: MarketSnapshot) -> Dict[str, Any]:
         """Calculate real metrics from snapshot - NO MOCK DATA"""
         metrics = {
@@ -206,48 +250,6 @@ class V10Engine:
             current_ema = (c * value) + ((1 - c) * current_ema)
             ema_values.append(current_ema)
         return ema_values
-        
-        # SAVE DASHBOARD DATA
-        try:
-            self._save_dashboard_data(snapshots)
-        except Exception as e:
-            logger.error(f"Dashboard data save error: {e}")
-
-        # Technical Analysis (15 dakikada bir)
-        if not hasattr(self, '_last_ta_time'):
-            self._last_ta_time = datetime.now() - timedelta(minutes=20)
-        
-        if (datetime.now() - self._last_ta_time).total_seconds() >= 60 * 60: # Hourly updates
-            try:
-                logger.info("[TA] Sending Hourly Analysis...")
-                self._last_ta_time = datetime.now()
-                
-                for s, snapshot in snapshots.items():
-                    if snapshot.is_valid:
-                        await self.notifier.send_live_prediction(s, snapshot)
-            except Exception as e:
-                logger.error(f"Notification error: {e}")
-        
-        # Performance report (4 saatte bir)
-        if (datetime.now() - self._last_performance_report).total_seconds() >= self.PERFORMANCE_REPORT_INTERVAL:
-            try:
-                await self.performance_tracker.check_outcomes()
-                report_msg = self.performance_tracker.format_report_message()
-                self.notifier._send_message(report_msg)
-                self._last_performance_report = datetime.now()
-            except Exception as e:
-                logger.error(f"[ERROR] Performance report: {e}")
-        
-        cycle_time = (datetime.now() - cycle_start).total_seconds()
-        
-        logger.info(
-            f"[OK] Cycle #{self._cycle_count}: {cycle_time:.1f}s | "
-            f"Signals: {self._signal_count} | Errors: {self._error_count}"
-        )
-        
-    def _save_dashboard_data(self, snapshots: Dict[str, MarketSnapshot]):
-        """Snapshots verisini dashboard icin JSON'a kaydet."""
-        data = {}
         for symbol, snap in snapshots.items():
              # Convert dataclass to dict
              snap_dict = asdict(snap)
