@@ -11,7 +11,9 @@ from src.core.risk_manager import RiskManager # Yeni
 from src.utils.translator import Translator  # Turkish explanations (Türkçe açıklamalar)
 from src.brain.turkish_narrative import TurkishNarrativeEngine  # AI Reasoning (AI Yorumları)
 from src.v10.dashboard_helpers import fetch_crypto_news, fetch_fear_and_greed, fetch_detailed_ta, fetch_system_health
+from src.v10.dashboard_helpers import fetch_crypto_news, fetch_fear_and_greed, fetch_detailed_ta, fetch_system_health
 from src.v10.early_signal_engine import get_early_signal_engine  # NEW: Direct Brain Access
+from src.execution.paper_trader import get_paper_trader # NEW: Paper Trader Access
 import plotly.graph_objects as go
 
 # --- Sayfa Ayarları ---
@@ -253,8 +255,81 @@ if page == "📡 Live Market Intelligence":
     render_quad_view()
     
 elif page == "🔮 AI Predictions":
-    # ... (Old Code) ...
-    st.write("Legacy Predictions (Migrating to Brain Cockpit...)")
+    st.markdown("## 🔮 Deep AI Analysis & Performance")
+    
+    # Tabs
+    tab1, tab2 = st.tabs(["🧠 Full-Spectrum Analysis", "📝 Paper Trading Logs"])
+    
+    with tab1:
+        st.info("Detailed breakdown of the AI's decision process for the current active signal.")
+        
+        # Re-use fetch logic
+        with st.spinner("Decoding Neural Pathways..."):
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            signal = loop.run_until_complete(fetch_brain_data("BTCUSDT"))
+            loop.close()
+            
+        if signal:
+            c1, c2 = st.columns([1, 2])
+            with c1:
+                st.metric("Signal", signal.action, delta=f"{signal.confidence}% Conf.")
+                st.metric("Entry Zone", f"${signal.entry_zone[0]:,.0f} - ${signal.entry_zone[1]:,.0f}")
+            with c2:
+                st.markdown("### 🧠 AI Reasoning Engine")
+                st.write(signal.reasoning)
+                
+            st.divider()
+            
+            st.markdown("### 🔍 Technical DNA (Leading Indicators)")
+            # Extract leading indicators details
+            # signal.leading_signal.indicators is a dict
+            if hasattr(signal, 'leading_signal'):
+                li = signal.leading_signal
+                
+                # Create a nice dataframe
+                import pandas as pd
+                
+                # Indicators is a dict of metrics
+                # We want to key-value display it
+                metrics = []
+                for k, v in li.indicators.items():
+                    metrics.append({"Indicator": k, "Value": f"{v:.2f}" if isinstance(v, float) else str(v)})
+                
+                df_metrics = pd.DataFrame(metrics)
+                st.dataframe(df_metrics, use_container_width=True, hide_index=True)
+                
+            st.divider()
+            st.markdown("### 🤖 Market Regime & Sentiment")
+            st.json(signal.to_dict()) # Raw view for deep debug
+            
+    with tab2:
+        st.markdown("### 📝 Virtual Trading Performance")
+        
+        pt = get_paper_trader()
+        stats = pt.get_stats()
+        
+        # Summary Metrics
+        s1, s2, s3, s4 = st.columns(4)
+        s1.metric("Balance", f"${stats['current_balance']:,.2f}", delta=f"{stats['total_pnl_pct']:.2f}%")
+        s2.metric("Win Rate", f"{stats['win_rate']:.1f}%")
+        s3.metric("Total PnL", f"${stats['total_pnl']:,.2f}")
+        s4.metric("Total Trades", stats['total_trades'])
+        
+        st.divider()
+        
+        # History Table
+        history = pt.get_trade_history()
+        if history:
+            df_hist = pd.DataFrame(history)
+            # Reorder columns for readability
+            cols = ['time', 'symbol', 'action', 'entry', 'exit', 'amount', 'pnl']
+            # Filter cols that exist
+            cols = [c for c in cols if c in df_hist.columns]
+            st.dataframe(df_hist[cols].sort_values('time', ascending=False), use_container_width=True)
+        else:
+            st.info("No trade history yet. The AI is watching...")
+            
     pass # Placeholder to avoid errors if old code removed
 
 # ... (Keep other pages for now) ...

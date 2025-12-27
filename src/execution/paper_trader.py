@@ -98,7 +98,7 @@ class PaperTrader:
                 
                 del self.portfolio['positions'][symbol]
                 self._save_portfolio()
-                logger.info(f"🧻 SOLD {symbol} at {price}. PnL: ${pnl:.2f}")
+                logger.info(f"💰 SOLD {symbol}: PnL ${pnl:.2f}")
                 return True
 
         # --- POZİSYON AÇMA (BUY) ---
@@ -115,30 +115,26 @@ class PaperTrader:
             risk_pct = signal.get('kelly_size', 1.0) / 100.0
             if risk_pct <= 0: risk_pct = 0.01 # Güvenlik
             
-            quantity = self.calculate_position_size(price, sl_price, self.portfolio['balance'], risk_pct)
-            trade_cost = quantity * price
+            amount = self.calculate_position_size(price, sl_price, self.portfolio['balance'], risk_pct)
             
-            # Min işlem limiti (10$)
-            if trade_cost < 10: 
-                logger.warning(f"Calculated trade size too small (${trade_cost:.2f}), skipping.")
-                return False
-            
-            # Bakiyeden düş
-            self.portfolio['balance'] -= trade_cost
-            
-            # Pozisyonu aç
-            self.portfolio['positions'][symbol] = {
-                "entry_price": price,
-                "sl_price": sl_price,
-                "amount": quantity,
-                "cost": trade_cost,
-                "time": datetime.now().isoformat()
-            }
-            
-            self._save_portfolio()
-            logger.info(f"🧻 BOUGHT {symbol} at {price}. Size: ${trade_cost:.2f} (Risk Adjusted)")
-            return True
-            
+            if amount > 0:
+                cost = amount * price
+                if cost > self.portfolio['balance']:
+                    logger.warning("Yetersiz bakiye")
+                    return False
+                
+                self.portfolio['balance'] -= cost
+                self.portfolio['positions'][symbol] = {
+                    "entry_price": price,
+                    "sl_price": sl_price,
+                    "amount": amount,
+                    "cost": cost,
+                    "time": datetime.now().isoformat()
+                }
+                self._save_portfolio()
+                logger.info(f"🛒 BOUGHT {symbol}: {amount:.4f} units @ ${price}")
+                return True
+                
         return False
 
     def get_portfolio_status(self, current_prices={}):
@@ -237,7 +233,6 @@ class PaperTrader:
         return msg
     
     def reset(self):
-        """Paper trader'ı sıfırla."""
         self.portfolio = {
             "balance": self.INITIAL_BALANCE,
             "equity": self.INITIAL_BALANCE,
@@ -246,6 +241,18 @@ class PaperTrader:
         }
         self._save_portfolio()
         logger.info("📝 Paper Trader reset")
+
+    def get_trade_history(self):
+        """Get list of past trades"""
+        return self.portfolio.get('history', [])
+    
+    def get_open_positions(self):
+        """Get currently open positions"""
+        return self.portfolio.get('positions', {})
+    
+    def get_balance(self):
+        """Get current balance"""
+        return self.portfolio.get('balance', 0.0)
 
 
 # Global instance
