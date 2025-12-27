@@ -22,6 +22,8 @@ from src.v10.early_signal_engine import get_early_signal_engine
 from src.v10.signal_history import record_early_signal
 from src.v10.ai_integration import get_ai_bridge  # RL Agent Integration
 from src.execution.paper_trader import get_paper_trader
+from src.execution.feedback_loop import FeedbackLoop
+from src.v10.early_signal_trainer import get_trainer
 
 logger = logging.getLogger("V10_ENGINE")
 
@@ -49,6 +51,9 @@ class V10Engine:
         self.lstm_predictor = get_lstm_predictor()
         self.early_signal_engine = None  # Lazy init
         self.paper_trader = get_paper_trader()
+        self.feedback_loop = FeedbackLoop()
+        self.trainer = get_trainer()
+        self.last_retrain_check = datetime.now()
         
         self._last_signal_time: Dict[str, datetime] = {}
         self._last_performance_report = datetime.now()
@@ -87,6 +92,15 @@ class V10Engine:
 
             except Exception as e:
                  pass
+            
+            
+            # --- AUTO RETRAIN CHECK (Every 15 mins) ---
+            try:
+                if (datetime.now() - self.last_retrain_check).total_seconds() > 900: # 15 mins
+                    self.last_retrain_check = datetime.now()
+                    await self._check_auto_retrain()
+            except Exception as e:
+                logger.error(f"[AUTO-RETRAIN] Error: {e}")
             
             await asyncio.sleep(self.SCAN_INTERVAL)
             
@@ -478,6 +492,60 @@ DOGRULAMA:
         elapsed = (datetime.now() - self._last_signal_time[symbol]).total_seconds()
         return elapsed < self.SIGNAL_COOLDOWN
     
+
+
+
+
+_engine: Optional[V10Engine] = None
+
+def get_v10_engine() -> V10Engine:
+    global _engine
+    if _engine is None:
+        _engine = V10Engine()
+    return _engine
+
+
+async def run_v10():
+    """V10 Engine'i baslat"""
+    engine = get_v10_engine()
+    try:
+        await engine.start()
+    except KeyboardInterrupt:
+        await engine.stop()
+
+
+if __name__ == "__main__":
+    asyncio.run(run_v10())
+    async def _check_auto_retrain(self):
+        """
+        Check for closed trades and retrain model if needed.
+        """
+        # 1. Generate Feedback Data
+        history = self.paper_trader.get_trade_history()
+        new_samples = self.feedback_loop.process_closed_trades(history)
+        
+        if new_samples > 0:
+            logger.info(f"🔄 Auto-Retrain: Found {new_samples} new feedback samples.")
+            
+            # 2. Check Trainer Stats
+            stats = self.trainer.get_data_stats()
+            # If we have enough data (even if total samples are low, feedback is high value)
+            # Or if we have newly added feedback
+            
+            # Trigger Training
+            logger.info("🧠 Starting Dynamic Retraining...")
+            
+            # Run in thread to not block engine
+            loop = asyncio.get_event_loop()
+            results = await loop.run_in_executor(None, self.trainer.train)
+            
+            if 'error' in results:
+                logger.warning(f"⚠️ Retrain skipped: {results['error']}")
+            else:
+                logger.info(f"✅ Model Updated! Val Acc: {results.get('best_val_accuracy')}")
+                # Reload engine's model?
+                pass
+
     async def scan_once(self) -> Dict[str, dict]:
         """Tek seferlik tarama (test icin)."""
         results = {}

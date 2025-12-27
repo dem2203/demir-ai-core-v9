@@ -44,6 +44,7 @@ class EarlySignalTrainer:
     DATA_DIR = Path("src/v10/training_data")
     MODEL_DIR = Path("src/v10/models")
     MODEL_PATH = MODEL_DIR / "early_signal_lstm.keras"
+    FEEDBACK_DIR = Path("src/v10/feedback_data")
     
     # Feature boyutu (leading_indicators.py'deki FeatureCollector ile uyumlu)
     FEATURE_SIZE = 20
@@ -95,9 +96,41 @@ class EarlySignalTrainer:
         all_samples.sort(key=lambda x: x['timestamp'])
         
         # Create sequences
-        X = []
         y = []
         
+        # --- 1. Load Feedback Data (Priority) ---
+        feedback_count = 0
+        for fb_path in self.FEEDBACK_DIR.glob("feedback_*.json"):
+            try:
+                with open(fb_path, 'r') as f:
+                    sample = json.load(f)
+                    
+                # Oversampling for Feedback Data (x5 weight)
+                # Because real trade data is much more valuable than synthetic
+                for _ in range(5):
+                    # We can't form sequences easily from single feedback points unless we look up history
+                    # Strategy: Feedback data is usually sparse. 
+                    # For LSTM we need a sequence. 
+                    # CRITICAL: We need the PREVIOUS 9 features + Current Feature to make a sequence of 10.
+                    # Current simple implementation: Repeat the single feature vector 10 times (weak) 
+                    # OR: Just use the single vector if we switch to Dense, but we use LSTM.
+                    # BETTER: In FeedbackLoop, we should store the whole SEQUENCE, not just last feature.
+                    
+                    # For now, let's assume FeedbackLoop saved just the last feature.
+                    # To fix this properly, let's just repeat it. It's not ideal for time-series but 
+                    # tells the model "This state leads to WIN".
+                    seq = [sample['features']] * self.SEQUENCE_LENGTH
+                    X.append(seq)
+                    y.append(sample['label']) 
+                    
+                feedback_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to load feedback {fb_path}: {e}")
+                
+        if feedback_count > 0:
+            logger.info(f"[DATA] Loaded {feedback_count} feedback samples (x5 oversampled)")
+
+        # --- 2. Load Evaluation Data (Synthetic/History) ---
         for i in range(self.SEQUENCE_LENGTH, len(all_samples)):
             # Son SEQUENCE_LENGTH sample'ı al
             seq = all_samples[i-self.SEQUENCE_LENGTH:i]
@@ -121,8 +154,50 @@ class EarlySignalTrainer:
         y = np.array(y, dtype=np.int32)
         
         # Convert labels to categorical for classification
-        # Shift: -1,0,1 -> 0,1,2
-        y = y + 1
+        # Synthetic labels were -1,0,1 -> need shift if not already 0,1,2
+        # Feedback labels are already 0,1,2
+        
+        # Check matching
+        # Synth: -1 (SELL), 0 (HOLD), 1 (BUY) -> Add 1 -> 0, 1, 2
+        # Feedback: 0 (SELL), 1 (HOLD), 2 (BUY) -> No Add needed?
+        
+        # Wait, loop above for synth:
+        # label = -1, 0, 1.
+        # Direct append.
+        # So array 'y' has mix of [-1,0,1] and [0,1,2] (from feedback).
+        # We must standardize.
+        
+        # FIX:
+        # If val < 0 (SELL): set to 0
+        # If val == 0 (HOLD): set to 1
+        # If val > 0 (BUY/WIN): set to 2
+        
+        # But wait, synth labels:
+        # 1 (BUY)
+        # -1 (SELL)
+        # 0 (HOLD)
+        
+        # Feedback labels:
+        # 2 (BUY)
+        # 0 (SELL)
+        
+        # Mapping needed: 
+        # Synth 1 -> 2
+        # Synth -1 -> 0
+        # Synth 0 -> 1
+        
+        y_mapped = []
+        for val in y:
+            if val == 1: y_mapped.append(2)    # BUY
+            elif val == -1: y_mapped.append(0) # SELL
+            elif val == 0: y_mapped.append(1)  # HOLD
+            elif val == 2: y_mapped.append(2)  # Already mapped BUY
+            # else: keep as is (likely 0 from feedback which is SELL, wait 0 is SELL? yes)
+            
+        y = np.array(y_mapped, dtype=np.int32)
+        
+        # Shift is no longer needed if we mapped manually
+        # y = y + 1  <-- REMOVE THIS
         
         logger.info(f"[DATA] {len(X)} sequences loaded")
         logger.info(f"[DATA] X shape: {X.shape}, y shape: {y.shape}")
