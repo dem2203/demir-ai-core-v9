@@ -38,6 +38,8 @@ from src.brain.liquidation_hunter import get_liquidation_hunter
 from src.brain.pattern_engine import get_pattern_engine
 from src.brain.pivot_points import get_pivot_points
 from src.brain.volatility_predictor import VolatilityPredictor
+from src.brain.news_scraper import CryptoNewsScraper
+from src.brain.regime_classifier import RegimeClassifier
 
 logger = logging.getLogger("EARLY_SIGNAL_ENGINE")
 
@@ -221,6 +223,10 @@ class EarlySignalEngine:
         self.pivot_analyzer = None
         self.volatility_predictor = VolatilityPredictor()
         
+        # SENSORY ORGANS (Eyes & Ears)
+        self.news_scraper = CryptoNewsScraper()
+        self.regime_classifier = RegimeClassifier()
+        
         self.feature_collector = FeatureCollector()
         self.ml_model = None  # Sonra yüklenecek
         self._last_signals: Dict[str, EarlySignal] = {}
@@ -250,13 +256,18 @@ class EarlySignalEngine:
         # 2. Liquidation Levels (Magnet Zones)
         # 3. Chart Patterns
         # 4. Pivot Points (Support/Resistance)
+        # 5. Volatility (Squeeze/Breakout)
+        # 6. News Sentiment (Global Mood)
+        # 7. Market Regime (Trending/Ranging) via internal helper
         
         tasks = [
             self.leading_indicators.calculate_all(symbol),
             self.liquidation_hunter.analyze(symbol),
             self.pattern_engine.analyze(symbol),
             self.pivot_analyzer.analyze(symbol),
-            asyncio.to_thread(self.volatility_predictor.predict_volatility, symbol)
+            asyncio.to_thread(self.volatility_predictor.predict_volatility, symbol),
+            asyncio.to_thread(self.news_scraper.get_market_sentiment),
+            self._analyze_regime(symbol) # Helper for RegimeClassifier
         ]
         
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -266,6 +277,8 @@ class EarlySignalEngine:
         pattern_data = results[2] if not isinstance(results[2], Exception) else {}
         pivot_data = results[3] if not isinstance(results[3], Exception) else {}
         volatility_data = results[4] if not isinstance(results[4], Exception) else {}
+        news_data = results[5] if not isinstance(results[5], Exception) else {}
+        regime_data = results[6] if not isinstance(results[6], Exception) else {"regime": "UNKNOWN"}
         
         if not leading_signal:
              return None
@@ -292,7 +305,9 @@ class EarlySignalEngine:
             liq_data=liquidation_data,
             pattern_data=pattern_data,
             pivot_data=pivot_data,
-            vol_data=volatility_data
+            vol_data=volatility_data,
+            news_data=news_data,
+            regime_data=regime_data
         )
         
         # 6. Training için veri topla
@@ -319,6 +334,50 @@ class EarlySignalEngine:
         
         return 0
     
+    async def _analyze_regime(self, symbol: str) -> Dict:
+        """Fetch data and classify regime"""
+        try:
+            # Reusing PivotAnalyzer to fetch daily data (or implement simple kline fetcher)
+            # For now, let's use a quick fetch here to ensure independence
+            import aiohttp
+            import pandas as pd
+            import pandas_ta as ta
+            
+            async with aiohttp.ClientSession() as session:
+                 # Fetch 100 candles (1h) for regime analysis
+                 url = f"https://fapi.binance.com/fapi/v1/klines?symbol={symbol}&interval=1h&limit=100"
+                 async with session.get(url) as resp:
+                     if resp.status == 200:
+                         data = await resp.json()
+                         df = pd.DataFrame(data, columns=['open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'qav', 'num_trades', 'tb_base_av', 'tb_quote_av', 'ignore'])
+                         df['close'] = df['close'].astype(float)
+                         df['high'] = df['high'].astype(float)
+                         df['low'] = df['low'].astype(float)
+                         df['volume'] = df['volume'].astype(float)
+                         
+                         # Calculate Indicators needed for RegimeClassifier
+                         # ADX
+                         adx = df.ta.adx(high=df['high'], low=df['low'], close=df['close'], length=14)
+                         df['adx'] = adx['ADX_14']
+                         
+                         # Bollinger Bands for Width
+                         bb = df.ta.bbands(close=df['close'], length=20, std=2)
+                         # BBB_20_2.0 is Bandwidth in pandas_ta usually, or (upper-lower)/mid
+                         df['bb_width'] = bb['BBB_20_2.0']
+                         
+                         # VWAP (Approximate since we don't have full history but pandas_ta handles it)
+                         df.ta.vwap(append=True)
+                         
+                         # Classify
+                         regime = self.regime_classifier.identify_regime(df)
+                         risk_adj = self.regime_classifier.get_risk_adjustment(regime)
+                         
+                         return {"regime": regime, "risk_adjustment": risk_adj}
+        except Exception as e:
+            logger.warning(f"Regime analysis failed: {e}")
+            
+        return {"regime": "UNKNOWN", "risk_adjustment": {}}
+
     def _predict_with_ml(self, features: np.ndarray) -> Dict:
         """ML modeli ile tahmin (ileride implement edilecek)"""
         # TODO: LSTM/RL model entegrasyonu
@@ -337,7 +396,9 @@ class EarlySignalEngine:
         liq_data: Dict,
         pattern_data: Dict,
         pivot_data: Dict,
-        vol_data: Dict
+        vol_data: Dict,
+        news_data: Dict,
+        regime_data: Dict
     ) -> EarlySignal:
         """
         Leading signals + All Modules'dan trading sinyali üret.
@@ -345,12 +406,36 @@ class EarlySignalEngine:
         # Yön belirleme
         action = "HOLD"
         
-        # 1. Core Direction from Leading Indicators
+        # 1. Core Direction
         if leading.direction in [SignalDirection.STRONG_BULLISH, SignalDirection.BULLISH]:
             action = "BUY"
         elif leading.direction in [SignalDirection.STRONG_BEARISH, SignalDirection.BEARISH]:
             action = "SELL"
             
+        # --- MARKET REGIME & SENTIMENT FILTER ---
+        regime = regime_data.get('regime', 'UNKNOWN')
+        sentiment = news_data.get('sentiment', 'NEUTRAL')
+        
+        # Filter: Don't trade against extreme Sentiment (Contra-trading logic can be risky for bots)
+        # If Sentiment is BEARISH and Signal is BUY -> Reduce Confidence
+        if sentiment == 'BEARISH' and action == "BUY":
+            confidence_penalty = 20
+        elif sentiment == 'BULLISH' and action == "SELL":
+            confidence_penalty = 20
+        else:
+            confidence_penalty = 0
+
+        # Regime Adjustment
+        regime_adj = regime_data.get('risk_adjustment', {})
+        target_confidence = regime_adj.get('confidence_threshold', 0.60) * 100
+        
+        # Confidence calculation
+        confidence = leading.confidence 
+        if leading.direction.value.startswith("STRONG"):
+            confidence += 15
+            
+        confidence -= confidence_penalty
+        
         # 2. Pattern Validation (Confirmation)
         pattern_score = 0
         pattern_reason = ""
@@ -438,6 +523,13 @@ class EarlySignalEngine:
         # Add Module Reasons
         if is_breakout:
             reasons.append("🌋 Volatility Squeeze (Big Move Incoming)")
+            
+        if regime != "UNKNOWN":
+            reasons.append(f"🧠 Regime: {regime}")
+            
+        if sentiment != 'NEUTRAL':
+            icon = "🐂" if sentiment == 'BULLISH' else "🐻"
+            reasons.append(f"{icon} Sentiment: {sentiment}")
             
         if pattern_reason:
             reasons.append(pattern_reason)
