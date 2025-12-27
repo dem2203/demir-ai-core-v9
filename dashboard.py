@@ -11,6 +11,8 @@ from src.core.risk_manager import RiskManager # Yeni
 from src.utils.translator import Translator  # Turkish explanations (Türkçe açıklamalar)
 from src.brain.turkish_narrative import TurkishNarrativeEngine  # AI Reasoning (AI Yorumları)
 from src.v10.dashboard_helpers import fetch_crypto_news, fetch_fear_and_greed, fetch_detailed_ta, fetch_system_health
+from src.v10.early_signal_engine import get_early_signal_engine  # NEW: Direct Brain Access
+import plotly.graph_objects as go
 
 # --- Sayfa Ayarları ---
 st.set_page_config(
@@ -85,111 +87,177 @@ def load_json(filename):
 # Replace yfinance (fails in production) with TradingView scraping
 # ==========================================
 
-def fetch_live_market_data():
+# ==========================================
+# PHASE 5: BRAIN COCKPIT (QUAD-VIEW)
+# ==========================================
+
+async def fetch_brain_data(symbol="BTCUSDT"):
     """
-    Dashboard için canlı piyasa verisi - TradingView scraper kullanır
-    
-    PHASE 43 UPDATE:
-    - ❌ Removed yfinance (production errors)
-    - ✅ Added TradingView scraper (reliable real-time data)
-    - ✅ Added USDT/USDC dominance (critical missing indicators)
-    - ✅ Added ETH dominance
-    - ✅ Added DXY, VIX, SPY
+    Connects directly to the V10 Brain to get Full-Spectrum analysis.
     """
-    import requests
-    from src.brain.tradingview_scraper import TradingViewScraper
-    
-    result = {
-        # Macro data
-        'gold': 0, 'gold_change': 0,
-        'nasdaq': 0, 'nasdaq_change': 0,
-        'dxy': 0, 'dxy_change': 0,
-        'vix': 0, 'vix_change': 0,
-        'spy': 0, 'spy_change': 0,
-        
-        # Dominance metrics
-        'btc_dominance': 0, 'btc_dominance_change': 0,
-        'eth_dominance': 0, 'eth_dominance_change': 0,
-        'usdt_dominance': 0, 'usdt_change': 0,
-        'usdc_dominance': 0, 'usdc_change': 0,
-        'total_stablecoin_dominance': 0,
-        'stablecoin_signal': 'NEUTRAL',
-        'stablecoin_interpretation': '',
-        
-        # Derivatives
-        'open_interest': 0, 
-        'long_short_ratio': 0
-    }
-    
     try:
-        # Initialize TradingView scraper
-        tv_scraper = TradingViewScraper()
+        engine = await get_early_signal_engine()
+        # Ensure modules are initialized (safe call)
+        if not engine.leading_indicators:
+            await engine.initialize()
+            
+        # Run standard analysis
+        signal = await engine.analyze(symbol)
         
-        # Get all macro data
-        macro_data = tv_scraper.get_all_macro_data()
+        # We need to extract the raw data from the engine's internal state 
+        # because 'signal' object is a summary. 
+        # Ideally, 'analyze' should return enriched data. 
+        # Check 'analyze' implementation -> it generates signal but we want the raw components too.
+        # Actually, signal.reasoning contains a lot, but for charts we might need direct access.
+        # For Phase 5, let's rely on the module getters and re-run quick scans if needed,
+        # OR better: Refactor engine to expose last_run_data? 
+        # Currently, let's use the signal object and parallel fetches for specific display data.
         
-        # Gold
-        gold_data = macro_data.get('gold', {})
-        result['gold'] = gold_data.get('price', 0)
-        result['gold_change'] = gold_data.get('change', 0)
-        
-        # Nasdaq
-        nasdaq_data = macro_data.get('nasdaq', {})
-        result['nasdaq'] = nasdaq_data.get('price', 0)
-        result['nasdaq_change'] = nasdaq_data.get('change', 0)
-        
-        # DXY (US Dollar Index)
-        dxy_data = macro_data.get('dxy', {})
-        result['dxy'] = dxy_data.get('price', 0)
-        result['dxy_change'] = dxy_data.get('change', 0)
-        
-        # VIX (Volatility Index)
-        vix_data = macro_data.get('vix', {})
-        result['vix'] = vix_data.get('price', 0)
-        result['vix_change'] = vix_data.get('change', 0)
-        
-        # SPY
-        spy_data = macro_data.get('spy', {})
-        result['spy'] = spy_data.get('price', 0)
-        result['spy_change'] = spy_data.get('change', 0)
-        
-        # BTC Dominance
-        btc_d_data = macro_data.get('btc_dominance', {})
-        result['btc_dominance'] = btc_d_data.get('price', 0)
-        result['btc_dominance_change'] = btc_d_data.get('change', 0)
-        
-        # ETH Dominance
-        eth_d_data = macro_data.get('eth_dominance', {})
-        result['eth_dominance'] = eth_d_data.get('price', 0)
-        result['eth_dominance_change'] = eth_d_data.get('change', 0)
-        
-        # Stablecoin Summary
-        stable_summary = tv_scraper.get_stablecoin_summary()
-        result['usdt_dominance'] = stable_summary.get('usdt_dominance', 0)
-        result['usdc_dominance'] = stable_summary.get('usdc_dominance', 0)
-        result['total_stablecoin_dominance'] = stable_summary.get('total_stablecoin_dominance', 0)
-        result['stablecoin_signal'] = stable_summary.get('signal', 'NEUTRAL')
-        result['stablecoin_interpretation'] = stable_summary.get('interpretation', '')
-        
+        return signal
     except Exception as e:
-        # Fallback if TradingView fails - still better than yfinance
-        import logging
-        logging.warning(f"TradingView scraper error: {e}")
+        st.error(f"Brain Connection Error: {e}")
+        return None
+
+def render_quad_view():
+    st.markdown("## 🧠 Brain Cockpit (Live Intelligence)")
     
-    # Derivatives data (Binance - unchanged, works well)
-    try:
-        oi = requests.get("https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT", timeout=5)
-        if oi.status_code == 200:
-            result['open_interest'] = float(oi.json()['openInterest']) * 100000  # Approximate USD value
-    except: pass
+    col_symbol, col_refresh = st.columns([4, 1])
+    with col_symbol:
+        symbol = st.selectbox("Select Asset", ["BTCUSDT", "ETHUSDT", "SOLUSDT", "LTCUSDT"])
+    with col_refresh:
+        if st.button("🔄 Scan Market"):
+            st.rerun()
+
+    # Async fetch wrapper
+    with st.spinner(f"Connecting to DEMIR AI V10 Brain for {symbol}..."):
+        # Create event loop for async
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        signal = loop.run_until_complete(fetch_brain_data(symbol))
+        loop.close()
+
+    if not signal:
+        st.warning("No signal generated. Brain sleeping?")
+        return
+
+    # --- QUAD VIEW LAYOUT ---
+    row1_1, row1_2 = st.columns(2)
+    row2_1, row2_2 = st.columns(2)
     
-    try:
-        ls = requests.get("https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=5m&limit=1", timeout=5)
-        if ls.status_code == 200:
-            result['long_short_ratio'] = float(ls.json()[0]['longShortRatio'])
-    except: pass
+    # 1. TOP LEFT: SIGNAL & CONFIDENCE (The Output)
+    with row1_1:
+        st.markdown("### 📡 AI Signal Decision")
+        
+        # Color Logic
+        color = "gray"
+        if "BUY" in signal.action: color = "green"
+        elif "SELL" in signal.action: color = "red"
+        
+        # Gauge Chart for Confidence
+        fig = go.Figure(go.Indicator(
+            mode = "gauge+number",
+            value = signal.confidence,
+            title = {'text': f"{signal.action}"},
+            domain = {'x': [0, 1], 'y': [0, 1]},
+            gauge = {
+                'axis': {'range': [0, 100]},
+                'bar': {'color': color},
+                'steps': [
+                    {'range': [0, 50], 'color': "rgba(255, 0, 0, 0.2)"},
+                    {'range': [50, 75], 'color': "rgba(255, 255, 0, 0.2)"},
+                    {'range': [75, 100], 'color': "rgba(0, 255, 0, 0.2)"}],
+            }
+        ))
+        fig.update_layout(height=250, margin=dict(l=20, r=20, t=50, b=20), paper_bgcolor='rgba(0,0,0,0)', font={'color': "white"})
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Key Metrics
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Entry", f"${signal.entry_zone[0]:,.0f}")
+        m2.metric("Stop Loss", f"${signal.stop_loss:,.0f}")
+        m3.metric("Take Profit", f"${signal.take_profit:,.0f}")
+
+    # 2. TOP RIGHT: SENTIMENT & NEWS (The Atmosphere)
+    with row1_2:
+        st.markdown("### 📰 Sentiment & Atmosphere")
+        
+        # Parse reasoning for sentiment (since we don't have separate obj yet)
+        # Hack: Extract sentiment from reasoning string if possible, or fetch fresh
+        from src.brain.news_scraper import CryptoNewsScraper
+        ns = CryptoNewsScraper()
+        sent_data = ns.get_market_sentiment()
+        
+        score = sent_data['score']
+        formatted_sent = sent_data['sentiment']
+        
+        # Gauge for Sentiment
+        fig_sent = go.Figure(go.Indicator(
+            mode = "gauge+number+delta",
+            value = score,
+            title = {'text': "Market Mood"},
+            delta = {'reference': 50},
+            gauge = {
+                'axis': {'range': [0, 100]},
+                'bar': {'color': "white"},
+                'steps': [
+                    {'range': [0, 40], 'color': "red"},
+                    {'range': [40, 60], 'color': "gray"},
+                    {'range': [60, 100], 'color': "green"}],
+            }
+        ))
+        fig_sent.update_layout(height=180, margin=dict(l=20, r=20, t=30, b=20), paper_bgcolor='rgba(0,0,0,0)', font={'color': "white"})
+        st.plotly_chart(fig_sent, use_container_width=True)
+        
+        st.info(f"**Dominant Mood:** {formatted_sent} ({sent_data['news_count']} news analyzed)")
+        
+    # 3. BOTTOM LEFT: LIQUIDATION MAP (The Battlefield)
+    with row2_1:
+        st.markdown("### 💧 Liquidation & Magnet Zones")
+        
+        from src.brain.liquidation_hunter import get_liquidation_hunter
+        # We need async here again? Or just use what we have. 
+        # Ideally fetch_brain_data should return everything.
+        # For now, let's display specific reasoning points about Liq
+        
+        liq_reasons = [r for r in signal.reasoning.split(". ") if "Magnet" in r or "Liquid" in r or "Funding" in r]
+        
+        if liq_reasons:
+            for r in liq_reasons:
+                st.warning(f"🧲 {r}")
+        else:
+            st.markdown("*No strong liquidation signals detected nearby.*")
+            
+        # Placeholder for Map
+        st.markdown("*(Liquidation Heatmap Visualization Coming Soon)*")
+
+    # 4. BOTTOM RIGHT: REGIME & STRUCTURE (The Map)
+    with row2_2:
+        st.markdown("### 🗺️ Market Regime")
+        
+        regime_reasons = [r for r in signal.reasoning.split(". ") if "Regime" in r or "Trend" in r or "Pattern" in r]
+        
+        if regime_reasons:
+            for r in regime_reasons:
+                st.success(f"🧭 {r}")
+        else:
+             st.info("Market Structure: Undefined / Transitioning")
+             
+        st.markdown("---")
+        st.caption(f"**AI Reasoning:** {signal.reasoning}")
+
+# ==========================================
+# PAGE ROUTING
+# ==========================================
+
+if page == "📡 Live Market Intelligence":
+    render_quad_view()
     
-    return result
+elif page == "🔮 AI Predictions":
+    # ... (Old Code) ...
+    st.write("Legacy Predictions (Migrating to Brain Cockpit...)")
+    pass # Placeholder to avoid errors if old code removed
+
+# ... (Keep other pages for now) ...
 
 # ==========================================
 # PHASE 500: LIVE VERIFICATION HELPERS
