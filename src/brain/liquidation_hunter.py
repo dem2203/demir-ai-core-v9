@@ -36,6 +36,10 @@ class LiquidationHunter:
         if not self.session:
             self.session = aiohttp.ClientSession()
         return self.session
+
+    async def analyze(self, symbol: str = "BTCUSDT") -> Dict:
+        """Standard interface for Brain Modules"""
+        return await self.get_full_liquidation_analysis(symbol)
     
     async def calculate_liquidation_levels(self, symbol: str = "BTCUSDT") -> Dict:
         """
@@ -336,3 +340,14 @@ class LiquidationHunter:
     async def close(self):
         if self.session:
             await self.session.close()
+
+
+# Global Instance
+_liq_hunter = None
+
+def get_liquidation_hunter() -> LiquidationHunter:
+    """Get or create singleton LiquidationHunter"""
+    global _liq_hunter
+    if _liq_hunter is None:
+        _liq_hunter = LiquidationHunter()
+    return _liq_hunter

@@ -32,7 +32,36 @@ class PatternRecognition:
     
     def __init__(self):
         self.swing_threshold = 0.02  # %2 swing için minimum hareket
+
+    async def analyze(self, symbol: str = "BTCUSDT") -> Dict:
+        """Standard interface for Brain Modules (Async wrapper)"""
+        # Pattern engine is synchronous but we wrap it for asyncio.gather
+        # Need to fetch data first or assume data is passed?
+        # IMPORTANT: Pattern engine needs DATAFRAME, not symbol.
+        # So we must fetch data here or refactor.
+        # For robustness, we will fetch 1h candles here.
+        import aiohttp
+        import pandas as pd
         
+        try:
+            url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1h&limit=100"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as resp:
+                    if resp.status != 200: return {}
+                    data = await resp.json()
+                    
+            df = pd.DataFrame(data, columns=['open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'qav', 'num_trades', 'tb_base_av', 'tb_quote_av', 'ignore'])
+            df['close'] = df['close'].astype(float)
+            df['high'] = df['high'].astype(float)
+            df['low'] = df['low'].astype(float)
+            df['open'] = df['open'].astype(float)
+            df['volume'] = df['volume'].astype(float)
+            
+            return self.get_full_pattern_analysis(df)
+        except Exception as e:
+            logger.error(f"Pattern analysis failed: {e}")
+            return {}
+
     def detect_wyckoff_phase(self, df: pd.DataFrame) -> Dict:
         """
         Wyckoff Fazı Tespiti
@@ -395,3 +424,14 @@ class PatternRecognition:
             'bearish_signals': bearish_signals,
             'final_bias': final_bias
         }
+
+
+# Global Instance
+_pattern_engine = None
+
+def get_pattern_engine() -> PatternRecognition:
+    """Get or create singleton PatternRecognition"""
+    global _pattern_engine
+    if _pattern_engine is None:
+        _pattern_engine = PatternRecognition()
+    return _pattern_engine

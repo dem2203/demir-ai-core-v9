@@ -360,10 +360,15 @@ class EarlySignalEngine:
                          adx = df.ta.adx(high=df['high'], low=df['low'], close=df['close'], length=14)
                          df['adx'] = adx['ADX_14']
                          
-                         # Bollinger Bands for Width
-                         bb = df.ta.bbands(close=df['close'], length=20, std=2)
-                         # BBB_20_2.0 is Bandwidth in pandas_ta usually, or (upper-lower)/mid
-                         df['bb_width'] = bb['BBB_20_2.0']
+                         # Bollinger Bands for Width (Manual Calculation)
+                         # Explicitly calculate to avoid pandas_ta column naming issues
+                         mid = df['close'].rolling(window=20).mean()
+                         std = df['close'].rolling(window=20).std()
+                         upper = mid + (std * 2)
+                         lower = mid - (std * 2)
+                         
+                         # BB Width = (Upper - Lower) / Middle
+                         df['bb_width'] = (upper - lower) / mid
                          
                          # VWAP (Approximate since we don't have full history but pandas_ta handles it)
                          df.ta.vwap(append=True)
