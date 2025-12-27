@@ -175,9 +175,10 @@ class V10Engine:
         if not hasattr(self, '_last_ta_time'):
             self._last_ta_time = datetime.now() - timedelta(minutes=20)
         
-        if (datetime.now() - self._last_ta_time).total_seconds() >= 60 * 60: # Hourly updates
+        # USER REQUEST: 15 MINUTES FREQUENCY
+        if (datetime.now() - self._last_ta_time).total_seconds() >= 15 * 60: 
             try:
-                logger.info("[TA] Sending Hourly Analysis...")
+                logger.info("[TA] Sending 15-Min Analysis...")
                 self._last_ta_time = datetime.now()
                 
                 for s, snapshot in snapshots.items():

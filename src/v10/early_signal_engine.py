@@ -27,8 +27,17 @@ from src.v10.leading_indicators import (
     LeadingIndicators, 
     LeadingSignal, 
     SignalDirection,
+    LeadingIndicators, 
+    LeadingSignal, 
+    SignalDirection,
     get_leading_indicators
 )
+
+# NEW MODULES FOR PRECISION
+from src.brain.liquidation_hunter import get_liquidation_hunter
+from src.brain.pattern_engine import get_pattern_engine
+from src.brain.pivot_points import get_pivot_points
+from src.brain.volatility_predictor import VolatilityPredictor
 
 logger = logging.getLogger("EARLY_SIGNAL_ENGINE")
 
@@ -207,6 +216,11 @@ class EarlySignalEngine:
     
     def __init__(self):
         self.leading_indicators: Optional[LeadingIndicators] = None
+        self.liquidation_hunter = None
+        self.pattern_engine = None
+        self.pivot_analyzer = None
+        self.volatility_predictor = VolatilityPredictor()
+        
         self.feature_collector = FeatureCollector()
         self.ml_model = None  # Sonra yüklenecek
         self._last_signals: Dict[str, EarlySignal] = {}
@@ -215,7 +229,12 @@ class EarlySignalEngine:
     
     async def initialize(self):
         """Async initialization"""
+    async def initialize(self):
+        """Async initialization"""
         self.leading_indicators = await get_leading_indicators()
+        self.liquidation_hunter = get_liquidation_hunter()
+        self.pattern_engine = get_pattern_engine()
+        self.pivot_analyzer = get_pivot_points()
     
     async def analyze(self, symbol: str = "BTCUSDT") -> EarlySignal:
         """
@@ -226,11 +245,35 @@ class EarlySignalEngine:
         
         logger.info(f"🔍 Early Signal Analysis: {symbol}")
         
-        # 1. Leading indicators hesapla
-        leading_signal = await self.leading_indicators.calculate_all(symbol)
+        # PARALLEL EXECUTION OF ALL BRAIN MODULES
+        # 1. Leading indicators
+        # 2. Liquidation Levels (Magnet Zones)
+        # 3. Chart Patterns
+        # 4. Pivot Points (Support/Resistance)
         
+        tasks = [
+            self.leading_indicators.calculate_all(symbol),
+            self.liquidation_hunter.analyze(symbol),
+            self.pattern_engine.analyze(symbol),
+            self.pivot_analyzer.analyze(symbol),
+            asyncio.to_thread(self.volatility_predictor.predict_volatility, symbol)
+        ]
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        leading_signal = results[0] if not isinstance(results[0], Exception) else None
+        liquidation_data = results[1] if not isinstance(results[1], Exception) else {}
+        pattern_data = results[2] if not isinstance(results[2], Exception) else {}
+        pivot_data = results[3] if not isinstance(results[3], Exception) else {}
+        volatility_data = results[4] if not isinstance(results[4], Exception) else {}
+        
+        if not leading_signal:
+             return None
+
         # 2. Güncel fiyatı al
         current_price = await self._get_current_price(symbol)
+        if current_price == 0 and pivot_data.get('current_price'):
+            current_price = pivot_data['current_price']
         
         # 3. Feature vector çıkar
         features = self.feature_collector.extract_features(leading_signal, current_price)
@@ -240,8 +283,17 @@ class EarlySignalEngine:
         if self.ml_model:
             ml_prediction = self._predict_with_ml(features)
         
-        # 5. Sinyal üret
-        signal = self._generate_signal(symbol, leading_signal, current_price, ml_prediction)
+        # 5. Sinyal üret - ENRICHED WITH ALL DATA
+        signal = self._generate_signal(
+            symbol=symbol, 
+            leading=leading_signal, 
+            current_price=current_price, 
+            ml_pred=ml_prediction,
+            liq_data=liquidation_data,
+            pattern_data=pattern_data,
+            pivot_data=pivot_data,
+            vol_data=volatility_data
+        )
         
         # 6. Training için veri topla
         self.feature_collector.collect_training_sample(leading_signal, current_price)
@@ -281,43 +333,100 @@ class EarlySignalEngine:
         symbol: str, 
         leading: LeadingSignal,
         current_price: float,
-        ml_pred: Optional[Dict]
+        ml_pred: Optional[Dict],
+        liq_data: Dict,
+        pattern_data: Dict,
+        pivot_data: Dict,
+        vol_data: Dict
     ) -> EarlySignal:
         """
-        Leading signals'dan trading sinyali üret.
+        Leading signals + All Modules'dan trading sinyali üret.
         """
         # Yön belirleme
+        action = "HOLD"
+        
+        # 1. Core Direction from Leading Indicators
         if leading.direction in [SignalDirection.STRONG_BULLISH, SignalDirection.BULLISH]:
             action = "BUY"
         elif leading.direction in [SignalDirection.STRONG_BEARISH, SignalDirection.BEARISH]:
             action = "SELL"
-        else:
-            action = "HOLD"
+            
+        # 2. Pattern Validation (Confirmation)
+        pattern_score = 0
+        pattern_reason = ""
+        if pattern_data and 'patterns' in pattern_data:
+            for pat in pattern_data['patterns']:
+                if pat['confidence'] > 50:
+                    icon = "📈" if pat['type'] == 'BULLISH' else "📉"
+                    pattern_reason = f"{icon} {pat['name']}"
+                    # Bonus confidence for patterns
+                    confidence += 10
+
+        # 3. Volatility Check (Breakout Validation)
+        vol_state = vol_data.get('state', 'NORMAL')
+        is_breakout = vol_state == 'SQUEEZE' or vol_data.get('volatility_ratio', 1) < 0.8
         
         # Confidence hesapla
         confidence = leading.confidence
         if leading.direction.value.startswith("STRONG"):
-            confidence = min(100, confidence + 15)
+            confidence += 15
+        
+        if is_breakout:
+            confidence += 10 # Bonus for timing
         
         # Minimum confidence threshold
         if confidence < 50:
             action = "HOLD"
         
-        # Entry zone hesapla (fiyatın ±0.5%)
-        entry_min = current_price * 0.995
-        entry_max = current_price * 1.005
+        # --- PRECISION LEVELS (SL/TP) ---
         
-        # SL/TP hesapla
-        if action == "BUY":
-            stop_loss = current_price * 0.98  # -2%
-            take_profit = current_price * 1.04  # +4%
-        elif action == "SELL":
-            stop_loss = current_price * 1.02  # +2%
-            take_profit = current_price * 0.96  # -4%
-        else:
-            stop_loss = current_price
-            take_profit = current_price
+        # Default limits
+        stop_loss = current_price * 0.98
+        take_profit = current_price * 1.04
         
+        # Use Pivot Points for Precision
+        reasons = []
+        
+        if pivot_data and 'daily_pivots' in pivot_data:
+            pivots = pivot_data['daily_pivots']
+            
+            if action == "BUY":
+                # TP = Next Resistance
+                # SL = Nearest Support
+                
+                # Find R1, R2, S1
+                r1 = next((p['price'] for p in pivots if '_R1' in p['name']), None)
+                r2 = next((p['price'] for p in pivots if '_R2' in p['name']), None)
+                s1 = next((p['price'] for p in pivots if '_S1' in p['name']), None)
+                
+                if r1 and r1 > current_price:
+                    take_profit = r1
+                    reasons.append(f"🎯 TP at Daily R1 (${r1:,.0f})")
+                elif r2:
+                    take_profit = r2
+                    
+                if s1 and s1 < current_price:
+                    stop_loss = s1
+                    reasons.append(f"🛡️ SL at Daily S1 (${s1:,.0f})")
+                    
+            elif action == "SELL":
+                # TP = Next Support
+                # SL = Nearest Resistance
+                
+                s1 = next((p['price'] for p in pivots if '_S1' in p['name']), None)
+                s2 = next((p['price'] for p in pivots if '_S2' in p['name']), None)
+                r1 = next((p['price'] for p in pivots if '_R1' in p['name']), None)
+                
+                if s1 and s1 < current_price:
+                    take_profit = s1
+                    reasons.append(f"🎯 TP at Daily S1 (${s1:,.0f})")
+                elif s2:
+                    take_profit = s2
+                
+                if r1 and r1 > current_price:
+                    stop_loss = r1
+                    reasons.append(f"🛡️ SL at Daily R1 (${r1:,.0f})")
+
         # Risk/Reward
         if action != "HOLD":
             risk = abs(current_price - stop_loss)
@@ -325,9 +434,21 @@ class EarlySignalEngine:
             risk_reward = reward / risk if risk > 0 else 0
         else:
             risk_reward = 0
-        
-        # Reasoning oluştur
-        reasons = []
+            
+        # Add Module Reasons
+        if is_breakout:
+            reasons.append("🌋 Volatility Squeeze (Big Move Incoming)")
+            
+        if pattern_reason:
+            reasons.append(pattern_reason)
+
+        if liq_data and 'heatmap_clusters' in liq_data:
+             clusters = liq_data['heatmap_clusters']
+             if clusters:
+                 best_cluster = clusters[0] # Assume sorted via intensity
+                 reasons.append(f"🧲 Magnet Level: ${best_cluster['price']:,.0f}")
+
+        # Leading reasons
         for ind in leading.indicators:
             if abs(ind.value) > 15:
                 emoji = "🟢" if ind.value > 0 else "🔴"
@@ -339,7 +460,7 @@ class EarlySignalEngine:
             symbol=symbol,
             action=action,
             confidence=confidence,
-            entry_zone=(round(entry_min, 2), round(entry_max, 2)),
+            entry_zone=(round(current_price * 0.999, 2), round(current_price * 1.001, 2)),
             stop_loss=stop_loss,
             take_profit=take_profit,
             risk_reward=risk_reward,
