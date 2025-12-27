@@ -21,6 +21,7 @@ from src.v10.lstm_predictor import get_lstm_predictor
 from src.v10.early_signal_engine import get_early_signal_engine
 from src.v10.signal_history import record_early_signal
 from src.v10.ai_integration import get_ai_bridge  # RL Agent Integration
+from src.execution.paper_trader import get_paper_trader
 
 logger = logging.getLogger("V10_ENGINE")
 
@@ -47,6 +48,7 @@ class V10Engine:
         self.performance_tracker = get_performance_tracker()
         self.lstm_predictor = get_lstm_predictor()
         self.early_signal_engine = None  # Lazy init
+        self.paper_trader = get_paper_trader()
         
         self._last_signal_time: Dict[str, datetime] = {}
         self._last_performance_report = datetime.now()
@@ -324,6 +326,22 @@ DOGRULAMA:
                         logger.warning(f"Signal history error: {e}")
                     
                     logger.info(f"[SIGNAL] Early Signal sent: {symbol}")
+                    
+                    # PAPER TRADING EXECUTION
+                    try:
+                        trade_signal = {
+                            "symbol": symbol,
+                            "side": early_signal.action,
+                            "entry_price": early_signal.entry_zone[0],
+                            "sl_price": early_signal.stop_loss,
+                            "confidence": early_signal.confidence
+                        }
+                        if self.paper_trader.execute_trade(trade_signal):
+                            logger.info(f"📝 Paper Trade Executed: {symbol}")
+                            self.notifier._send_message(f"📝 *PAPER TRADE AÇILDI* - {symbol}\nFiyat: {early_signal.entry_zone[0]}")
+                    except Exception as pt_err:
+                        logger.error(f"Paper trade execution error: {pt_err}")
+
                     return
                     
         except Exception as e:
