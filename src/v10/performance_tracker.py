@@ -309,7 +309,55 @@ class PerformanceTracker:
         """
         report = self.get_report()
         
-        # Build message
+        # If no signals in performance tracker, try signal_history
+        if report.total_signals == 0:
+            try:
+                from src.v10.signal_history import get_statistics, get_recent_signals
+                from src.brain.feedback_db import get_feedback_db
+                
+                # Get signal_history stats
+                stats = get_statistics()
+                
+                # Get feedback_db stats (actual trade outcomes)
+                feedback_db = get_feedback_db()
+                feedback_stats = feedback_db.get_stats()
+                
+                lines = [
+                    "📊 *PERFORMANS RAPORU*",
+                    "━━━━━━━━━━━━━━━━━━━━━━━",
+                    "",
+                    f"📈 *SİNYAL İSTATİSTİKLERİ*",
+                    f"Toplam Sinyal: {stats.get('total', 0)}",
+                    f"Bekleyen: {stats.get('pending', 0)}",
+                    f"Ort. Güven: {stats.get('avg_confidence', 0):.0f}%",
+                    "",
+                    f"💰 *PAPER TRADING*",
+                    f"Toplam İşlem: {feedback_stats.get('total_trades', 0)}",
+                    f"Win Rate: {feedback_stats.get('win_rate', 0) * 100:.1f}%",
+                    f"Ort. PnL: ${feedback_stats.get('avg_pnl', 0):.2f}",
+                    f"Toplam PnL: ${feedback_stats.get('total_pnl', 0):.2f}",
+                    "",
+                ]
+                
+                # Recent signals
+                recent = get_recent_signals(5)
+                if recent:
+                    lines.append("━━━ *SON SİNYALLER* ━━━")
+                    for sig in recent[:3]:
+                        emoji = "🟢" if sig.get('action') == 'BUY' else "🔴" if sig.get('action') == 'SELL' else "⚪"
+                        lines.append(f"{emoji} {sig.get('symbol')}: {sig.get('action')} ({sig.get('confidence', 0):.0f}%)")
+                
+                lines.extend([
+                    "",
+                    f"⏰ {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}",
+                    "📡 *DEMIR AI v10*"
+                ])
+                
+                return "\n".join(lines)
+            except Exception as e:
+                logger.debug(f"Signal history stats error: {e}")
+        
+        # Original code for when we have performance tracker data
         lines = [
             "📊 *PERFORMANS RAPORU*",
             "━━━━━━━━━━━━━━━━━━━━━━━",
