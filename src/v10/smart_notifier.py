@@ -368,11 +368,12 @@ class SmartNotifier:
             
             # 6. SENTIMENT (News-based)
             scraper = CryptoNewsScraper()
-            sentiment_data = await scraper.get_sentiment(symbol.replace('USDT', ''))
+            scraper.fetch_all_news(max_age_hours=2)
+            sentiment_data = scraper.get_market_sentiment()
             
             if sentiment_data:
                 score = sentiment_data.get('score', 0)
-                mood = sentiment_data.get('mood', 'NEUTRAL')
+                mood = sentiment_data.get('overall', 'NEUTRAL')
                 lines.append("\n📰 *SENTIMENT (Haber Bazlı)*")
                 emoji = "🐂" if mood == 'BULLISH' else "🐻" if mood == 'BEARISH' else "⚪"
                 lines.append(f"  {emoji} {mood} (Skor: {score:.1f}/10)")
