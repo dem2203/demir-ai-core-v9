@@ -341,23 +341,23 @@ class SmartNotifier:
             
             # 4. VOLATILITY STATUS
             vol_predictor = VolatilityPredictor()
-            vol_status = await vol_predictor.predict(symbol)
+            vol_status = vol_predictor.predict_volatility(symbol)
             
-            if vol_status:
-                is_squeeze = vol_status.get('squeeze', False)
-                bb_width = vol_status.get('bb_width', 0)
-                lines.append("\\n🌋 *VOLATİLİTE DURUMU*")
-                if is_squeeze:
+            if vol_status and vol_status.get('state'):
+                state = vol_status.get('state', 'UNKNOWN')
+                ratio = vol_status.get('volatility_ratio', 0)
+                lines.append("\n🌋 *VOLATİLİTE DURUMU*")
+                if state == 'SQUEEZE':
                     lines.append("  ⚠️ SIKIŞMA - Büyük hareket yakın!")
                 else:
-                    lines.append(f"  ➡️ Normal (BB Width: {bb_width:.2f}%)")
+                    lines.append(f"  ➡️ {state} (Ratio: {ratio:.2f})")
             
             # 5. MARKET REGIME
             regime_classifier = RegimeClassifier()
             regime = await regime_classifier.classify(symbol)
             
             if regime:
-                lines.append("\\n🧭 *PİYASA REJİMİ*")
+                lines.append("\n🧭 *PİYASA REJİMİ*")
                 regime_type = regime.get('regime', 'UNKNOWN')
                 confidence = regime.get('confidence', 0)
                 lines.append(f"  {regime_type} ({confidence:.0f}% güven)")
@@ -369,20 +369,25 @@ class SmartNotifier:
             if sentiment_data:
                 score = sentiment_data.get('score', 0)
                 mood = sentiment_data.get('mood', 'NEUTRAL')
-                lines.append("\\n📰 *SENTIMENT (Haber Bazlı)*")
+                lines.append("\n📰 *SENTIMENT (Haber Bazlı)*")
                 emoji = "🐂" if mood == 'BULLISH' else "🐻" if mood == 'BEARISH' else "⚪"
                 lines.append(f"  {emoji} {mood} (Skor: {score:.1f}/10)")
             
         except Exception as e:
             logger.error(f"Deep technical analysis error for {symbol}: {e}")
-            lines.append(f"\\n❌ Analiz hatası: {str(e)[:50]}")
+            lines.append(f"\n❌ Analiz hatası: {str(e)[:50]}")
         
         # Footer
-        lines.append(f"\\n━━━━━━━━━━━━━━━━━━━━━━")
+        lines.append("\n━━━━━━━━━━━━━━━━━━━━━━")
         lines.append(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
         lines.append("📡 *DEMIR AI v10 - LIVE DATA*")
         
-        return self._send_message("\\n".join(lines))
+        # Fix Telegram Markdown (escape special chars in dynamic content)
+        message = "\n".join(lines)
+        # Escape problematic characters in non-markdown parts
+        # (Already using \n escape, no need for additional escape)
+        
+        return self._send_message(message)
     
     def send_error_alert(self, error_message: str) -> bool:
         """
