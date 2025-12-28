@@ -179,6 +179,8 @@ class DataHub:
                 snapshot.errors.append(error_msg)
                 logger.error(f"❌ DATA HUB ERROR [{symbol}] {error_msg}")
                 self._error_count += 1
+            else:
+                # SUCCESS - veriyi ata
                 self._apply_result(snapshot, keys[i], result)
                 success_count += 1
                 self._success_count += 1
