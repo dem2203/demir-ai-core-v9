@@ -335,13 +335,11 @@ class EarlySignalEngine:
         return 0
     
     async def _analyze_regime(self, symbol: str) -> Dict:
-        """Fetch data and classify regime"""
+        """Fetch data and classify regime - NO MOCK DATA"""
         try:
-            # Reusing PivotAnalyzer to fetch daily data (or implement simple kline fetcher)
-            # For now, let's use a quick fetch here to ensure independence
             import aiohttp
             import pandas as pd
-            import pandas_ta as ta
+            import numpy as np
             
             async with aiohttp.ClientSession() as session:
                  # Fetch 100 candles (1h) for regime analysis
@@ -355,23 +353,40 @@ class EarlySignalEngine:
                          df['low'] = df['low'].astype(float)
                          df['volume'] = df['volume'].astype(float)
                          
-                         # Calculate Indicators needed for RegimeClassifier
-                         # ADX
-                         adx = df.ta.adx(high=df['high'], low=df['low'], close=df['close'], length=14)
-                         df['adx'] = adx['ADX_14']
+                         # === MANUAL ADX CALCULATION ===
+                         # True Range
+                         df['prev_close'] = df['close'].shift(1)
+                         df['tr1'] = df['high'] - df['low']
+                         df['tr2'] = abs(df['high'] - df['prev_close'])
+                         df['tr3'] = abs(df['low'] - df['prev_close'])
+                         df['tr'] = df[['tr1', 'tr2', 'tr3']].max(axis=1)
                          
-                         # Bollinger Bands for Width (Manual Calculation)
-                         # Explicitly calculate to avoid pandas_ta column naming issues
+                         # +DM / -DM
+                         df['up_move'] = df['high'] - df['high'].shift(1)
+                         df['down_move'] = df['low'].shift(1) - df['low']
+                         df['+dm'] = np.where((df['up_move'] > df['down_move']) & (df['up_move'] > 0), df['up_move'], 0)
+                         df['-dm'] = np.where((df['down_move'] > df['up_move']) & (df['down_move'] > 0), df['down_move'], 0)
+                         
+                         # Smoothed TR, +DM, -DM (14 period)
+                         period = 14
+                         df['atr'] = df['tr'].rolling(window=period).mean()
+                         df['+di'] = 100 * (df['+dm'].rolling(window=period).mean() / df['atr'])
+                         df['-di'] = 100 * (df['-dm'].rolling(window=period).mean() / df['atr'])
+                         
+                         # DX and ADX
+                         df['dx'] = 100 * abs(df['+di'] - df['-di']) / (df['+di'] + df['-di'])
+                         df['adx'] = df['dx'].rolling(window=period).mean()
+                         
+                         # === MANUAL BOLLINGER BANDS WIDTH ===
                          mid = df['close'].rolling(window=20).mean()
                          std = df['close'].rolling(window=20).std()
                          upper = mid + (std * 2)
                          lower = mid - (std * 2)
-                         
-                         # BB Width = (Upper - Lower) / Middle
                          df['bb_width'] = (upper - lower) / mid
                          
-                         # VWAP (Approximate since we don't have full history but pandas_ta handles it)
-                         df.ta.vwap(append=True)
+                         # === MANUAL VWAP ===
+                         df['tp'] = (df['high'] + df['low'] + df['close']) / 3
+                         df['vwap'] = (df['tp'] * df['volume']).cumsum() / df['volume'].cumsum()
                          
                          # Classify
                          regime = self.regime_classifier.identify_regime(df)

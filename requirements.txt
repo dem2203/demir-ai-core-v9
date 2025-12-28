@@ -7,8 +7,8 @@ pandas
 numpy
 ccxt>=4.0.0
 scikit-learn
-pandas_ta
 joblib
+# pandas_ta REMOVED - incompatible with Python 3.11, using manual calculations
 # yfinance REMOVED - causes production errors on Railway
 # pandas_datareader REMOVED - yfinance dependency
 
