@@ -2,6 +2,9 @@ import json
 import os
 import logging
 from datetime import datetime
+from typing import Dict, Optional
+
+from src.execution.dca_module import get_dca_module
 
 logger = logging.getLogger("PAPER_TRADER")
 
@@ -21,6 +24,8 @@ class PaperTrader:
 
     def __init__(self):
         self.portfolio = self._load_portfolio()
+        self.dca_module = get_dca_module()
+        self.trailing_stops = {}  # {symbol: {'initial_sl': X, 'highest_price': Y}}
 
     def _load_portfolio(self):
         if os.path.exists(self.DB_FILE):
@@ -136,6 +141,158 @@ class PaperTrader:
                 return True
                 
         return False
+    
+    def update_positions(self, current_prices: Dict[str, float]) -> None:
+        """
+        AKILLI POZİSYON YÖNETİMİ
+        
+        Her döngüde çalışır:
+        1. Trailing Stop günceller
+        2. DCA fırsatlarını kontrol eder
+        3. SL/TP kontrolü yapar (otomatik kapat)
+        
+        Args:
+            current_prices: {symbol: current_price}
+        """
+        closed_positions = []
+        
+        for symbol in list(self.portfolio['positions'].keys()):
+            if symbol not in current_prices:
+                continue
+                
+            current_price = current_prices[symbol]
+            pos = self.portfolio['positions'][symbol]
+            entry_price = pos['entry_price']
+            current_sl = pos['sl_price']
+            
+            # 1. TRAILING STOP UPDATE
+            self._update_trailing_stop(symbol, current_price, entry_price, current_sl)
+            
+            # 2. DCA CHECK
+            self._check_and_execute_dca(symbol, current_price, entry_price, pos['amount'])
+            
+            # 3. SL/TP CHECK (Auto-close)
+            # Refresh SL (may have been updated by trailing stop)
+            current_sl = self.portfolio['positions'][symbol]['sl_price']
+            
+            # Check Stop Loss
+            if current_price <= current_sl:
+                logger.info(f"🛑 STOP LOSS HIT: {symbol} @ ${current_price:.2f}")
+                self.execute_trade({
+                    'symbol': symbol,
+                    'side': 'SELL',
+                    'entry_price': current_price,
+                    'sl_price': current_sl
+                })
+                closed_positions.append(symbol)
+                continue
+            
+            # Simple TP check (if we had TP field)
+            # For now, manual TP via Early Signal confidence
+        
+        # Clean up trailing stop data for closed positions
+        for symbol in closed_positions:
+            if symbol in self.trailing_stops:
+                del self.trailing_stops[symbol]
+            if symbol in self.dca_module.positions:
+                self.dca_module.close_position(symbol)
+    
+    def _update_trailing_stop(self, symbol: str, current_price: float, 
+                              entry_price: float, current_sl: float) -> None:
+        """
+        Trailing Stop: Kârda iken SL'i yukarı çek.
+        """
+        # Initialize tracking
+        if symbol not in self.trailing_stops:
+            self.trailing_stops[symbol] = {
+                'initial_sl': current_sl,
+                'highest_price': entry_price
+            }
+        
+        ts = self.trailing_stops[symbol]
+        
+        # Update highest seen price
+        if current_price > ts['highest_price']:
+            ts['highest_price'] = current_price
+        
+        # Calculate profit %
+        profit_pct = ((current_price / entry_price) - 1) * 100
+        
+        # Adjust SL based on profit tiers
+        new_sl = current_sl
+        
+        if profit_pct >= 10:  # +10% profit
+            new_sl = entry_price * 1.05  # Move SL to +5% profit (lock in gains)
+        elif profit_pct >= 5:   # +5% profit
+            new_sl = entry_price  # Move SL to break-even (risk-free)
+        elif profit_pct >= 2:   # +2% profit
+            new_sl = max(current_sl, entry_price * 0.995)  # Tighten SL slightly
+        
+        # Update if improved (never move SL down!)
+        if new_sl > current_sl:
+            self.portfolio['positions'][symbol]['sl_price'] = new_sl
+            self._save_portfolio()
+            logger.info(
+                f"📈 TRAILING STOP: {symbol} | "
+                f"Profit: +{profit_pct:.1f}% | "
+                f"SL ${current_sl:.0f} → ${new_sl:.0f}"
+            )
+    
+    def _check_and_execute_dca(self, symbol: str, current_price: float,
+                                entry_price: float, quantity: float) -> None:
+        """
+        DCA: Kayıptayken akıllı ek alım.
+        """
+        # Create DCA tracking if not exists
+        if symbol not in self.dca_module.positions:
+            self.dca_module.create_position(
+                symbol=symbol,
+                entry_price=entry_price,
+                quantity=quantity
+            )
+        
+        # Check DCA opportunity
+        dca_signal = self.dca_module.check_dca_opportunity(
+            symbol=symbol,
+            current_price=current_price,
+            market_data=None  # Could pass RSI, trend, etc.
+        )
+        
+        if dca_signal:
+            # Execute DCA buy
+            logger.info(
+                f"💰 DCA TRIGGERED: {symbol} Level {dca_signal['dca_level']} | "
+                f"Drop: {dca_signal['drop_pct']:.1f}% | "
+                f"Buy: {dca_signal['buy_quantity']:.4f} units"
+            )
+            
+            # Add to position (simple buy, no new SL calc)
+            pos = self.portfolio['positions'][symbol]
+            add_cost = current_price * dca_signal['buy_quantity']
+            
+            if add_cost <= self.portfolio['balance']:
+                # Update position
+                new_total_qty = pos['amount'] + dca_signal['buy_quantity']
+                new_total_cost = pos['cost'] + add_cost
+                new_avg_price = new_total_cost / new_total_qty
+                
+                self.portfolio['balance'] -= add_cost
+                pos['amount'] = new_total_qty
+                pos['cost'] = new_total_cost
+                pos['entry_price'] = new_avg_price  # Update avg
+                
+                self._save_portfolio()
+                
+                # Record in DCA module
+                self.dca_module.execute_dca(symbol, current_price, dca_signal['buy_quantity'])
+                
+                logger.info(
+                    f"✅ DCA EXECUTED: {symbol} | "
+                    f"New Avg: ${new_avg_price:.2f} | "
+                    f"Total: {new_total_qty:.4f} units"
+                )
+            else:
+                logger.warning(f"⚠️ DCA skipped: Insufficient balance")
 
     def get_portfolio_status(self, current_prices={}):
         """

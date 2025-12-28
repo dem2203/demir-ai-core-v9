@@ -150,6 +150,14 @@ class V10Engine:
             except Exception as e:
                 logger.error(f"[ERROR] {symbol}: {e}")
         
+        # === AKILLI POZİSYON YÖNETİMİ ===
+        try:
+            current_prices = {s: snap.price for s, snap in snapshots.items() if snap.is_valid}
+            if current_prices:
+                self.paper_trader.update_positions(current_prices)
+        except Exception as e:
+            logger.error(f"Position update error: {e}")
+        
         # Export data for Dashboard - REAL DATA ONLY
         try:
             import json
