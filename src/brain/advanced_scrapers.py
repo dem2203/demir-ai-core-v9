@@ -376,7 +376,7 @@ class AdvancedMarketScrapers:
                     overall = values[0] if len(values) > 0 else 0
                     ma_signal = values[1] if len(values) > 1 else 0
                     osc_signal = values[2] if len(values) > 2 else 0
-                    rsi = values[3] if len(values) > 3 else 50
+                    rsi = values[3] if len(values) > 3 else -1  # -1 = veri yok
                     
                     # Convert to action
                     if overall > 0.5:

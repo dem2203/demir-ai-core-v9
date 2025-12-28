@@ -1,0 +1,30 @@
+{
+  "ppo_btc": [
+    {
+      "model_name": "ppo_btc",
+      "version": "v6",
+      "timestamp": "2025-12-28T00:10:45.466634",
+      "sharpe_ratio": 0,
+      "total_return": 0,
+      "win_rate": 0,
+      "max_drawdown": 0,
+      "training_time_seconds": 3719,
+      "total_timesteps": 500000,
+      "status": "failed"
+    }
+  ],
+  "ppo_eth": [
+    {
+      "model_name": "ppo_eth",
+      "version": "v6",
+      "timestamp": "2025-12-28T00:27:52.656957",
+      "sharpe_ratio": 0,
+      "total_return": 0,
+      "win_rate": 0,
+      "max_drawdown": 0,
+      "training_time_seconds": 1027,
+      "total_timesteps": 500000,
+      "status": "failed"
+    }
+  ]
+}

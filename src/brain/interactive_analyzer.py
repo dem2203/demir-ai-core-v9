@@ -391,8 +391,8 @@ class InteractiveCoinAnalyzer:
         analysis.price_change_7d = data.get('change_7d', 0)
     
     def _apply_technical(self, analysis: DetailedCoinAnalysis, data: Dict):
-        analysis.rsi_1h = data.get('rsi_1h', 50)
-        analysis.rsi_4h = data.get('rsi_4h', 50)
+        analysis.rsi_1h = data.get('rsi_1h', -1)  # -1 = veri yok
+        analysis.rsi_4h = data.get('rsi_4h', -1)  # -1 = veri yok
         analysis.macd_signal = data.get('macd_signal', 'NEUTRAL')
         analysis.ema_trend = data.get('ema_trend', 'NEUTRAL')
         analysis.support_levels = data.get('supports', [])

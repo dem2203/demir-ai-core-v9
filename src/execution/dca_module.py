@@ -353,7 +353,7 @@ class DCAModule:
         
         # Trend aşağı ise dikkatli ol
         trend = market_data.get('trend', 'NEUTRAL')
-        rsi = market_data.get('rsi', 50)
+        rsi = market_data.get('rsi', -1)  # -1 = veri yok
         
         # RSI aşırı düşükse (oversold) DCA mantıklı olabilir
         if rsi < 25:

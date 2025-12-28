@@ -83,17 +83,46 @@ class PaperTrader:
                 pos = self.portfolio['positions'][symbol]
                 amount = pos['amount']
                 entry_price = pos['entry_price']
+                side_type = pos.get('side', 'LONG')
                 
-                # Kar/Zarar Hesapla
-                pnl = (price - entry_price) * amount
+                # Kar/Zarar Hesapla (LONG vs SHORT)
+                if side_type == 'LONG':
+                    pnl = (price - entry_price) * amount
+                    self.portfolio['balance'] += (amount * entry_price) + pnl
+                else:  # SHORT
+                    pnl = (entry_price - price) * amount
+                    collateral = pos.get('collateral', amount * price * 0.5)
+                    self.portfolio['balance'] += collateral + pnl
                 
-                # Bakiyeye ekle (Ana para + Kar)
-                self.portfolio['balance'] += (amount * entry_price) + pnl
+                # FEEDBACK LOOP - Trade outcome kaydet
+                try:
+                    from src.brain.feedback_db import get_feedback_db
+                    feedback_db = get_feedback_db()
+                    
+                    entry_time = datetime.fromisoformat(pos['timestamp'])
+                    duration_mins = (datetime.now() - entry_time).seconds // 60
+                    pnl_pct = (pnl / (amount * entry_price)) * 100
+                    
+                    feedback_db.save_trade_outcome({
+                        'symbol': symbol,
+                        'side': side_type,
+                        'entry_features': pos.get('entry_snapshot', {}),
+                        'predicted_action': pos.get('predicted_action', 'UNKNOWN'),
+                        'actual_pnl': pnl,
+                        'pnl_pct': pnl_pct,
+                        'duration_minutes': duration_mins,
+                        'entry_price': entry_price,
+                        'exit_price': price
+                    })
+                    logger.info(f"✅ Feedback saved: {symbol} PnL ${pnl:.2f}")
+                except Exception as e:
+                    logger.warning(f"Feedback save error: {e}")
                 
                 # Geçmişe kaydet
                 self.portfolio['history'].append({
                     "symbol": symbol,
                     "action": "SELL",
+                    "side": side_type,
                     "entry": entry_price,
                     "exit": price,
                     "amount": amount,
@@ -103,7 +132,7 @@ class PaperTrader:
                 
                 del self.portfolio['positions'][symbol]
                 self._save_portfolio()
-                logger.info(f"💰 SOLD {symbol}: PnL ${pnl:.2f}")
+                logger.info(f"💰 CLOSED {side_type} {symbol}: PnL ${pnl:.2f}")
                 return True
 
         # --- POZİSYON AÇMA (BUY) ---
@@ -134,8 +163,16 @@ class PaperTrader:
                     "sl_price": sl_price,
                     "amount": amount,
                     "cost": cost,
-                    "side": "LONG",  # Pozisyon yönü
-                    "timestamp": datetime.now().isoformat()
+                    "side": "LONG",
+                    "timestamp": datetime.now().isoformat(),
+                    "predicted_action": signal.get('side', 'BUY'),
+                    "entry_snapshot": {
+                        'rsi': signal.get('rsi', -1),
+                        'ob_ratio': signal.get('ob_ratio', -1),
+                        'funding': signal.get('funding', 0),
+                        'volatility': signal.get('volatility', 0),
+                        'regime': signal.get('regime', 'UNKNOWN')
+                    }
                 }
                 
                 self._save_portfolio()

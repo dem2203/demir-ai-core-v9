@@ -52,7 +52,7 @@ class MarketContext:
     sentiment_signal: str = "NEUTRAL"
     
     # Teknik
-    rsi: float = 50
+    rsi: float = -1  # -1 = veri yok (ESKİ: 50 YANLIŞ!)
     macd_signal: str = "NEUTRAL"
     bb_position: str = "MIDDLE"  # UPPER/MIDDLE/LOWER
     trend_1h: str = "NEUTRAL"

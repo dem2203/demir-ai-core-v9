@@ -538,8 +538,8 @@ class DataHub:
             snapshot.short_ratio = data.get('short_ratio', 0.5)
         
         elif key == 'technicals':
-            snapshot.rsi_1h = data.get('rsi_1h', 50)
-            snapshot.rsi_4h = data.get('rsi_4h', 50)
+            snapshot.rsi_1h = data.get('rsi_1h', -1)  # -1 = veri yok
+            snapshot.rsi_4h = data.get('rsi_4h', -1)  # -1 = veri yok
             snapshot.ema_20 = data.get('ema_20', 0)
             snapshot.ema_50 = data.get('ema_50', 0)
             snapshot.ema_200 = data.get('ema_200', 0)

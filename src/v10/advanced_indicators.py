@@ -276,7 +276,7 @@ class AdvancedIndicators:
         current_rsi = rsi_values[-1]
         
         if max_rsi == min_rsi:
-            stoch_rsi = 50
+            stoch_rsi = -1  # -1 = veri yok (ESKİ: 50 YANLIŞ!)
         else:
             stoch_rsi = (current_rsi - min_rsi) / (max_rsi - min_rsi) * 100
         
