@@ -64,69 +64,8 @@ class SmartNotifier:
             self._error_count += 1
             return False
     
-    def send_trading_signal(self, signal) -> bool:
-        """
-        Trading sinyalini formatla ve gönder.
-        
-        Args:
-            signal: TradingSignal from PredictorEngine
-        """
-        if not signal.is_valid:
-            logger.debug(f"Signal not valid for {signal.symbol}: {signal.warnings}")
-            return False
-        
-        # Emoji seçimi
-        direction_emoji = "🟢" if signal.signal_type.value == "LONG" else "🔴"
-        risk_emoji = {
-            "LOW": "🟢",
-            "MEDIUM": "🟡",
-            "HIGH": "🔴"
-        }.get(signal.risk_level.value, "⚪")
-        
-        # Reasons formatla
-        reasons_text = "\n".join([f"✅ {r}" for r in signal.reasons[:6]])
-        
-        # Warnings
-        warnings_text = ""
-        if signal.warnings:
-            warnings_text = "\n━━━ *UYARILAR* ━━━\n" + "\n".join([f"⚠️ {w}" for w in signal.warnings[:3]])
-        
-        # Ana mesaj
-        message = f"""🎯 *{signal.signal_type.value} SİNYALİ - {signal.symbol}*
-━━━━━━━━━━━━━━━━━━━━━━
-
-{direction_emoji} *YÖN: {signal.signal_type.value}*
-📍 *ENTRY:* ${signal.entry_low:,.0f} - ${signal.entry_high:,.0f}
-
-🎯 *TP1:* ${signal.tp1:,.0f}
-🎯 *TP2:* ${signal.tp2:,.0f}
-🎯 *TP3:* ${signal.tp3:,.0f}
-🛑 *SL:* ${signal.sl:,.0f}
-
-⚖️ *R/R:* 1:{signal.risk_reward:.1f}
-🧠 *Güven:* %{signal.confidence:.0f}
-{risk_emoji} *Risk:* {signal.risk_level.value}
-💰 *Potansiyel:* ${signal.potential_usd:,.0f}
-
-━━━ *NEDEN BU SİNYAL?* ━━━
-{reasons_text}
-{warnings_text}
-
-━━━ *VERİ KALİTESİ* ━━━
-📡 Kaynak: {signal.data_sources_ok}/{signal.data_sources_total} OK
-
-━━━━━━━━━━━━━━━━━━━━━━
-⏰ {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
-📡 *DEMIR AI v10 - LIVE DATA*"""
-        
-        success = self._send_message(message)
-        
-        if success:
-            logger.info(f"✅ Signal sent: {signal.symbol} {signal.signal_type.value} %{signal.confidence:.0f}")
-        
-        return success
     
-    def send_market_summary(self, snapshots: dict) -> bool:
+    async def send_market_summary(self, snapshots: dict) -> bool:
         """
         Tüm coinlerin özet durumunu gönder.
         """
@@ -336,6 +275,112 @@ class SmartNotifier:
             return "🔴 SHORT eğilimli"
         else:
             return "⏸️ BEKLE - Net sinyal yok"
+    
+    async def send_deep_technical_report(self, symbol: str) -> bool:
+        """
+        TÜMGÜÇ VE MODÜL - EN DERİN ANALİZ
+        SADECE CANLI VERİ - MOCK/FALLBACK YOK
+        
+        Kullanılan Modüller:
+        - LiquidationHunter (CoinGlass)
+        - PatternEngine (Chart patterns)
+        - PivotPointsAnalyzer (S/R levels)
+        - VolatilityPredictor (Squeeze/Breakout)
+        - RegimeClassifier (Trend/Range)
+        - SentimentAnalyzer (News-based)
+        """
+        from src.brain.liquidation_hunter import get_liquidation_hunter
+        from src.brain.pattern_engine import get_pattern_engine
+        from src.brain.pivot_points import get_pivot_points
+        from src.brain.volatility_predictor import VolatilityPredictor
+        from src.brain.regime_classifier import RegimeClassifier
+        from src.brain.news_scraper import CryptoNewsScraper
+        
+        lines = [f"🔬 *DERİN TEKNİK ANALİZ - {symbol}*", "━━━━━━━━━━━━━━━━━━━━━━"]
+        
+        try:
+            # 1. LIQUIDATION ZONES (CoinGlass)
+            liq_hunter = get_liquidation_hunter()
+            liq_data = await liq_hunter.analyze(symbol)
+            
+            if liq_data and 'heatmap_clusters' in liq_data:
+                clusters = liq_data['heatmap_clusters'][:3]  # Top 3
+                if clusters:
+                    lines.append("\\n💧 *LİKİDASYON BÖLGE (MAGNET)*")
+                    for i, c in enumerate(clusters, 1):
+                        lines.append(f"  {i}. ${c['price']:,.0f} - Güç: {c['intensity']:.1f}")
+                else:
+                    lines.append("\\n💧 Likidasyon: Veri yok")
+            
+            # 2. CHART PATTERNS
+            pattern_engine = get_pattern_engine()
+            pattern_data = await pattern_engine.analyze(symbol)
+            
+            if pattern_data and 'patterns' in pattern_data:
+                patterns = pattern_data['patterns']
+                if patterns:
+                    lines.append("\\n📐 *CHART PATTERN*")
+                    for p in patterns[:2]:  # Top 2
+                        lines.append(f"  • {p['name']} - {p['direction']} ({p['confidence']:.0f}%)")
+                else:
+                    lines.append("\\n📐 Pattern: Henüz oluşmadı")
+            
+            # 3. PIVOT POINTS (Support/Resistance)
+            pivot_analyzer = get_pivot_points()
+            pivots = await pivot_analyzer.get_pivots(symbol)
+            
+            if pivots:
+                lines.append("\\n🎯 *PIVOT POINTS*")
+                for p in pivots[:5]:
+                    level_type = p.get('name', 'Unknown')
+                    price = p.get('price', 0)
+                    if price > 0:
+                        lines.append(f"  {level_type}: ${price:,.0f}")
+            
+            # 4. VOLATILITY STATUS
+            vol_predictor = VolatilityPredictor()
+            vol_status = await vol_predictor.predict(symbol)
+            
+            if vol_status:
+                is_squeeze = vol_status.get('squeeze', False)
+                bb_width = vol_status.get('bb_width', 0)
+                lines.append("\\n🌋 *VOLATİLİTE DURUMU*")
+                if is_squeeze:
+                    lines.append("  ⚠️ SIKIŞMA - Büyük hareket yakın!")
+                else:
+                    lines.append(f"  ➡️ Normal (BB Width: {bb_width:.2f}%)")
+            
+            # 5. MARKET REGIME
+            regime_classifier = RegimeClassifier()
+            regime = await regime_classifier.classify(symbol)
+            
+            if regime:
+                lines.append("\\n🧭 *PİYASA REJİMİ*")
+                regime_type = regime.get('regime', 'UNKNOWN')
+                confidence = regime.get('confidence', 0)
+                lines.append(f"  {regime_type} ({confidence:.0f}% güven)")
+            
+            # 6. SENTIMENT (News-based)
+            scraper = CryptoNewsScraper()
+            sentiment_data = await scraper.get_sentiment(symbol.replace('USDT', ''))
+            
+            if sentiment_data:
+                score = sentiment_data.get('score', 0)
+                mood = sentiment_data.get('mood', 'NEUTRAL')
+                lines.append("\\n📰 *SENTIMENT (Haber Bazlı)*")
+                emoji = "🐂" if mood == 'BULLISH' else "🐻" if mood == 'BEARISH' else "⚪"
+                lines.append(f"  {emoji} {mood} (Skor: {score:.1f}/10)")
+            
+        except Exception as e:
+            logger.error(f"Deep technical analysis error for {symbol}: {e}")
+            lines.append(f"\\n❌ Analiz hatası: {str(e)[:50]}")
+        
+        # Footer
+        lines.append(f"\\n━━━━━━━━━━━━━━━━━━━━━━")
+        lines.append(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
+        lines.append("📡 *DEMIR AI v10 - LIVE DATA*")
+        
+        return self._send_message("\\n".join(lines))
     
     def send_error_alert(self, error_message: str) -> bool:
         """

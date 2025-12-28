@@ -185,21 +185,35 @@ class V10Engine:
         except Exception as e:
             logger.error(f"Dashboard data save error: {e}")
 
-        # Technical Analysis (15 dakikada bir)
-        if not hasattr(self, '_last_ta_time'):
-            self._last_ta_time = datetime.now() - timedelta(minutes=20)
+        # === 3 SINYAL SISTEMI ===
         
-        # USER REQUEST: 15 MINUTES FREQUENCY
-        if (datetime.now() - self._last_ta_time).total_seconds() >= 15 * 60: 
+        # 1. PİYASA RAPORU (15 dakika)
+        if not hasattr(self, '_last_market_summary'):
+            self._last_market_summary = datetime.now() - timedelta(minutes=20)
+        
+        if (datetime.now() - self._last_market_summary).total_seconds() >= 15 * 60:
             try:
-                logger.info("[TA] Sending 15-Min Analysis...")
-                self._last_ta_time = datetime.now()
-                
-                for s, snapshot in snapshots.items():
-                    if snapshot.is_valid:
-                        await self.notifier.send_live_prediction(s, snapshot)
+                logger.info("[MARKET] Sending 15-Min Market Summary...")
+                self._last_market_summary = datetime.now()
+                await self.notifier.send_market_summary(snapshots)
             except Exception as e:
-                logger.error(f"Notification error: {e}")
+                logger.error(f"Market summary error: {e}")
+        
+        # 2. DERİN TEKNİK ANALİZ (10 dakika) - Tüm modüller
+        if not hasattr(self, '_last_deep_technical'):
+            self._last_deep_technical = datetime.now() - timedelta(minutes=12)
+        
+        if (datetime.now() - self._last_deep_technical).total_seconds() >= 10 * 60:
+            try:
+                logger.info("[DEEP-TECH] Sending 10-Min Deep Technical...")
+                self._last_deep_technical = datetime.now()
+                
+                # Her coin için derin analiz
+                for symbol in snapshots.keys():
+                    await self.notifier.send_deep_technical_report(symbol)
+                    await asyncio.sleep(2)  # Rate limit
+            except Exception as e:
+                logger.error(f"Deep technical error: {e}")
         
         # Performance report (4 saatte bir)
         if (datetime.now() - self._last_performance_report).total_seconds() >= self.PERFORMANCE_REPORT_INTERVAL:
@@ -361,47 +375,6 @@ DOGRULAMA:
                     
         except Exception as e:
             logger.error(f"[ERROR] Early Signal: {symbol}: {e}")
-        
-        # LEGACY FALLBACK + AI BRAIN FUSION
-        
-        # 1. Get Legacy Signal
-        signal = await self.predictor.generate_signal_async(snapshot)
-        
-        # 2. Get AI Brain Consensus
-        ai_bridge = get_ai_bridge()
-        ai_decision = await ai_bridge.get_consensus(symbol, snapshot)
-        
-        if ai_decision['action'] != 'HOLD':
-            logger.info(f"🧠 [AI BRAIN] {symbol}: {ai_decision['direction']} (Conf: {ai_decision['confidence']:.1f}%)")
-            
-            # FUSION: If AI is confident, boost the signal or create new one
-            if not signal.is_valid and ai_decision['confidence'] > 60:
-                # Create AI-Driven Signal
-                from src.v10.predictor import TradingSignal, SignalType
-                signal = TradingSignal(
-                    symbol=symbol,
-                    signal_type=SignalType.LONG if ai_decision['action'] == 'BUY' else SignalType.SHORT,
-                    entry_low=snapshot.price * 0.999,
-                    entry_high=snapshot.price * 1.001,
-                    tp1=snapshot.price * (1.02 if ai_decision['action'] == 'BUY' else 0.98),
-                    tp2=snapshot.price * (1.05 if ai_decision['action'] == 'BUY' else 0.95),
-                    stop_loss=snapshot.price * (0.98 if ai_decision['action'] == 'BUY' else 1.02),
-                    reasons=ai_decision['reasoning']
-                )
-                logger.info(f"✨ AI OVERRIDE: Generated signal based on Brain Logic!")
-        
-        if signal.is_valid:
-            logger.info(f"[LEGACY] {symbol} {signal.signal_type.value} %{signal.confidence:.0f}")
-            
-            success = self.notifier.send_trading_signal(signal)
-            
-            if success:
-                self._last_signal_time[symbol] = datetime.now()
-                self._signal_count += 1
-                try:
-                    self.performance_tracker.record_signal(signal)
-                except Exception as e:
-                    logger.warning(f"Performance tracking error: {e}")
     
     async def _get_verification_data(self, symbol: str) -> str:
         """Sinyal icin dogrulama verileri topla."""
