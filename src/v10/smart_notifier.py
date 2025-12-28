@@ -327,15 +327,17 @@ class SmartNotifier:
             
             # 3. PIVOT POINTS (Support/Resistance)
             pivot_analyzer = get_pivot_points()
-            pivots = await pivot_analyzer.get_pivots(symbol)
+            pivot_data = await pivot_analyzer.analyze(symbol)
             
-            if pivots:
-                lines.append("\\n🎯 *PIVOT POINTS*")
-                for p in pivots[:5]:
-                    level_type = p.get('name', 'Unknown')
-                    price = p.get('price', 0)
-                    if price > 0:
-                        lines.append(f"  {level_type}: ${price:,.0f}")
+            if pivot_data and 'daily_pivots' in pivot_data:
+                pivots = pivot_data['daily_pivots'][:5]
+                if pivots:
+                    lines.append("\\n🎯 *PIVOT POINTS*")
+                    for p in pivots:
+                        level_type = p.get('name', 'Unknown')
+                        price = p.get('price', 0)
+                        if price > 0:
+                            lines.append(f"  {level_type}: ${price:,.0f}")
             
             # 4. VOLATILITY STATUS
             vol_predictor = VolatilityPredictor()
