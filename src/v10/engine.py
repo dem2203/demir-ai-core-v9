@@ -158,6 +158,36 @@ class V10Engine:
         except Exception as e:
             logger.error(f"Position update error: {e}")
         
+        # === MACRO EVENT PROTECTION ===
+        try:
+            from src.brain.macro_events import check_upcoming_events
+            
+            # Check every hour (avoid spam)
+            if not hasattr(self, '_last_macro_check'):
+                self._last_macro_check = datetime.now() - timedelta(hours=2)
+            
+            if (datetime.now() - self._last_macro_check).total_seconds() >= 3600:  # 1 hour
+                self._last_macro_check = datetime.now()
+                
+                events = check_upcoming_events(hours_ahead=12)
+                
+                if events:
+                    for event in events:
+                        msg = f"""
+⚠️ *MAKRO OLAY UYARISI*
+
+🚨 {event['hours_until']} saat içinde: **{event['name']}**
+
+TAVSİYE:
+• Yeni pozisyon AÇMA
+• Mevcut SL'leri SIKILAŞTIR
+• Beklenen volatilite: %{event['impact']}
+"""
+                        self.notifier._send_message(msg)
+                        logger.warning(f"MACRO ALERT: {event['name']} in {event['hours_until']}h")
+        except Exception as e:
+            logger.debug(f"Macro check skipped: {e}")
+        
         # Export data for Dashboard - REAL DATA ONLY
         try:
             import json

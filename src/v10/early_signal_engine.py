@@ -517,6 +517,41 @@ class EarlySignalEngine:
                     stop_loss = r1
                     reasons.append(f"🛡️ SL at Daily R1 (${r1:,.0f})")
 
+        # --- SMC BASED SL/TP LABELS ---
+        # Use Order Blocks and Liquidity for precision
+        if pattern_data and 'order_blocks' in pattern_data:
+            ob_data = pattern_data['order_blocks']
+            
+            if action == "BUY":
+                # LONG: SL below nearest bullish OB
+                bullish_obs = ob_data.get('bullish', [])
+                if bullish_obs:
+                    nearest_ob = min(bullish_obs, key=lambda x: abs(x.get('price', 0) - current_price))
+                    ob_price = nearest_ob.get('price', 0)
+                    if ob_price > 0 and ob_price < current_price:
+                        stop_loss = ob_price * 0.995  # Just below OB
+                        reasons.append(f"🧱 SL below OB (${ob_price:,.0f})")
+                        
+            elif action == "SELL":
+                # SHORT: SL above nearest bearish OB
+                bearish_obs = ob_data.get('bearish', [])
+                if bearish_obs:
+                    nearest_ob = min(bearish_obs, key=lambda x: abs(x.get('price', 0) - current_price))
+                    ob_price = nearest_ob.get('price', 0)
+                    if ob_price > 0 and ob_price > current_price:
+                        stop_loss = ob_price * 1.005  # Just above OB
+                        reasons.append(f"🧱 SL above OB (${ob_price:,.0f})")
+        
+        # Use Liquidation Magnet as TP
+        if liq_data and liq_data.get('magnet_zone', 0) > 0:
+            magnet = liq_data['magnet_zone']
+            if action == "BUY" and magnet > current_price:
+                take_profit = magnet
+                reasons.append(f"🧲 TP at Liq Magnet (${magnet:,.0f})")
+            elif action == "SELL" and magnet < current_price:
+                take_profit = magnet
+                reasons.append(f"🧲 TP at Liq Magnet (${magnet:,.0f})")
+
         # Risk/Reward
         if action != "HOLD":
             risk = abs(current_price - stop_loss)
