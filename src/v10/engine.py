@@ -21,6 +21,8 @@ from src.v10.lstm_predictor import get_lstm_predictor
 from src.v10.early_signal_engine import get_early_signal_engine
 from src.v10.signal_history import record_early_signal
 from src.v10.ai_integration import get_ai_bridge  # RL Agent Integration
+from src.v10.online_learner import get_online_learner  # Self-Learning
+from src.brain.feedback_db import get_feedback_db  # Trade outcomes
 from src.execution.paper_trader import get_paper_trader
 from src.execution.feedback_loop import FeedbackLoop
 from src.v10.early_signal_trainer import get_trainer
@@ -55,6 +57,11 @@ class V10Engine:
         self.trainer = get_trainer()
         self.last_retrain_check = datetime.now()
         
+        # SELF-LEARNING COMPONENTS
+        self.online_learner = get_online_learner()
+        self.feedback_db = get_feedback_db()
+        self._current_regime = "UNKNOWN"  # Gets updated per cycle
+        
         self._last_signal_time: Dict[str, datetime] = {}
         self._last_performance_report = datetime.now()
         self._running = False
@@ -62,7 +69,7 @@ class V10Engine:
         self._signal_count = 0
         self._error_count = 0
         
-        logger.info("[START] DEMIR AI v10 + EARLY SIGNAL ENGINE initialized")
+        logger.info("[START] DEMIR AI v10 + SELF-LEARNING ENGINE initialized")
     
     async def start(self):
         """Ana donguyu baslat"""
@@ -143,6 +150,16 @@ class V10Engine:
         logger.info(f"=== SCAN CYCLE #{self._cycle_count} ===")
         
         snapshots = await self.data_hub.get_all_snapshots()
+        
+        # === REGIME DETECTION FOR SELF-LEARNING ===
+        try:
+            # Get BTC regime as market proxy (most reliable)
+            if 'BTCUSDT' in snapshots and self.early_signal_engine:
+                regime_result = await self.early_signal_engine._analyze_regime('BTCUSDT')
+                self._current_regime = regime_result.get('regime', 'UNKNOWN')
+                logger.info(f"[REGIME] Market: {self._current_regime}")
+        except Exception as e:
+            logger.debug(f"Regime detection skipped: {e}")
         
         for symbol, snapshot in snapshots.items():
             try:
@@ -389,15 +406,37 @@ TAVSİYE:
                 
                 self._signal_cooldowns[cooldown_key] = datetime.now()
                 
+                # === SELF-LEARNING CONFIDENCE ADJUSTMENT ===
+                base_confidence = early_signal.confidence
+                adjusted_prediction = self.online_learner.adjust_prediction(
+                    {'action': early_signal.action, 'confidence': base_confidence / 100},
+                    current_regime=self._current_regime
+                )
+                adjusted_confidence = adjusted_prediction['confidence'] * 100
+                adjustment_info = adjusted_prediction.get('online_adjustment', {})
+                
+                # Update confidence in early_signal for paper trading
+                final_confidence = adjusted_confidence
+                
+                # === REGIME-AWARE STRATEGY HINTS ===
+                regime_hint = ""
+                if self._current_regime == "TRENDING_BULL":
+                    regime_hint = "🐂 Bull Market: Hold winners longer, add on dips"
+                elif self._current_regime == "TRENDING_BEAR":
+                    regime_hint = "🐻 Bear Market: Quick scalps, tight stops"
+                elif self._current_regime == "RANGING":
+                    regime_hint = "📦 Range: Trade extremes, mean-reversion"
+                
                 action_tr = "AL" if early_signal.action == "BUY" else "SAT"
                 tag = "[BUY]" if early_signal.action == "BUY" else "[SELL]"
                 
                 # Dogrulama verileri topla
                 verification = await self._get_verification_data(symbol)
                 
+                # Build enhanced message with self-learning info
                 msg = f"""{tag} EARLY SIGNAL: {symbol}
 
-Sinyal: {action_tr} | Guven: {early_signal.confidence:.0f}%
+Sinyal: {action_tr} | Guven: {final_confidence:.0f}%
 R/R: {early_signal.risk_reward:.1f}x
 
 Giris: ${early_signal.entry_zone[0]:,.0f} - ${early_signal.entry_zone[1]:,.0f}
@@ -406,6 +445,11 @@ TP: ${early_signal.take_profit:,.0f}
 
 Oncu Gostergeler:
 {early_signal.reasoning}
+
+🧠 SELF-LEARNING:
+  Win Rate: {adjustment_info.get('regime_win_rate', 0)*100:.0f}%
+  Adjustment: {adjustment_info.get('reason', 'neutral')}
+  {regime_hint}
 
 DOGRULAMA:
 {verification}"""
