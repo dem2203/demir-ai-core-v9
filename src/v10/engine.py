@@ -201,8 +201,8 @@ TAVSİYE:
                     metrics = self._calculate_real_metrics(snapshot)
                     s_data = {
                         'price': snapshot.price,
-                        'volume': snapshot.volume,
-                        'change_24h': snapshot.change_24h,
+                        'volume': snapshot.volume_24h,
+                        'change_24h': snapshot.price_change_24h,
                         'timestamp': datetime.now().timestamp(),
                         'rsi': metrics.get('rsi'),
                         'trend': metrics.get('trend'),
