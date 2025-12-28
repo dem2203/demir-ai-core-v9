@@ -40,9 +40,15 @@ class SmartNotifier:
         """
         Telegram'a mesaj gönder.
         HATA YUTULMAZ - başarısız olursa loglar.
+        Markdown parse hatası olursa düz text olarak tekrar dener.
         """
         try:
             url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+            
+            # Clean text - remove potentially problematic markdown
+            clean_text = text.replace('_', ' ').replace('*', '')  # Remove markdown chars
+            
+            # First try with Markdown
             payload = {
                 "chat_id": self.chat_id,
                 "text": text,
@@ -51,6 +57,16 @@ class SmartNotifier:
             }
             
             response = requests.post(url, json=payload, timeout=10)
+            
+            # If markdown parse fails, retry without parse_mode
+            if response.status_code == 400 and "can't parse entities" in response.text:
+                logger.warning("Markdown parse failed, retrying without parse_mode...")
+                payload = {
+                    "chat_id": self.chat_id,
+                    "text": clean_text,  # Use cleaned text
+                    "disable_web_page_preview": True
+                }
+                response = requests.post(url, json=payload, timeout=10)
             
             if response.status_code != 200:
                 logger.error(f"❌ Telegram API error: {response.status_code} - {response.text}")
@@ -307,11 +323,11 @@ class SmartNotifier:
             if liq_data and 'heatmap_clusters' in liq_data:
                 clusters = liq_data['heatmap_clusters'][:3]  # Top 3
                 if clusters:
-                    lines.append("\\n💧 *LİKİDASYON BÖLGE (MAGNET)*")
+                    lines.append("\n💧 *LİKİDASYON BÖLGE (MAGNET)*")
                     for i, c in enumerate(clusters, 1):
                         lines.append(f"  {i}. ${c['price']:,.0f} - Güç: {c['intensity']:.1f}")
                 else:
-                    lines.append("\\n💧 Likidasyon: Veri yok")
+                    lines.append("\n💧 Likidasyon: Veri yok")
             
             # 2. CHART PATTERNS
             pattern_engine = get_pattern_engine()
@@ -320,11 +336,11 @@ class SmartNotifier:
             if pattern_data and 'patterns' in pattern_data:
                 patterns = pattern_data['patterns']
                 if patterns:
-                    lines.append("\\n📐 *CHART PATTERN*")
+                    lines.append("\n📐 *CHART PATTERN*")
                     for p in patterns[:2]:  # Top 2
                         lines.append(f"  • {p['name']} - {p['direction']} ({p['confidence']:.0f}%)")
                 else:
-                    lines.append("\\n📐 Pattern: Henüz oluşmadı")
+                    lines.append("\n📐 Pattern: Henüz oluşmadı")
             
             # === 6 GÜÇLÜ AI MODÜLLERİ ===
             
