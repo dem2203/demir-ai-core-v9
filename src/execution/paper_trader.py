@@ -134,10 +134,109 @@ class PaperTrader:
                     "sl_price": sl_price,
                     "amount": amount,
                     "cost": cost,
-                    "time": datetime.now().isoformat()
+                    "side": "LONG",  # Pozisyon yönü
+                    "timestamp": datetime.now().isoformat()
                 }
+                
                 self._save_portfolio()
                 logger.info(f"🛒 BOUGHT {symbol}: {amount:.4f} units @ ${price}")
+                return True
+        
+        # --- SHORT POZİSYON AÇMA (SELL) ---
+        elif side == "SELL" or side == "SHORT":
+            # Zaten açık pozisyon varsa ekleme yapma
+            if symbol in self.portfolio['positions']:
+                # Eğer long pozisyon varsa kapat, sonra short aç
+                pos = self.portfolio['positions'][symbol]
+                if pos.get('side') == 'LONG':
+                    logger.info(f"Closing LONG before opening SHORT on {symbol}")
+                    # Pozisyonu kapat (quick close)
+                    amount = pos['amount']
+                    entry = pos['entry_price']
+                    pnl = (price - entry) * amount
+                    self.portfolio['balance'] += (amount * entry) + pnl
+                    
+                    self.portfolio['history'].append({
+                        "symbol": symbol,
+                        "action": "CLOSE_LONG",
+                        "entry": entry,
+                        "exit": price,
+                        "amount": amount,
+                        "pnl": pnl,
+                        "time": datetime.now().isoformat()
+                    })
+                    del self.portfolio['positions'][symbol]
+                    logger.info(f"💰 CLOSED LONG {symbol}: PnL ${pnl:.2f}")
+                else:
+                    # Zaten SHORT varsa yeni short açma (veya kapatma sinyali ise kapat)
+                    # Eğer sinyal sadece "SELL" ise ve mevcut pozisyon SHORT ise kapat
+                    if side == "SELL" and pos.get('side') == 'SHORT':
+                        amount = pos['amount']
+                        entry = pos['entry_price']
+                        collateral = pos['collateral']
+                        
+                        # PnL hesapla (SHORT için ters)
+                        pnl = (entry - price) * amount
+                        
+                        # Bakiyeye geri ekle (collateral + PnL)
+                        self.portfolio['balance'] += collateral + pnl
+                        
+                        self.portfolio['history'].append({
+                            "symbol": symbol,
+                            "action": "SELL_SHORT", # Kapatılan SHORT
+                            "entry": entry,
+                            "exit": price,
+                            "amount": amount,
+                            "pnl": pnl,
+                            "time": datetime.now().isoformat()
+                        })
+                        del self.portfolio['positions'][symbol]
+                        self._save_portfolio()
+                        logger.info(f"💰 CLOSED SHORT {symbol}: PnL ${pnl:.2f}")
+                        return True
+                    else:
+                        # Zaten SHORT varsa ve sinyal "SHORT" ise, yeni short açma
+                        return False
+            
+            # SHORT pozisyon aç
+            sl_price = float(signal.get('sl_price', price * 1.02))  # SHORT için SL yukarıda
+            risk_pct = signal.get('kelly_size', 1.0) / 100.0
+            if risk_pct <= 0: risk_pct = 0.01
+            
+            # SHORT için position size hesaplama (ters yönde)
+            risk_per_unit = abs(sl_price - price)
+            if risk_per_unit > 0:
+                max_risk = self.portfolio['balance'] * risk_pct
+                amount = max_risk / risk_per_unit
+                
+                # Max %10 balance short (örnek bir limit)
+                # Bu limit, kaldıraçlı işlemlerde marjin gereksinimini simüle eder.
+                # Gerçek bir borsada marjin hesaplaması daha karmaşık olacaktır.
+                max_amount_based_on_balance = (self.portfolio['balance'] * 0.10) / price # %10'u kadar collateral ile
+                amount = min(amount, max_amount_based_on_balance)
+            else:
+                amount = 0
+            
+            if amount > 0:
+                # SHORT: Collateral lock (simulate margin)
+                # Basit bir 2x kaldıraç simülasyonu, %50 collateral
+                collateral = amount * price * 0.5  
+                if collateral > self.portfolio['balance']:
+                    logger.warning("Yetersiz bakiye (SHORT)")
+                    return False
+                
+                self.portfolio['balance'] -= collateral
+                self.portfolio['positions'][symbol] = {
+                    "entry_price": price,
+                    "sl_price": sl_price,
+                    "amount": amount,
+                    "side": "SHORT",  # Pozisyon yönü
+                    "collateral": collateral,
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                self._save_portfolio()
+                logger.info(f"📉 SHORTED {symbol}: {amount:.4f} units @ ${price}")
                 return True
                 
         return False
@@ -174,18 +273,31 @@ class PaperTrader:
             # 3. SL/TP CHECK (Auto-close)
             # Refresh SL (may have been updated by trailing stop)
             current_sl = self.portfolio['positions'][symbol]['sl_price']
+            side = pos.get('side', 'LONG')
             
-            # Check Stop Loss
-            if current_price <= current_sl:
-                logger.info(f"🛑 STOP LOSS HIT: {symbol} @ ${current_price:.2f}")
-                self.execute_trade({
-                    'symbol': symbol,
-                    'side': 'SELL',
-                    'entry_price': current_price,
-                    'sl_price': current_sl
-                })
-                closed_positions.append(symbol)
-                continue
+            # Check Stop Loss (LONG vs SHORT logic)
+            if side == 'LONG':
+                # LONG: SL below entry, TP above
+                if current_price <= current_sl:
+                    logger.info(f"🛑 STOP LOSS HIT (LONG): {symbol} @ ${current_price:.2f}")
+                    self.execute_trade({
+                        "symbol": symbol,
+                        "side": "SELL",
+                        "entry_price": current_price
+                    })
+                    closed_positions.append(symbol)
+                    continue
+            else:  # SHORT
+                # SHORT: SL above entry, TP below
+                if current_price >= current_sl:
+                    logger.info(f"🛑 STOP LOSS HIT (SHORT): {symbol} @ ${current_price:.2f}")
+                    self.execute_trade({
+                        "symbol": symbol,
+                        "side": "SELL",  # Close SHORT
+                        "entry_price": current_price
+                    })
+                    closed_positions.append(symbol)
+                    continue
             
             # Simple TP check (if we had TP field)
             # For now, manual TP via Early Signal confidence
