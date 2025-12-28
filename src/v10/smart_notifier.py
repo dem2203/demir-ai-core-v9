@@ -326,6 +326,194 @@ class SmartNotifier:
                 else:
                     lines.append("\\n📐 Pattern: Henüz oluşmadı")
             
+            # === 6 GÜÇLÜ AI MODÜLLERİ ===
+            
+            # 1. 🔮 LSTM PRICE PREDICTION
+            try:
+                from src.v10.lstm_predictor import LSTMPredictor
+                lstm = LSTMPredictor()
+                prediction = lstm.predict_next(symbol, timeframe='30m')
+                
+                if prediction and prediction.get('confidence', 0) > 0.6:
+                    predicted_price = prediction.get('predicted_price', 0)
+                    current = snapshot.price
+                    if current > 0 and predicted_price > 0:
+                        change_pct = ((predicted_price / current) - 1) * 100
+                        confidence = prediction.get('confidence', 0) * 100
+                        trend = prediction.get('trend', 'UNKNOWN')
+                        
+                        emoji = "🟢" if change_pct > 0 else "🔴" if change_pct < 0 else "⚪"
+                        lines.append("\n🔮 *LSTM TAHMİNİ (30dk)*")
+                        lines.append(f"  Fiyat: ${predicted_price:,.0f} ({emoji}{change_pct:+.2f}%)")
+                        lines.append(f"  Güven: {confidence:.0f}%")
+                        lines.append(f"  Trend: {trend}")
+            except Exception as e:
+                logger.debug(f"LSTM prediction skipped: {e}")
+            
+            # 2. 🤖 RL AGENT RECOMMENDATION
+            try:
+                from src.brain.rl_agent.ppo_agent import PPOAgent
+                import os
+                model_path = f"src/brain/rl_agent/storage/ppo_{symbol.lower()}_v1.zip"
+                
+                if os.path.exists(model_path):
+                    rl_agent = PPOAgent.load(model_path)
+                    # Create simple observation (RL expects normalized features)
+                    obs = [
+                        snapshot.price / 100000,  # Normalized price
+                        snapshot.rsi_1h / 100 if snapshot.rsi_1h > 0 else 0.5,
+                        (snapshot.volume_24h / 1e9) if snapshot.volume_24h > 0 else 0.5
+                    ]
+                    
+                    action = rl_agent.predict(obs, deterministic=True)[0]
+                    
+                    action_map = {0: 'BEKLE', 1: 'AL', 2: 'SAT'}
+                    emoji_map = {0: '⚪', 1: '🟢', 2: '🔴'}
+                    
+                    lines.append("\n🤖 *RL AGENT TAVSİYESİ*")
+                    lines.append(f"  Aksiyon: {emoji_map.get(action, '⚪')} {action_map.get(action, 'UNKNOWN')}")
+            except Exception as e:
+                logger.debug(f"RL Agent skipped: {e}")
+            
+            # 3. ⏱ MULTI-TIMEFRAME CONSENSUS
+            try:
+                from src.v10.multi_timeframe import MultiTimeframeAnalyzer
+                mtf = MultiTimeframeAnalyzer()
+                mtf_data = mtf.analyze_all_timeframes(symbol)
+                
+                if mtf_data and 'consensus' in mtf_data:
+                    consensus = mtf_data['consensus']
+                    timeframes = mtf_data.get('timeframes', {})
+                    
+                    lines.append("\n⏱ *MULTI-TIMEFRAME*")
+                    
+                    # Show each timeframe
+                    for tf in ['15m', '1h', '4h', '1d']:
+                        if tf in timeframes:
+                            trend = timeframes[tf].get('trend', 'UNKNOWN')
+                            emoji = "🟢" if trend == 'LONG' else "🔴" if trend == 'SHORT' else "⚪"
+                            lines.append(f"  {tf}: {emoji} {trend}")
+                    
+                    # Consensus
+                    overall = consensus.get('direction', 'NEUTRAL')
+                    strength = consensus.get('strength', 0) * 100
+                    emoji = "🟢" if overall == 'LONG' else "🔴" if overall == 'SHORT' else "⚪"
+                    
+                    lines.append("  ━━━━━━━━━━━━━")
+                    lines.append(f"  CONSENSUS: {emoji} {overall} ({strength:.0f}%)")
+            except Exception as e:
+                logger.debug(f"Multi-timeframe skipped: {e}")
+            
+            # 4. 📈 ENHANCED PREDICTOR (7 Indicators)
+            try:
+                from src.v10.enhanced_predictor import EnhancedPredictor
+                enhanced = EnhancedPredictor()
+                prediction = enhanced.predict(symbol)
+                
+                if prediction:
+                    signals = prediction.get('signals', {})
+                    overall = prediction.get('overall_signal', 'NEUTRAL')
+                    score = prediction.get('bullish_count', 0)
+                    total = len(signals)
+                    
+                    if total > 0:
+                        lines.append("\n📈 *GELİŞMİŞ TEKNİK*")
+                        
+                        # Show key indicators
+                        for indicator in ['OBV', 'CMF', 'ADX', 'VWAP']:
+                            if indicator in signals:
+                                sig = signals[indicator]
+                                emoji = "🟢" if sig == 'BUY' else "🔴" if sig == 'SELL' else "⚪"
+                                lines.append(f"  {indicator}: {emoji} {sig}")
+                        
+                        lines.append("  ━━━━━━━━━━━━━")
+                        
+                        emoji = "🟢" if overall == 'BUY' else "🔴" if overall == 'SELL' else "⚪"
+                        lines.append(f"  SKOR: {score}/{total} {emoji} {overall}")
+            except Exception as e:
+                logger.debug(f"Enhanced predictor skipped: {e}")
+            
+            # 5. 💥 LIQUIDATION ANALYSIS (FULL)
+            try:
+                liq_data = liq_hunter_data  # Already fetched in step 1
+                
+                if liq_data and liq_data.get('data_available'):
+                    magnet = liq_data.get('magnet_zone', 0)
+                    ls_ratio = liq_data.get('long_short_ratio', 0)
+                    oi_change = liq_data.get('oi_change_1h', 0)
+                    funding = liq_data.get('funding_rate', 0) * 100
+                    
+                    lines.append("\n💥 *LİKİDASYON ANALİZİ*")
+                    if magnet > 0:
+                        lines.append(f"  Magnet: ${magnet:,.0f}")
+                    
+                    # L/S Ratio with interpretation
+                    if ls_ratio > 2.0:
+                        lines.append(f"  L/S: {ls_ratio:.2f} (🔴 Çok Long Ağır)")
+                        if oi_change > 5:
+                            lines.append("  ⚠️ Düzeltme riski yüksek!")
+                    elif ls_ratio < 0.8:
+                        lines.append(f"  L/S: {ls_ratio:.2f} (🟢 Çok Short Ağır)")
+                    elif ls_ratio > 0:
+                        lines.append(f"  L/S: {ls_ratio:.2f} (⚪ Dengeli)")
+                    
+                    # OI Change
+                    if abs(oi_change) > 5:
+                        emoji = "🔥" if oi_change > 0 else "❄️"
+                        action = "Giriş" if oi_change > 0 else "Çıkış"
+                        lines.append(f"  OI: {oi_change:+.1f}% ({emoji} Güçlü {action})")
+                    
+                    # Funding
+                    if abs(funding) > 0.01:
+                        emoji = "🟢" if funding > 0 else "🔴"
+                        lines.append(f"  Funding: {funding:.3f}% ({emoji})")
+            except Exception as e:
+                logger.debug(f"Liquidation full analysis skipped: {e}")
+            
+            # 6. 🎨 PATTERN ANALYSIS (SMC FULL)
+            try:
+                pattern_data = pattern_result  # Already fetched in step 2
+                
+                if pattern_data and pattern_data.get('wyckoff'):
+                    wyckoff = pattern_data['wyckoff']
+                    phase = wyckoff.get('phase', 'UNKNOWN')
+                    confidence = wyckoff.get('confidence', 0)
+                    signal = wyckoff.get('signal', 'NEUTRAL')
+                    
+                    lines.append("\n🎨 *PATTERN (SMC)*")
+                    
+                    if phase == 'ACCUMULATION' and confidence > 50:
+                        lines.append(f"  Wyckoff: 📊 {phase} ({confidence}%)")
+                        lines.append("  → Kurumlar topluyor!")
+                    elif phase == 'DISTRIBUTION' and confidence > 50:
+                        lines.append(f"  Wyckoff: 📉 {phase} ({confidence}%)")
+                        lines.append("  → Kurumlar dağıtıyor!")
+                    
+                    # Order Blocks
+                    if 'order_blocks' in pattern_data:
+                        ob_data = pattern_data['order_blocks']
+                        bullish_count = ob_data.get('bullish_count', 0)
+                        bearish_count = ob_data.get('bearish_count', 0)
+                        
+                        if bullish_count > 0 or bearish_count > 0:
+                            lines.append(f"  Order Blocks: {bullish_count} 🟢 / {bearish_count} 🔴")
+                    
+                    # FVG
+                    if pattern_data.get('fvg_count', 0) > 0:
+                        fvg_count = pattern_data['fvg_count']
+                        lines.append(f"  FVG: {fvg_count} boşluk")
+                    
+                    # Market Structure
+                    if 'structure' in pattern_data:
+                        structure = pattern_data['structure']
+                        trend = structure.get('trend', 'UNKNOWN')
+                        if trend != 'UNKNOWN':
+                            lines.append(f"  Structure: {trend}")
+            except Exception as e:
+                logger.debug(f"Pattern SMC analysis skipped: {e}")
+            
+            # === MEVCUT GÖSTERGELER (Pivot, Volatility, vb.) ===
+            
             # 3. PIVOT POINTS (Support/Resistance)
             pivot_analyzer = get_pivot_points()
             pivot_data = await pivot_analyzer.analyze(symbol)
