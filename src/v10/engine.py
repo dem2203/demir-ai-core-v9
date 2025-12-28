@@ -360,14 +360,42 @@ TAVSİYE:
                     f"Conf: {early_signal.confidence:.0f}% | {direction}"
                 )
                 
-                if early_signal.confidence >= 60 and early_signal.action != 'HOLD':
-                    action_tr = "AL" if early_signal.action == "BUY" else "SAT"
-                    tag = "[BUY]" if early_signal.action == "BUY" else "[SELL]"
-                    
-                    # Dogrulama verileri topla
-                    verification = await self._get_verification_data(symbol)
-                    
-                    msg = f"""{tag} EARLY SIGNAL: {symbol}
+                # === QUALITY FILTERS ===
+                # 1. Minimum confidence
+                if early_signal.confidence < 60:
+                    logger.debug(f"Skipped {symbol}: Low confidence {early_signal.confidence:.0f}%")
+                    return
+                
+                # 2. Minimum R/R ratio (CRITICAL FIX)
+                if early_signal.risk_reward < 1.0:
+                    logger.warning(f"Skipped {symbol}: R/R too low ({early_signal.risk_reward:.1f}x < 1.0x)")
+                    return
+                
+                # 3. No HOLD signals
+                if early_signal.action == 'HOLD':
+                    return
+                
+                # 4. Signal cooldown - prevent conflicting signals
+                cooldown_key = f"{symbol}_{early_signal.action}"
+                if hasattr(self, '_signal_cooldowns'):
+                    last_signal_time = self._signal_cooldowns.get(cooldown_key)
+                    if last_signal_time:
+                        minutes_since = (datetime.now() - last_signal_time).total_seconds() / 60
+                        if minutes_since < 60:  # 60 dakika cooldown (artırıldı)
+                            logger.debug(f"Skipped {symbol}: Cooldown active ({minutes_since:.0f}m < 60m)")
+                            return
+                else:
+                    self._signal_cooldowns = {}
+                
+                self._signal_cooldowns[cooldown_key] = datetime.now()
+                
+                action_tr = "AL" if early_signal.action == "BUY" else "SAT"
+                tag = "[BUY]" if early_signal.action == "BUY" else "[SELL]"
+                
+                # Dogrulama verileri topla
+                verification = await self._get_verification_data(symbol)
+                
+                msg = f"""{tag} EARLY SIGNAL: {symbol}
 
 Sinyal: {action_tr} | Guven: {early_signal.confidence:.0f}%
 R/R: {early_signal.risk_reward:.1f}x
@@ -381,36 +409,36 @@ Oncu Gostergeler:
 
 DOGRULAMA:
 {verification}"""
-                    
-                    self.notifier._send_message(msg)
-                    self._last_signal_time[symbol] = datetime.now()
-                    self._signal_count += 1
-                    
-                    # Sinyal geçmişine kaydet
-                    try:
-                        record_early_signal(early_signal, symbol)
-                    except Exception as e:
-                        logger.warning(f"Signal history error: {e}")
-                    
-                    logger.info(f"[SIGNAL] Early Signal sent: {symbol}")
-                    
-                    # PAPER TRADING EXECUTION
-                    try:
-                        trade_signal = {
-                            "symbol": symbol,
-                            "side": early_signal.action,
-                            "entry_price": early_signal.entry_zone[0],
-                            "sl_price": early_signal.stop_loss,
-                            "confidence": early_signal.confidence
-                        }
-                        if self.paper_trader.execute_trade(trade_signal):
-                            logger.info(f"📝 Paper Trade Executed: {symbol}")
-                            self.notifier._send_message(f"📝 *PAPER TRADE AÇILDI* - {symbol}\nFiyat: {early_signal.entry_zone[0]}")
-                    except Exception as pt_err:
-                        logger.error(f"Paper trade execution error: {pt_err}")
+                
+                self.notifier._send_message(msg)
+                self._last_signal_time[symbol] = datetime.now()
+                self._signal_count += 1
+                
+                # Sinyal geçmişine kaydet
+                try:
+                    record_early_signal(early_signal, symbol)
+                except Exception as e:
+                    logger.warning(f"Signal history error: {e}")
+                
+                logger.info(f"[SIGNAL] Early Signal sent: {symbol}")
+                
+                # PAPER TRADING EXECUTION
+                try:
+                    trade_signal = {
+                        "symbol": symbol,
+                        "side": early_signal.action,
+                        "entry_price": early_signal.entry_zone[0],
+                        "sl_price": early_signal.stop_loss,
+                        "confidence": early_signal.confidence
+                    }
+                    if self.paper_trader.execute_trade(trade_signal):
+                        logger.info(f"📝 Paper Trade Executed: {symbol}")
+                        self.notifier._send_message(f"📝 *PAPER TRADE AÇILDI* - {symbol}\nFiyat: {early_signal.entry_zone[0]}")
+                except Exception as pt_err:
+                    logger.error(f"Paper trade execution error: {pt_err}")
 
-                    return
-                    
+                return
+                
         except Exception as e:
             logger.error(f"[ERROR] Early Signal: {symbol}: {e}")
     

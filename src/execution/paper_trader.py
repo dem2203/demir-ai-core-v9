@@ -44,6 +44,34 @@ class PaperTrader:
     def _save_portfolio(self):
         with open(self.DB_FILE, 'w') as f:
             json.dump(self.portfolio, f, indent=4)
+    
+    def _notify_trade_close(self, symbol: str, side: str, entry: float, exit_price: float, 
+                            pnl: float, pnl_pct: float, duration_mins: int, result: str, emoji: str):
+        """
+        Telegram üzerinden trade kapanış bildirimi gönder.
+        """
+        try:
+            # Lazy import to avoid circular dependency
+            from src.v10.smart_notifier import _notifier
+            
+            if _notifier:
+                msg = f"""
+{emoji} *PAPER TRADE KAPANDI* - {symbol}
+
+📊 Sonuç: **{result}**
+💰 P/L: ${pnl:.2f} ({pnl_pct:+.1f}%)
+
+📈 Giriş: ${entry:,.0f}
+📉 Çıkış: ${exit_price:,.0f}
+📏 Pozisyon: {side}
+⏱ Süre: {duration_mins} dakika
+
+💼 Güncel Bakiye: ${self.portfolio['balance']:,.2f}
+"""
+                _notifier._send_message(msg)
+                logger.info(f"📢 Trade close notification sent: {symbol}")
+        except Exception as e:
+            logger.warning(f"Could not send close notification: {e}")
 
     def calculate_position_size(self, entry_price, stop_loss_price, balance, risk_pct=0.01):
         """
@@ -132,6 +160,12 @@ class PaperTrader:
                 
                 del self.portfolio['positions'][symbol]
                 self._save_portfolio()
+                
+                # TELEGRAM KAPANIŞ BİLDİRİMİ
+                pnl_emoji = "🟢" if pnl > 0 else "🔴"
+                result = "KAZANÇ" if pnl > 0 else "KAYIP"
+                self._notify_trade_close(symbol, side_type, entry_price, price, pnl, pnl_pct, duration_mins, result, pnl_emoji)
+                
                 logger.info(f"💰 CLOSED {side_type} {symbol}: PnL ${pnl:.2f}")
                 return True
 
