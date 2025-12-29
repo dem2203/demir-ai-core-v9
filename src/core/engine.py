@@ -62,6 +62,9 @@ from src.v10.early_signal_engine import get_early_signal_engine, EarlySignal
 # PHASE 500: PREMIUM SIGNAL GENERATOR - Claude AI Entegrasyonu
 from src.brain.premium_signals import get_premium_generator, send_premium_signal
 
+# PHASE 600: PAPER TRADING MANAGER - Sinyal Takibi ve Günlük Rapor
+from src.brain.paper_trading_manager import get_paper_trading_manager
+
 logger = logging.getLogger("DEMIR_AI_CORE_ENGINE")
 
 class BotEngine:
@@ -298,8 +301,21 @@ class BotEngine:
                                 signal = await generator.generate(symbol)
                                 
                                 if signal and signal.direction != "BEKLE":
+                                    # 1. Premium sinyal mesajı gönder
                                     msg = generator.format_telegram_message(signal)
                                     await self.notifier.send_message_raw(msg)
+                                    
+                                    # 2. Paper Trade aç ve bildirim gönder
+                                    try:
+                                        ptm = get_paper_trading_manager()
+                                        trade_id = ptm.open_trade(signal)
+                                        if trade_id:
+                                            trade_msg = ptm.format_trade_open_message(signal)
+                                            await self.notifier.send_message_raw(trade_msg)
+                                            logger.info(f"📈 Paper Trade Opened: {trade_id}")
+                                    except Exception as pt_err:
+                                        logger.debug(f"Paper trade open error: {pt_err}")
+                                    
                                     self.last_premium_signal[symbol] = datetime.now()
                                     logger.info(f"🏆 Premium Signal: {symbol} → {signal.direction} ({signal.confidence}%)")
                                 else:
@@ -309,6 +325,35 @@ class BotEngine:
                                         logger.info(f"⏸️ Premium Signal: {symbol} → BEKLE (güven: %{signal.confidence})")
                             except Exception as prem_err:
                                 logger.debug(f"Premium signal error: {prem_err}")
+                    
+                    # --- PAPER TRADE TP/SL KONTROLÜ (her döngüde) ---
+                    try:
+                        ptm = get_paper_trading_manager()
+                        closed_trades = await ptm.check_trades()
+                        
+                        for result in closed_trades:
+                            # TP/SL vuruldu bildirimi
+                            close_msg = ptm.format_trade_close_message(result)
+                            await self.notifier.send_message_raw(close_msg)
+                            logger.info(f"📊 Paper Trade Closed: {result['trade'].id} → {result['result']}")
+                    except Exception as pt_check_err:
+                        logger.debug(f"Paper trade check error: {pt_check_err}")
+                    
+                    # --- GÜNLÜK PAPER TRADING RAPORU (21:00) ---
+                    now = datetime.now()
+                    if not hasattr(self, 'last_daily_report_date'):
+                        self.last_daily_report_date = None
+                    
+                    if now.hour == 21 and now.minute < 30:
+                        if self.last_daily_report_date != now.date():
+                            try:
+                                ptm = get_paper_trading_manager()
+                                daily_report = ptm.format_daily_report()
+                                await self.notifier.send_message_raw(daily_report)
+                                self.last_daily_report_date = now.date()
+                                logger.info("📊 Daily Paper Trading Report sent")
+                            except Exception as report_err:
+                                logger.debug(f"Daily report error: {report_err}")
                     
                     # ═══════════════════════════════════════════════════════════════
                     # 1️⃣ TEKNİK SİNYAL (ANLIK - %70+ güven olunca hemen)
