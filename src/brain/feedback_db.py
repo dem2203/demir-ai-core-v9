@@ -148,6 +148,77 @@ class FeedbackDB:
         
         return stats
     
+    def get_feature_importance(self) -> Dict:
+        """
+        Calculate which indicators contribute most to winning trades.
+        Returns importance scores for each feature.
+        """
+        feature_scores = {
+            'rsi': {'wins': 0, 'losses': 0, 'total_contribution': 0},
+            'orderbook': {'wins': 0, 'losses': 0, 'total_contribution': 0},
+            'whale': {'wins': 0, 'losses': 0, 'total_contribution': 0},
+            'funding': {'wins': 0, 'losses': 0, 'total_contribution': 0},
+            'volatility': {'wins': 0, 'losses': 0, 'total_contribution': 0}
+        }
+        
+        for trade in self.data:
+            is_win = trade.get('actual_pnl', 0) > 0
+            features = trade.get('entry_features', {})
+            
+            # RSI analysis
+            rsi = features.get('rsi', 50)
+            if rsi > 70 or rsi < 30:  # Extreme RSI
+                if is_win:
+                    feature_scores['rsi']['wins'] += 1
+                else:
+                    feature_scores['rsi']['losses'] += 1
+            
+            # Order book analysis
+            ob_ratio = features.get('ob_ratio', 1)
+            if ob_ratio != 1:
+                if is_win:
+                    feature_scores['orderbook']['wins'] += 1
+                else:
+                    feature_scores['orderbook']['losses'] += 1
+            
+            # Whale analysis
+            whale = features.get('whale_score', 0)
+            if abs(whale) > 30:
+                if is_win:
+                    feature_scores['whale']['wins'] += 1
+                else:
+                    feature_scores['whale']['losses'] += 1
+            
+            # Funding rate
+            funding = features.get('funding', 0)
+            if abs(funding) > 0.005:
+                if is_win:
+                    feature_scores['funding']['wins'] += 1
+                else:
+                    feature_scores['funding']['losses'] += 1
+        
+        # Calculate importance (win rate per feature)
+        importance = {}
+        for feature, data in feature_scores.items():
+            total = data['wins'] + data['losses']
+            if total > 0:
+                importance[feature] = {
+                    'win_rate': data['wins'] / total,
+                    'sample_count': total,
+                    'importance_score': data['wins'] / total * 100
+                }
+            else:
+                importance[feature] = {'win_rate': 0, 'sample_count': 0, 'importance_score': 0}
+        
+        # Sort by importance score
+        sorted_importance = dict(sorted(
+            importance.items(), 
+            key=lambda x: x[1]['importance_score'], 
+            reverse=True
+        ))
+        
+        return sorted_importance
+    
     def clear_old_trades(self, keep_last_n: int = 1000):
         """Keep only last N trades to prevent DB from growing too large"""
         if len(self.data) > keep_last_n:
