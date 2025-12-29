@@ -59,6 +59,9 @@ from src.brain.institutional_aggregator import get_aggregator
 # PHASE 400: EARLY SIGNAL ENGINE - Leading Indicators (YENİ SİSTEM)
 from src.v10.early_signal_engine import get_early_signal_engine, EarlySignal
 
+# PHASE 500: PREMIUM SIGNAL GENERATOR - Claude AI Entegrasyonu
+from src.brain.premium_signals import get_premium_generator, send_premium_signal
+
 logger = logging.getLogger("DEMIR_AI_CORE_ENGINE")
 
 class BotEngine:
@@ -280,21 +283,32 @@ class BotEngine:
                         except Exception as sudden_err:
                             logger.debug(f"Sudden check error: {sudden_err}")
                     
-                    # --- CANLI VERİ TAHMİNİ (15 dakika) ---
-                    if not hasattr(self, 'last_live_prediction'):
-                        self.last_live_prediction = {}
+                    # --- PREMIUM SİNYAL (15 dakika) - Claude AI Entegrasyonlu ---
+                    if not hasattr(self, 'last_premium_signal'):
+                        self.last_premium_signal = {}
                     
-                    for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:
-                        if symbol not in self.last_live_prediction:
-                            self.last_live_prediction[symbol] = datetime.now() - timedelta(minutes=20)
+                    for symbol in ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'LTCUSDT']:
+                        if symbol not in self.last_premium_signal:
+                            self.last_premium_signal[symbol] = datetime.now() - timedelta(minutes=20)
                         
-                        if (datetime.now() - self.last_live_prediction[symbol]).total_seconds() >= 900:
+                        if (datetime.now() - self.last_premium_signal[symbol]).total_seconds() >= 900:
                             try:
-                                await self.notifier.send_live_prediction(symbol)
-                                self.last_live_prediction[symbol] = datetime.now()
-                                logger.info(f"🏦 Live Prediction: {symbol}")
-                            except Exception as pred_err:
-                                logger.debug(f"Live prediction error: {pred_err}")
+                                # Premium sinyal üret ve gönder
+                                generator = get_premium_generator()
+                                signal = await generator.generate(symbol)
+                                
+                                if signal and signal.direction != "BEKLE":
+                                    msg = generator.format_telegram_message(signal)
+                                    await self.notifier.send_message_raw(msg)
+                                    self.last_premium_signal[symbol] = datetime.now()
+                                    logger.info(f"🏆 Premium Signal: {symbol} → {signal.direction} ({signal.confidence}%)")
+                                else:
+                                    # BEKLE durumunda da zamanı güncelle (ama mesaj gönderme)
+                                    self.last_premium_signal[symbol] = datetime.now()
+                                    if signal:
+                                        logger.info(f"⏸️ Premium Signal: {symbol} → BEKLE (güven: %{signal.confidence})")
+                            except Exception as prem_err:
+                                logger.debug(f"Premium signal error: {prem_err}")
                     
                     # ═══════════════════════════════════════════════════════════════
                     # 1️⃣ TEKNİK SİNYAL (ANLIK - %70+ güven olunca hemen)
