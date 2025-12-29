@@ -616,10 +616,11 @@ class EarlySignalEngine:
         
         # === FINAL DECISION ===
         # Threshold: Need significant score to generate signal
-        if ai_score > 30:
+        # LOWERED from 30 to 20 for more signal opportunities
+        if ai_score > 20:
             action = "BUY"
             confidence = min(95, 50 + ai_score)  # 50-95% range
-        elif ai_score < -30:
+        elif ai_score < -20:
             action = "SELL"
             confidence = min(95, 50 + abs(ai_score))
         else:

@@ -51,10 +51,11 @@ class PaperTrader:
         Telegram üzerinden trade kapanış bildirimi gönder.
         """
         try:
-            # Lazy import to avoid circular dependency
-            from src.v10.smart_notifier import _notifier
+            # Use get_smart_notifier for reliable import
+            from src.v10.smart_notifier import get_smart_notifier
+            notifier = get_smart_notifier()
             
-            if _notifier:
+            if notifier:
                 msg = f"""
 {emoji} *PAPER TRADE KAPANDI* - {symbol}
 
@@ -68,7 +69,7 @@ class PaperTrader:
 
 💼 Güncel Bakiye: ${self.portfolio['balance']:,.2f}
 """
-                _notifier._send_message(msg)
+                notifier._send_message(msg)
                 logger.info(f"📢 Trade close notification sent: {symbol}")
         except Exception as e:
             logger.warning(f"Could not send close notification: {e}")

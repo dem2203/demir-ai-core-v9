@@ -43,7 +43,8 @@ class V10Engine:
     
     SCAN_INTERVAL = 30
     SIGNAL_COOLDOWN = 30 * 60
-    PERFORMANCE_REPORT_INTERVAL = 4 * 60 * 60
+    PERFORMANCE_REPORT_INTERVAL = 4 * 60 * 60  # 4 hours
+    DAILY_REPORT_INTERVAL = 24 * 60 * 60  # 24 hours
     
     def __init__(self):
         self.data_hub = get_data_hub()
@@ -64,6 +65,7 @@ class V10Engine:
         
         self._last_signal_time: Dict[str, datetime] = {}
         self._last_performance_report = datetime.now()
+        self._last_daily_report = datetime.now()
         self._running = False
         self._cycle_count = 0
         self._signal_count = 0
@@ -279,6 +281,46 @@ TAVSİYE:
                 self._last_performance_report = datetime.now()
             except Exception as e:
                 logger.error(f"[ERROR] Performance report: {e}")
+        
+        # GÜNLÜK PERFORMANS RAPORU (24 saatte bir)
+        if (datetime.now() - self._last_daily_report).total_seconds() >= self.DAILY_REPORT_INTERVAL:
+            try:
+                logger.info("[DAILY] Sending daily performance report...")
+                
+                # Paper Trade istatistikleri
+                stats = self.paper_trader.get_stats()
+                
+                # Detaylı günlük rapor
+                daily_msg = f"""
+📊 *GÜNLÜK PERFORMANS RAPORU*
+━━━━━━━━━━━━━━━━━━━━━━
+
+💰 *PAPER TRADE İSTATİSTİKLERİ*
+  Bakiye: ${stats.get('balance', 10000):,.2f}
+  Toplam Trade: {stats.get('total_trades', 0)}
+  Win Rate: {stats.get('win_rate', 0)*100:.1f}%
+  Toplam P/L: ${stats.get('total_pnl', 0):,.2f}
+
+📈 *EN İYİ / EN KÖTÜ*
+  En İyi: ${stats.get('best_trade', 0):,.2f}
+  En Kötü: ${stats.get('worst_trade', 0):,.2f}
+
+🎯 *SİNYAL İSTATİSTİKLERİ*
+  Bugün Üretilen: {self._signal_count}
+  Cycle Sayısı: {self._cycle_count}
+
+━━━━━━━━━━━━━━━━━━━━━━
+⏰ {datetime.now().strftime('%Y-%m-%d %H:%M')}
+📡 *DEMIR AI v10 - DAILY REPORT*
+"""
+                self.notifier._send_message(daily_msg)
+                self._last_daily_report = datetime.now()
+                
+                # Reset daily counters
+                self._signal_count = 0
+                
+            except Exception as e:
+                logger.error(f"[ERROR] Daily report: {e}")
         
         cycle_time = (datetime.now() - cycle_start).total_seconds()
         
