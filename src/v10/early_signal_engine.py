@@ -43,6 +43,7 @@ from src.brain.regime_classifier import RegimeClassifier
 
 # AI MODELS - Real AI Decision Making
 from src.v10.lstm_predictor import get_lstm_predictor, PricePrediction
+from src.v10.ai_integration import get_ai_bridge
 
 logger = logging.getLogger("EARLY_SIGNAL_ENGINE")
 
@@ -232,12 +233,13 @@ class EarlySignalEngine:
         
         # AI BRAIN - Real AI Decision Making
         self.lstm_predictor = get_lstm_predictor()
+        self.ai_bridge = get_ai_bridge()  # For RL Agent access
         
         self.feature_collector = FeatureCollector()
         self.ml_model = None  # Legacy - replaced by lstm_predictor
         self._last_signals: Dict[str, EarlySignal] = {}
         
-        logger.info("🚀 Early Signal Engine + AI BRAIN initialized")
+        logger.info("🚀 Early Signal Engine + AI BRAIN + ENSEMBLE VOTING initialized")
     
     async def initialize(self):
         """Async initialization"""
@@ -483,7 +485,36 @@ class EarlySignalEngine:
             ai_score -= whale_weight * (abs(whale_score) / 100)
             reasons.append(f"🐋 Whale: Distributing {whale_score}")
         
-        # --- 4. VOLATILITY STATE (Weight: 10%) ---
+        # --- 4. RL AGENT PREDICTION (Weight: 15%) --- ENSEMBLE VOTING
+        rl_weight = 15
+        try:
+            # Get RL Agent decision from AI Bridge
+            if self.ai_bridge and self.ai_bridge.models_loaded:
+                # Build simple state vector for RL
+                rl_state = np.array([
+                    leading.funding_score,
+                    leading.orderbook_score,
+                    leading.whale_score,
+                    leading.oi_divergence_score,
+                    ml_pred.predicted_change_pct if ml_pred else 0
+                ])
+                # Pad to expected size
+                rl_state = np.pad(rl_state, (0, 32))[:37]
+                
+                action_idx, rl_conf = self.ai_bridge.rl_agent.predict(rl_state)
+                
+                if action_idx == 1:  # BUY
+                    ai_score += rl_weight * (rl_conf / 100)
+                    reasons.append(f"🤖 RL Agent: BUY ({rl_conf:.0f}%)")
+                elif action_idx == 2:  # SELL
+                    ai_score -= rl_weight * (rl_conf / 100)
+                    reasons.append(f"🤖 RL Agent: SELL ({rl_conf:.0f}%)")
+                else:
+                    reasons.append(f"🤖 RL Agent: HOLD")
+        except Exception as e:
+            logger.debug(f"RL Agent prediction skipped: {e}")
+        
+        # --- 5. VOLATILITY STATE (Weight: 10%) ---
         vol_state = vol_data.get('state', 'NORMAL')
         if vol_state == 'SQUEEZE':
             reasons.append("🌋 Volatility Squeeze (Big Move Incoming)")
