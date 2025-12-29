@@ -25,9 +25,13 @@ class LiveDataSnapshot:
     
     # === 17 VERİ KAYNAĞI ===
     
-    # 1. Whale Activity
+    # 1. Whale Activity (WebSocket)
     whale_net_flow: float = 0  # Pozitif = alım, negatif = satım
     whale_trade_count: int = 0
+    
+    # 1.b Named Whale Activity (On-Chain)
+    named_whale_activity: str = "" # Summary text e.g. "MicroStrategy ACCUMULATING"
+
     
     # 2. Order Book
     orderbook_imbalance: float = 1.0  # >1 bid heavy, <1 ask heavy
@@ -170,6 +174,7 @@ class InstitutionalAggregator:
         # Paralel veri çekme
         results = await asyncio.gather(
             self._fetch_whale_data(symbol),
+            self._fetch_named_whales(symbol), # NEW PHASE 15
             self._fetch_orderbook(symbol),
             self._fetch_liquidation(symbol),
             self._fetch_funding(symbol),
@@ -191,7 +196,7 @@ class InstitutionalAggregator:
         
         # Sonuçları snapshot'a yaz
         keys = [
-            'whale', 'orderbook', 'liquidation', 'funding', 'oi', 'ls_ratio',
+            'whale', 'named_whale', 'orderbook', 'liquidation', 'funding', 'oi', 'ls_ratio',
             'cvd', 'exchange_flow', 'stablecoin', 'defi', 'options', 'cme',
             'cross_exchange', 'etf', 'fear_greed', 'network', 'taker'
         ]
@@ -212,6 +217,10 @@ class InstitutionalAggregator:
         if key == 'whale':
             snapshot.whale_net_flow = data.get('net_flow', 0)
             snapshot.whale_trade_count = data.get('trade_count', 0)
+        
+        elif key == 'named_whale':
+            if data:
+                self.named_whale_activity = f"{data.get('signal_reason', '')}"
         
         elif key == 'orderbook':
             snapshot.orderbook_imbalance = data.get('imbalance', 1.0)
@@ -374,7 +383,23 @@ class InstitutionalAggregator:
         except Exception as e:
             logger.debug(f"Whale fetch error: {e}")
             return {}
-    
+
+    async def _fetch_named_whales(self, symbol: str) -> Dict:
+        """1.b Named Whale Tracker (On-Chain)"""
+        try:
+            from src.brain.whale_wallet_tracker import get_whale_wallet_tracker
+            tracker = get_whale_wallet_tracker()
+            # This is async, calls public APIs
+            activity = await tracker.get_whale_activity(symbol)
+            return {
+                'signal': activity.signal,
+                'signal_reason': activity.signal_reason,
+                'known_buys': activity.known_whale_buys
+            }
+        except Exception as e:
+            logger.debug(f"Named whale fetch error: {e}")
+            return {}
+
     async def _fetch_orderbook(self, symbol: str) -> Dict:
         """2. Order Book Depth"""
         try:

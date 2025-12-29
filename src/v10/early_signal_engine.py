@@ -46,10 +46,12 @@ from src.v10.lstm_predictor import get_lstm_predictor, PricePrediction
 from src.v10.ai_integration import get_ai_bridge
 
 # HYBRID AI SYSTEM - Macro Context + LLM Brain + Momentum Detector
-from src.brain.macro_context import get_macro_context
+from src.brain.macro_context import get_macro_context, MacroContext
 from src.brain.llm_brain import get_llm_brain
-from src.brain.momentum_detector import get_momentum_context
+from src.brain.momentum_detector import get_momentum_context, MomentumContext
 from src.brain.risk_manager import get_risk_manager
+from src.brain.fractal_analyzer import get_fractal_analyzer
+from src.brain.institutional_aggregator import InstitutionalAggregator, LiveDataSnapshot # PHASE 14
 
 logger = logging.getLogger("EARLY_SIGNAL_ENGINE")
 
@@ -70,7 +72,9 @@ class EarlySignal:
     llm_reasoning: str = ""        # Claude Haiku reasoning
     momentum_alerts: list = None   # Volume spike, etc.
     score_breakdown: Dict = None   # Tech, Macro, Onchain scores
+    score_breakdown: Dict = None   # Tech, Macro, Onchain scores
     risk_profile: Dict = None      # 💰 Smart Risk Manager output
+    institutional_data: Dict = None # 🏦 PHASE 14: Raw Institutional Data
     timestamp: datetime = field(default_factory=datetime.now)
     
     def __post_init__(self):
@@ -92,7 +96,9 @@ class EarlySignal:
             'llm_reasoning': self.llm_reasoning,
             'momentum_alerts': self.momentum_alerts,
             'risk_profile': self.risk_profile,
+            'risk_profile': self.risk_profile,
             'leading_indicators': self.leading_signal.to_dict(),
+            'institutional_data': self.institutional_data,
             'ml_prediction': self.ml_prediction,
             'timestamp': self.timestamp.isoformat()
         }
@@ -261,6 +267,7 @@ class EarlySignalEngine:
         # HYBRID AI - LLM Brain (Claude Haiku)
         self.llm_brain = get_llm_brain()
         self.fractal_analyzer = get_fractal_analyzer() # NEW
+        self.institutional_aggregator = InstitutionalAggregator() # PHASE 14 integration
         
         self.feature_collector = FeatureCollector()
         self.ml_model = None  # Legacy - replaced by lstm_predictor
@@ -352,6 +359,15 @@ class EarlySignalEngine:
         except Exception as e:
             logger.warning(f"LSTM prediction failed: {e}")
         
+        # 5. FRACTAL MEMORY (Pattern Matching) - Existing logic moved/modified
+        # The existing fractal_match logic is already above, so we'll just ensure it's used.
+        
+        # 6. Institutional AGGREGATOR (PHASE 14 - Brain Activation)
+        # ---------------------------------------------------
+        # Fetch comprehensive data snapshot
+        inst_snapshot = await self.institutional_aggregator.get_live_snapshot(symbol)
+        sudden_triggers = await self.institutional_aggregator.check_sudden_triggers(symbol)
+
         # 5. Sinyal üret - HYBRID AI BRAIN DECISION
         signal = await self._generate_signal(
             symbol=symbol, 
@@ -365,10 +381,10 @@ class EarlySignalEngine:
             news_data=news_data,
             regime_data=regime_data,
             macro_context=macro_context,
-            regime_data=regime_data,
-            macro_context=macro_context,
             momentum_context=momentum_context,
-            fractal_match=fractal_match # NEW
+            fractal_match=fractal_match, # NEW
+            inst_snapshot=inst_snapshot, # NEW
+            sudden_triggers=sudden_triggers # NEW
         )
         
         # 6. Training için veri topla
@@ -552,9 +568,10 @@ class EarlySignalEngine:
         news_data: Dict,
         regime_data: Dict,
         macro_context = None,
-        macro_context = None,
         momentum_context = None,  # NEW: MomentumContext for breakout detection
-        fractal_match = None      # NEW: Fractal memory
+        fractal_match = None,      # NEW: Fractal memory
+        inst_snapshot: LiveDataSnapshot = None, # NEW
+        sudden_triggers = None # NEW
     ) -> EarlySignal:
         """
         HYBRID AI BRAIN DECISION
@@ -822,6 +839,40 @@ class EarlySignalEngine:
         if leading.oi_divergence_score != 0:
             color = "🟢" if leading.oi_divergence_score > 0 else "🔴"
             reasons.append(f"{color} oi divergence: {leading.oi_divergence_score:+.0f}")
+            
+        # --- 12. INSTITUTIONAL DATA (PHASE 14) ---
+        if inst_snapshot:
+            # CME Gap
+            if not inst_snapshot.cme_gap_filled:
+                gap_dist = (inst_snapshot.cme_gap_price - current_price) / current_price * 100
+                if abs(gap_dist) < 2.0:
+                    ai_score += 15 if gap_dist > 0 else -15
+                    reasons.append(f"🕳️ CME Gap Target: ${inst_snapshot.cme_gap_price:,.0f} ({gap_dist:+.1f}%)")
+            
+            # Exchange Netflow
+            if inst_snapshot.exchange_netflow > 1000000: # Inflow > $1M
+                ai_score -= 10
+                reasons.append("🏦 Exchange Inflow: High Selling Risk")
+            elif inst_snapshot.exchange_netflow < -1000000: # Outflow > $1M
+                ai_score += 10
+                reasons.append("🏦 Exchange Outflow: Accumulation")
+                
+            # MVRV / On-Chain extracted from MVRV Proxy logic if available or re-implemented here
+            # (InstitutionalAggregator doesn't calculate MVRV Proxy by default, relies on separate call or sub-module)
+            # but it has whale_net_flow
+            
+        # --- 13. SUDDEN TRIGGERS (PHASE 14) ---
+        if sudden_triggers and sudden_triggers.should_alert:
+            for trigger in sudden_triggers.triggers:
+                weight = 15 if trigger.severity == "HIGH" else 8
+                if trigger.direction == "BULLISH":
+                    ai_score += weight
+                    reasons.append(f"⚡ {trigger.name}: BULLISH ({trigger.value})")
+                elif trigger.direction == "BEARISH":
+                    ai_score -= weight
+                    reasons.append(f"⚡ {trigger.name}: BEARISH ({trigger.value})")
+                elif trigger.severity == "CRITICAL":
+                    reasons.append(f"⚠️ CRTICAL ALERT: {trigger.name} ({trigger.value})")
         
         # === FINAL DECISION ===
         # Threshold: Need significant score to generate signal
@@ -1021,7 +1072,8 @@ class EarlySignalEngine:
             llm_reasoning=llm_reasoning,
             momentum_alerts=[a.to_dict() for a in momentum_alerts],
             score_breakdown=score_breakdown,
-            risk_profile=risk_profile
+            risk_profile=risk_profile,
+            institutional_data=inst_data # NEW
         )
     
     def get_last_signal(self, symbol: str) -> Optional[EarlySignal]:

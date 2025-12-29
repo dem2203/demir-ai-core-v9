@@ -39,8 +39,15 @@ class WhaleTracker:
         self.large_trades = deque(maxlen=50) # Keep last 50 big trades
         self.net_volume_flow = 0.0 # Net Buy - Sell Volume (USD)
         
-        # Thresholds
-        self.WHALE_THRESHOLD_USD = 100_000 # Track trades > $100k
+        # Thresholds (Dynamic)
+        self.WHALE_THRESHOLD_USD = 100_000 # Default $100k, variable
+    
+    def set_threshold(self, threshold_usd: float):
+        """Update whale threshold dynamically based on market volume."""
+        if threshold_usd != self.WHALE_THRESHOLD_USD:
+            self.WHALE_THRESHOLD_USD = threshold_usd
+            # logger.info(f"⚖️ Whale Threshold Updated: ${threshold_usd:,.0f}")
+
         
     async def start(self):
         """Start the WebSocket Monitor."""

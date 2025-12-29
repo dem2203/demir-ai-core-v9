@@ -183,6 +183,37 @@ class LeadingIndicators:
                     else:
                         big_buys += value
             
+            tracker = get_whale_tracker()
+            if not tracker.running:
+                # Lazy start if not running
+                try:
+                    await tracker.start()
+                    await asyncio.sleep(1)
+                except:
+                    pass
+            
+            # PHASE 15: DYNAMIC THRESHOLD
+            # Calculate threshold based on 24h volume
+            try:
+                # Fetch 24h ticker for volume
+                session = await self._get_session()
+                async with session.get(f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}") as resp:
+                    ticker = await resp.json()
+                    quote_volume = float(ticker.get('quoteVolume', 0))
+                    
+                    # Rule: Threshold = 0.05% of 5-min volume estimate? 
+                    # Better: Threshold = 0.1% of 1m volume?
+                    # Simple heuristic: If 24h vol > $1B -> threshold $250k
+                    # If 24h vol < $10M -> threshold $20k
+                    # Formula: quote_volume / 20000 clipped between 20k and 500k
+                    
+                    calc_threshold = max(20000, min(500000, quote_volume / 20000))
+                    if quote_volume > 0:
+                        tracker.set_threshold(calc_threshold)
+            except Exception as e:
+                logger.debug(f"Dynamic threshold error: {e}")
+
+            summary = tracker.get_whale_summary()
             # Net whale flow
             total = big_buys + big_sells
             if total == 0:
