@@ -109,7 +109,7 @@ KURALLAR:
             logger.info("🔄 Daily Claude call counter reset")
         
         if self._daily_calls >= self.DAILY_CALL_LIMIT:
-            logger.warning(f"⚠️ Daily Claude limit reached ({self.DAILY_CALL_LIMIT}). Using fallback.")
+            logger.warning(f"⚠️ Daily Claude limit reached ({self.DAILY_CALL_LIMIT}). Skipping analysis.")
             return False
         return True
     
