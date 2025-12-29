@@ -159,6 +159,29 @@ class PaperTrader:
                     "time": datetime.now().isoformat()
                 })
                 
+                # --- SELF LEARNING FEEDBACK ---
+                try:
+                    from src.brain.feedback_db import FeedbackDB
+                    fdb = FeedbackDB()
+                    
+                    pos_data = self.portfolio['positions'][symbol]
+                    entry_features = pos_data.get('entry_snapshot', {})
+                    predicted_action = pos_data.get('predicted_action', 'UNKNOWN')
+                    
+                    fdb.save_trade_outcome({
+                        'symbol': symbol,
+                        'side': side_type,
+                        'entry_features': entry_features,
+                        'predicted_action': predicted_action,
+                        'actual_pnl': pnl,
+                        'pnl_pct': pnl_pct,
+                        'duration_minutes': duration_mins,
+                        'entry_price': entry_price,
+                        'exit_price': price
+                    })
+                except Exception as e:
+                    logger.error(f"Feedback save failed: {e}")
+
                 del self.portfolio['positions'][symbol]
                 self._save_portfolio()
                 

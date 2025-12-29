@@ -99,6 +99,13 @@ class LSTMPredictor:
             # Feature extraction
             X, y = self._prepare_training_data(klines)
             
+            # --- SELF LEARNING AUGMENTATION ---
+            X_aug, y_aug = self._augment_with_feedback(symbol, klines)
+            if len(X_aug) > 0:
+                X = np.concatenate([X, X_aug])
+                y = np.concatenate([y, y_aug])
+                logger.info(f"🧠 Augmented training with {len(X_aug)} feedback samples for {symbol}")
+            
             # Simple linear regression (LSTM yerine - dependency-free)
             # y = X * weights + bias
             # En küçük kareler ile çözüm
@@ -303,6 +310,86 @@ class LSTMPredictor:
             vol_ratio,
             momentum
         ])
+
+    def _augment_with_feedback(self, symbol: str, klines: List) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Geçmiş trade hatalarından ders alarak eğitim verisini zenginleştir.
+        SELF-LEARNING CORE
+        """
+        try:
+            from src.brain.feedback_db import FeedbackDB
+            fdb = FeedbackDB()
+            trades = fdb.get_by_symbol(symbol, n=100)
+            
+            if not trades:
+                return np.array([]), np.array([])
+            
+            X_aug = []
+            y_aug = []
+            
+            # Convert klines to numpy for fast search
+            times = np.array([k[0] for k in klines])
+            
+            for trade in trades:
+                # Parse trade time
+                try:
+                    trade_dt = datetime.fromisoformat(trade['timestamp'])
+                    trade_ts = trade_dt.timestamp() * 1000
+                except:
+                    continue
+                
+                # Find closest kline index (Entry time)
+                # We assume klines cover the trade period
+                idx = (np.abs(times - trade_ts)).argmin()
+                
+                # Validation: Time diff check (max 2 hours diff)
+                if abs(times[idx] - trade_ts) > 7200000:
+                    continue
+
+                # Ensure we have enough lookback
+                if idx < self.LOOKBACK:
+                    continue
+                    
+                # Extract features for that specific moment
+                # Note: We need klines BEFORE the trade entry to simulate AI view at that time
+                features = self._extract_features(np.array(klines[idx-self.LOOKBACK:idx], dtype=float))
+                
+                # Determine Correct Label (Correction Signal)
+                pnl = trade.get('actual_pnl', 0)
+                side = trade.get('side', 'LONG')
+                
+                # Logic:
+                # If WIN: Do same.
+                # If LOSS: Do opposite.
+                
+                label = 0
+                if side == 'LONG':
+                    # If Long won -> Label 1 (Buy)
+                    # If Long lost -> Label -1 (Sell)
+                    label = 1 if pnl > 0 else -1
+                elif side == 'SHORT':
+                    # If Short won -> Label -1 (Sell)
+                    # If Short lost -> Label 1 (Buy)
+                    label = -1 if pnl > 0 else 1
+                    
+                # OVERSAMPLING (Force Learning)
+                # Learning from mistakes is important -> weighting is key.
+                # If LOSS (Mistake), add more weight (more copies)
+                
+                weight = 10 if pnl < 0 else 2  # Strong correction for mistakes
+                
+                for _ in range(weight):
+                    X_aug.append(features)
+                    y_aug.append(label)
+                    
+            if not X_aug:
+                return np.array([]), np.array([])
+                
+            return np.array(X_aug), np.array(y_aug)
+            
+        except Exception as e:
+            logger.error(f"Augmentation error: {e}")
+            return np.array([]), np.array([])
     
     def _calc_rsi(self, prices: List[float], period: int = 14) -> float:
         if len(prices) < period:

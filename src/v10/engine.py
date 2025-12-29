@@ -95,9 +95,7 @@ class V10Engine:
             try:
                 # 4 saatte bir Retrain Check
                 if datetime.now().hour % 4 == 0 and datetime.now().minute < 5:
-                     # Basit frekans kontrolü (her 30 saniyede bir girmesin diye simple debounce gerekebilir ama sleep 30sn oldugu icin sorun olmaz)
-                     # Daha güvenli yol: timer kullanmak
-                     pass
+                     await self._check_auto_retrain()
 
             except Exception as e:
                  pass
