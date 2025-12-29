@@ -342,83 +342,59 @@ class SmartNotifier:
                 else:
                     lines.append("\n📐 Pattern: Henüz oluşmadı")
             
-            # === 6 GÜÇLÜ AI MODÜLLERİ ===
+            # === 🧠 AI BRAIN ENSEMBLE ===
             
-            # 1. 🔮 LSTM PRICE PREDICTION
+            # 1. LSTM PREDICTION (from our trained model)
             try:
-                from src.v10.lstm_predictor import LSTMPredictor
-                lstm = LSTMPredictor()
-                prediction = lstm.predict_next(symbol, timeframe='30m')
+                from src.v10.lstm_predictor import get_lstm_predictor
+                lstm = get_lstm_predictor()
+                prediction = await lstm.predict(symbol)
                 
-                if prediction and prediction.get('confidence', 0) > 0.6:
-                    predicted_price = prediction.get('predicted_price', 0)
-                    current = snapshot.price
-                    if current > 0 and predicted_price > 0:
-                        change_pct = ((predicted_price / current) - 1) * 100
-                        confidence = prediction.get('confidence', 0) * 100
-                        trend = prediction.get('trend', 'UNKNOWN')
-                        
-                        emoji = "🟢" if change_pct > 0 else "🔴" if change_pct < 0 else "⚪"
-                        lines.append("\n🔮 *LSTM TAHMİNİ (30dk)*")
-                        lines.append(f"  Fiyat: ${predicted_price:,.0f} ({emoji}{change_pct:+.2f}%)")
-                        lines.append(f"  Güven: {confidence:.0f}%")
-                        lines.append(f"  Trend: {trend}")
+                if prediction:
+                    direction = prediction.direction
+                    change_pct = prediction.predicted_change_pct
+                    confidence = prediction.confidence
+                    
+                    emoji = "🟢" if direction == "UP" else "🔴" if direction == "DOWN" else "⚪"
+                    lines.append("\n🧠 *AI BRAIN - LSTM*")
+                    lines.append(f"  Yön: {emoji} {direction} ({change_pct:+.2f}%)")
+                    lines.append(f"  Güven: {confidence:.0f}%")
             except Exception as e:
                 logger.debug(f"LSTM prediction skipped: {e}")
             
-            # 2. 🤖 RL AGENT RECOMMENDATION
+            # 2. 📊 LEADING INDICATORS (Order Book, Whale, Funding)
             try:
-                from src.brain.rl_agent.ppo_agent import PPOAgent
-                import os
-                model_path = f"src/brain/rl_agent/storage/ppo_{symbol.lower()}_v1.zip"
+                from src.v10.leading_indicators import get_leading_indicators
+                leading = await get_leading_indicators()
+                leading_signal = await leading.get_signal(symbol)
                 
-                if os.path.exists(model_path):
-                    rl_agent = PPOAgent.load(model_path)
-                    # Create simple observation (RL expects normalized features)
-                    obs = [
-                        snapshot.price / 100000,  # Normalized price
-                        snapshot.rsi_1h / 100 if snapshot.rsi_1h > 0 else 0.5,
-                        (snapshot.volume_24h / 1e9) if snapshot.volume_24h > 0 else 0.5
-                    ]
+                if leading_signal:
+                    lines.append("\n📊 *ENSEMBLE INDICATORS*")
                     
-                    action = rl_agent.predict(obs, deterministic=True)[0]
+                    # Order Book
+                    ob_score = leading_signal.orderbook_score
+                    ob_emoji = "🟢" if ob_score > 20 else "🔴" if ob_score < -20 else "⚪"
+                    lines.append(f"  📗 Order Book: {ob_emoji} {ob_score:+.0f}")
                     
-                    action_map = {0: 'BEKLE', 1: 'AL', 2: 'SAT'}
-                    emoji_map = {0: '⚪', 1: '🟢', 2: '🔴'}
+                    # Whale Activity
+                    whale_score = leading_signal.whale_score
+                    whale_emoji = "🐋" if whale_score > 20 else "🐋" if whale_score < -20 else "⚪"
+                    action = "Alım" if whale_score > 0 else "Satım" if whale_score < 0 else "Nötr"
+                    lines.append(f"  {whale_emoji} Whale: {action} ({whale_score:+.0f})")
                     
-                    lines.append("\n🤖 *RL AGENT TAVSİYESİ*")
-                    lines.append(f"  Aksiyon: {emoji_map.get(action, '⚪')} {action_map.get(action, 'UNKNOWN')}")
+                    # Funding Rate
+                    funding_score = leading_signal.funding_score
+                    fund_emoji = "🟢" if funding_score > 0 else "🔴" if funding_score < 0 else "⚪"
+                    lines.append(f"  💰 Funding: {fund_emoji} ({funding_score:+.0f})")
+                    
+                    # Direction
+                    direction = leading_signal.direction.value
+                    strength = leading_signal.strength
+                    dir_emoji = "🟢" if "BULLISH" in direction else "🔴" if "BEARISH" in direction else "⚪"
+                    lines.append(f"  ━━━━━━━━━━━━━")
+                    lines.append(f"  Yön: {dir_emoji} {direction} (%{strength:.0f})")
             except Exception as e:
-                logger.debug(f"RL Agent skipped: {e}")
-            
-            # 3. ⏱ MULTI-TIMEFRAME CONSENSUS
-            try:
-                from src.v10.multi_timeframe import MultiTimeframeAnalyzer
-                mtf = MultiTimeframeAnalyzer()
-                mtf_data = mtf.analyze_all_timeframes(symbol)
-                
-                if mtf_data and 'consensus' in mtf_data:
-                    consensus = mtf_data['consensus']
-                    timeframes = mtf_data.get('timeframes', {})
-                    
-                    lines.append("\n⏱ *MULTI-TIMEFRAME*")
-                    
-                    # Show each timeframe
-                    for tf in ['15m', '1h', '4h', '1d']:
-                        if tf in timeframes:
-                            trend = timeframes[tf].get('trend', 'UNKNOWN')
-                            emoji = "🟢" if trend == 'LONG' else "🔴" if trend == 'SHORT' else "⚪"
-                            lines.append(f"  {tf}: {emoji} {trend}")
-                    
-                    # Consensus
-                    overall = consensus.get('direction', 'NEUTRAL')
-                    strength = consensus.get('strength', 0) * 100
-                    emoji = "🟢" if overall == 'LONG' else "🔴" if overall == 'SHORT' else "⚪"
-                    
-                    lines.append("  ━━━━━━━━━━━━━")
-                    lines.append(f"  CONSENSUS: {emoji} {overall} ({strength:.0f}%)")
-            except Exception as e:
-                logger.debug(f"Multi-timeframe skipped: {e}")
+                logger.debug(f"Leading indicators skipped: {e}")
             
             # 4. 📈 ENHANCED PREDICTOR (7 Indicators)
             try:
