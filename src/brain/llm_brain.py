@@ -52,26 +52,38 @@ class LLMBrain:
     
     MODEL = "claude-3-5-haiku-20241022"  # Fastest and cheapest
     
-    SYSTEM_PROMPT = """Sen profesyonel bir kripto trader'sın. Verilen piyasa verilerini analiz edip net trading kararları veriyorsun.
+    SYSTEM_PROMPT = """Sen profesyonel bir kripto trader ve piyasa analisti olarak verileri faktör faktör analiz ediyorsun.
 
-KURALLAR:
-1. Her zaman net bir yön belirt: BUY, SELL veya HOLD
-2. Güven seviyesini 0-100 arası ver
-3. Kararını destekleyen 3-5 ana faktör belirt
-4. Entry, Stop Loss ve Take Profit seviyeleri öner
-5. Risk/Reward oranını hesapla
-6. Türkçe yanıt ver
+GÖREV:
+Her veri noktasını AYRI AYRI yorumla ve sonunda net bir karar ver.
 
 ÇIKTI FORMATI (JSON):
 {
   "direction": "BUY" | "SELL" | "HOLD",
   "confidence": 0-100,
-  "reasoning": "Ana neden (1-2 cümle)",
-  "entry_price": 0.0,
-  "stop_loss": 0.0,
-  "take_profit": 0.0,
-  "key_factors": ["faktör1", "faktör2", "faktör3"]
-}"""
+  "factor_analysis": {
+    "orderbook": "Order Book analizi (1 cümle)",
+    "whale": "Whale hareketleri yorumu (1 cümle)",
+    "funding": "Funding Rate analizi (1 cümle)",
+    "fear_greed": "Fear & Greed yorumu (1 cümle)",
+    "ls_ratio": "Long/Short Ratio analizi (1 cümle)",
+    "momentum": "Genel momentum değerlendirmesi (1 cümle)"
+  },
+  "risk_warning": "Ana risk faktörü (1 cümle)",
+  "final_verdict": "Sonuç ve tavsiye (2-3 cümle)",
+  "key_levels": {
+    "entry": 0.0,
+    "stop_loss": 0.0,
+    "take_profit": 0.0
+  }
+}
+
+KURALLAR:
+1. Her faktörü KISA ve NET yorumla (tek cümle)
+2. Çelişen sinyalleri belirt
+3. Risk uyarısı mutlaka ver
+4. Türkçe yanıt ver
+5. Aşırı iyimser olma, gerçekçi ol"""
 
     # BUDGET PROTECTION: $5 = ~10,000 calls with Haiku
     DAILY_CALL_LIMIT = 50  # Conservative: 50 calls/day = ~$0.03/day
@@ -273,7 +285,7 @@ Sadece JSON döndür, başka bir şey yazma."""
         return prompt
     
     def _parse_response(self, response: str, current_price: float) -> LLMAnalysis:
-        """Claude yanıtını parse et"""
+        """Claude yanıtını parse et - Yeni factor_analysis formatı"""
         
         try:
             # JSON'u bul ve parse et
@@ -284,11 +296,13 @@ Sadece JSON döndür, başka bir şey yazma."""
                 json_str = response[json_start:json_end]
                 data = json.loads(json_str)
                 
-                # Calculate R/R if not provided
-                entry = data.get('entry_price', current_price)
-                sl = data.get('stop_loss', 0)
-                tp = data.get('take_profit', 0)
+                # Key levels'ı parse et
+                key_levels = data.get('key_levels', {})
+                entry = key_levels.get('entry', current_price)
+                sl = key_levels.get('stop_loss', 0)
+                tp = key_levels.get('take_profit', 0)
                 
+                # R/R hesapla
                 if sl > 0 and tp > 0 and entry > 0:
                     risk = abs(entry - sl)
                     reward = abs(tp - entry)
@@ -296,15 +310,50 @@ Sadece JSON döndür, başka bir şey yazma."""
                 else:
                     rr = 0
                 
+                # Factor analysis'i reasoning olarak formatla
+                factor_analysis = data.get('factor_analysis', {})
+                final_verdict = data.get('final_verdict', '')
+                risk_warning = data.get('risk_warning', '')
+                
+                # Detaylı reasoning oluştur
+                reasoning_parts = []
+                
+                if factor_analysis.get('orderbook'):
+                    reasoning_parts.append(f"📊 Order Book: {factor_analysis['orderbook']}")
+                if factor_analysis.get('whale'):
+                    reasoning_parts.append(f"🐋 Whale: {factor_analysis['whale']}")
+                if factor_analysis.get('funding'):
+                    reasoning_parts.append(f"💸 Funding: {factor_analysis['funding']}")
+                if factor_analysis.get('fear_greed'):
+                    reasoning_parts.append(f"😱 Fear&Greed: {factor_analysis['fear_greed']}")
+                if factor_analysis.get('ls_ratio'):
+                    reasoning_parts.append(f"📈 L/S Ratio: {factor_analysis['ls_ratio']}")
+                if factor_analysis.get('momentum'):
+                    reasoning_parts.append(f"🚀 Momentum: {factor_analysis['momentum']}")
+                
+                if risk_warning:
+                    reasoning_parts.append(f"⚠️ Risk: {risk_warning}")
+                
+                if final_verdict:
+                    reasoning_parts.append(f"→ {final_verdict}")
+                
+                detailed_reasoning = "\n".join(reasoning_parts)
+                
+                # Key factors listesi oluştur
+                key_factors = []
+                for factor_name, factor_text in factor_analysis.items():
+                    if factor_text:
+                        key_factors.append(f"{factor_name}: {factor_text[:50]}")
+                
                 return LLMAnalysis(
                     direction=data.get('direction', 'HOLD'),
                     confidence=int(data.get('confidence', 50)),
-                    reasoning=data.get('reasoning', ''),
+                    reasoning=detailed_reasoning if detailed_reasoning else data.get('final_verdict', ''),
                     entry_price=entry,
                     stop_loss=sl,
                     take_profit=tp,
                     risk_reward=rr,
-                    key_factors=data.get('key_factors', []),
+                    key_factors=key_factors,
                     timestamp=datetime.now().isoformat()
                 )
         except json.JSONDecodeError as e:
