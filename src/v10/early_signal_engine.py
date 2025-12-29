@@ -410,13 +410,78 @@ class EarlySignalEngine:
             
         return {"regime": "UNKNOWN", "risk_adjustment": {}}
 
+    async def _check_multi_timeframe_confluence(self, symbol: str) -> Dict:
+        """
+        Multi-Timeframe Confluence Check
+        Analyzes 1h, 4h, 1d trends and checks agreement.
+        
+        Returns:
+            confluence_score: -100 to +100 (higher = more agreement)
+            trend_alignment: True/False
+            dominant_trend: "BULLISH" / "BEARISH" / "MIXED"
+        """
+        try:
+            import aiohttp
+            
+            trends = {}
+            timeframes = ['1h', '4h', '1d']
+            
+            async with aiohttp.ClientSession() as session:
+                for tf in timeframes:
+                    url = f"https://fapi.binance.com/fapi/v1/klines?symbol={symbol}&interval={tf}&limit=50"
+                    async with session.get(url) as resp:
+                        if resp.status == 200:
+                            klines = await resp.json()
+                            closes = [float(k[4]) for k in klines]
+                            
+                            # Simple trend determination: EMA9 vs EMA21
+                            if len(closes) >= 21:
+                                ema9 = sum(closes[-9:]) / 9
+                                ema21 = sum(closes[-21:]) / 21
+                                
+                                if ema9 > ema21 * 1.002:  # 0.2% threshold
+                                    trends[tf] = "BULLISH"
+                                elif ema9 < ema21 * 0.998:
+                                    trends[tf] = "BEARISH"
+                                else:
+                                    trends[tf] = "NEUTRAL"
+            
+            # Calculate confluence
+            bullish_count = sum(1 for t in trends.values() if t == "BULLISH")
+            bearish_count = sum(1 for t in trends.values() if t == "BEARISH")
+            
+            if bullish_count >= 2:
+                confluence_score = 50 + (bullish_count * 15)
+                dominant_trend = "BULLISH"
+                trend_alignment = bullish_count == 3
+            elif bearish_count >= 2:
+                confluence_score = -(50 + (bearish_count * 15))
+                dominant_trend = "BEARISH"
+                trend_alignment = bearish_count == 3
+            else:
+                confluence_score = 0
+                dominant_trend = "MIXED"
+                trend_alignment = False
+            
+            logger.info(f"📊 MTF Confluence {symbol}: {trends} → {dominant_trend} ({confluence_score})")
+            
+            return {
+                'confluence_score': confluence_score,
+                'trend_alignment': trend_alignment,
+                'dominant_trend': dominant_trend,
+                'timeframe_trends': trends
+            }
+            
+        except Exception as e:
+            logger.warning(f"MTF Confluence check failed: {e}")
+            return {'confluence_score': 0, 'trend_alignment': False, 'dominant_trend': 'UNKNOWN'}
+
     def _predict_with_ml(self, features: np.ndarray) -> Dict:
-        """ML modeli ile tahmin (ileride implement edilecek)"""
-        # TODO: LSTM/RL model entegrasyonu
+        """ML modeli ile tahmin (legacy - replaced by LSTM)"""
         return {
             'prediction': 'NEUTRAL',
             'confidence': 0,
-            'note': 'ML model not trained yet'
+            'note': 'Replaced by LSTM predictor'
         }
     
     def _generate_signal(
@@ -518,13 +583,25 @@ class EarlySignalEngine:
         vol_state = vol_data.get('state', 'NORMAL')
         if vol_state == 'SQUEEZE':
             reasons.append("🌋 Volatility Squeeze (Big Move Incoming)")
-            # Don't change direction, but increase confidence
+            # Increase potential for big move
         
-        # --- 5. REGIME CONTEXT (Weight: 10%) ---
-        regime = regime_data.get('regime', 'UNKNOWN')
+        # --- 6. NEWS SENTIMENT IMPACT (Weight: 10%) ---
         sentiment = news_data.get('sentiment', 'NEUTRAL')
+        sentiment_weight = 10
+        if sentiment == 'BULLISH':
+            ai_score += sentiment_weight
+            reasons.append("📰 News: BULLISH Sentiment")
+        elif sentiment == 'BEARISH':
+            ai_score -= sentiment_weight
+            reasons.append("📰 News: BEARISH Sentiment")
+        
+        # --- 7. REGIME CONTEXT ---
+        regime = regime_data.get('regime', 'UNKNOWN')
+        if regime == 'TRENDING_BULL' and ai_score > 0:
+            ai_score *= 1.1  # Boost bullish signals in bull market
+        elif regime == 'TRENDING_BEAR' and ai_score < 0:
+            ai_score *= 1.1  # Boost bearish signals in bear market
         reasons.append(f"🧠 Regime: {regime}")
-        reasons.append(f"🐂 Sentiment: {sentiment}" if sentiment == "BULLISH" else f"🐻 Sentiment: {sentiment}" if sentiment == "BEARISH" else "")
         
         # --- ADD INDIVIDUAL INDICATOR SCORES TO REASONING ---
         if leading.whale_score != 0:
