@@ -177,40 +177,148 @@ class AdvancedMarketScrapers:
         return events
     
     # =========================================
-    # 3. LIQUIDATION LEVELS (Coinglass)
+    # 3. LIQUIDATION & FUTURES DATA (Binance Futures API - FREE)
     # =========================================
     def get_liquidation_levels(self, symbol: str = 'BTC') -> Dict:
         """
-        Likidasyon seviyelerini çek.
+        Binance Futures API üzerinden OI, Funding ve Long/Short Ratio çek.
         
-        Fiyat bu seviyelere çekilir (liquidity grab).
+        API KEY GEREKMİYOR - Public endpoint kullanılıyor.
+        
+        Returns:
+            {
+                'open_interest': $50B,
+                'funding_rate': 0.01%,
+                'long_short_ratio': 1.2,
+                'direction': 'BULLISH' / 'BEARISH' / 'NEUTRAL'
+            }
         """
-        cache_key = f'liquidations_{symbol}'
+        cache_key = f'futures_data_{symbol}'
         if self._is_cached(cache_key):
             return self.cache[cache_key]
         
+        binance_symbol = f"{symbol}USDT"
+        
         try:
-            # Coinglass has API but requires key
-            # Alternative: scrape from page or use approximate calculation
+            # 1. Open Interest
+            oi_url = f"https://fapi.binance.com/fapi/v1/openInterest?symbol={binance_symbol}"
+            oi_response = requests.get(oi_url, timeout=10, headers=self.HEADERS)
             
-            # Fallback: Calculate approximate liquidation levels from price
-            # In real implementation, would scrape coinglass.com
+            open_interest = 0
+            if oi_response.status_code == 200:
+                oi_data = oi_response.json()
+                open_interest = float(oi_data.get('openInterest', 0))
+            
+            # Get current price for USD calculation
+            price_url = f"https://fapi.binance.com/fapi/v1/ticker/price?symbol={binance_symbol}"
+            price_response = requests.get(price_url, timeout=5)
+            current_price = float(price_response.json().get('price', 0)) if price_response.status_code == 200 else 0
+            
+            oi_usd = open_interest * current_price
+            
+            # 2. Funding Rate
+            funding_url = f"https://fapi.binance.com/fapi/v1/premiumIndex?symbol={binance_symbol}"
+            funding_response = requests.get(funding_url, timeout=10, headers=self.HEADERS)
+            
+            funding_rate = 0
+            if funding_response.status_code == 200:
+                funding_data = funding_response.json()
+                funding_rate = float(funding_data.get('lastFundingRate', 0))
+            
+            # 3. Long/Short Ratio (Top Trader Accounts)
+            ls_url = f"https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol={binance_symbol}&period=1h&limit=1"
+            ls_response = requests.get(ls_url, timeout=10, headers=self.HEADERS)
+            
+            long_short_ratio = 1.0
+            long_account = 50
+            short_account = 50
+            
+            if ls_response.status_code == 200:
+                ls_data = ls_response.json()
+                if ls_data:
+                    long_short_ratio = float(ls_data[-1].get('longShortRatio', 1.0))
+                    long_account = float(ls_data[-1].get('longAccount', 50)) * 100
+                    short_account = float(ls_data[-1].get('shortAccount', 50)) * 100
+            
+            # 4. Taker Buy/Sell Volume
+            taker_url = f"https://fapi.binance.com/futures/data/takerlongshortRatio?symbol={binance_symbol}&period=1h&limit=1"
+            taker_response = requests.get(taker_url, timeout=10, headers=self.HEADERS)
+            
+            taker_buy_ratio = 0.5
+            if taker_response.status_code == 200:
+                taker_data = taker_response.json()
+                if taker_data:
+                    buy_vol = float(taker_data[-1].get('buyVol', 1))
+                    sell_vol = float(taker_data[-1].get('sellVol', 1))
+                    taker_buy_ratio = buy_vol / (buy_vol + sell_vol) if (buy_vol + sell_vol) > 0 else 0.5
+            
+            # Determine direction based on funding + LS ratio + taker
+            bullish_signals = 0
+            bearish_signals = 0
+            
+            # Funding Rate Signal
+            if funding_rate > 0.0005:  # High positive = Overleveraged longs
+                bearish_signals += 1
+            elif funding_rate < -0.0001:  # Negative = Shorts paying
+                bullish_signals += 1
+            
+            # Long/Short Ratio Signal
+            if long_short_ratio > 1.3:  # Too many longs
+                bearish_signals += 1
+            elif long_short_ratio < 0.8:  # Too many shorts
+                bullish_signals += 1
+            
+            # Taker Volume Signal
+            if taker_buy_ratio > 0.55:
+                bullish_signals += 1
+            elif taker_buy_ratio < 0.45:
+                bearish_signals += 1
+            
+            if bullish_signals > bearish_signals:
+                direction = 'BULLISH'
+                action = f"🟢 Short squeeze potansiyeli! Funding: {funding_rate*100:.4f}%, L/S: {long_short_ratio:.2f}"
+            elif bearish_signals > bullish_signals:
+                direction = 'BEARISH'
+                action = f"🔴 Long pozisyonlar ağır! Funding: {funding_rate*100:.4f}%, L/S: {long_short_ratio:.2f}"
+            else:
+                direction = 'NEUTRAL'
+                action = f"Futures piyasası dengeli. Funding: {funding_rate*100:.4f}%"
             
             result = {
                 'symbol': symbol,
-                'long_liquidations': [],  # Price levels with clustered long liquidations
-                'short_liquidations': [],  # Price levels with clustered short liquidations
-                'note': 'Premium API gerekli - Coinglass verileri için API key ekleyin',
+                'open_interest': oi_usd,
+                'oi_formatted': f"${oi_usd/1e9:.2f}B",
+                'funding_rate': funding_rate,
+                'funding_rate_formatted': f"{funding_rate*100:.4f}%",
+                'long_short_ratio': long_short_ratio,
+                'long_account_pct': long_account,
+                'short_account_pct': short_account,
+                'taker_buy_ratio': taker_buy_ratio,
+                'direction': direction,
+                'action': action,
+                'bullish_signals': bullish_signals,
+                'bearish_signals': bearish_signals,
                 'timestamp': datetime.now()
             }
             
             self._set_cache(cache_key, result)
+            logger.info(f"📊 Binance Futures {symbol}: OI=${oi_usd/1e9:.1f}B, Funding={funding_rate*100:.4f}%, L/S={long_short_ratio:.2f}")
             return result
             
         except Exception as e:
-            logger.warning(f"Liquidation data fetch failed: {e}")
+            logger.warning(f"Binance Futures data fetch failed: {e}")
         
-        return {}
+        return {
+            'symbol': symbol,
+            'open_interest': 0,
+            'oi_formatted': 'N/A',
+            'funding_rate': 0,
+            'funding_rate_formatted': 'N/A',
+            'long_short_ratio': 1.0,
+            'direction': 'NEUTRAL',
+            'action': 'Futures verisi alınamadı',
+            'timestamp': datetime.now()
+        }
     
     # =========================================
     # 4. ECONOMIC CALENDAR
