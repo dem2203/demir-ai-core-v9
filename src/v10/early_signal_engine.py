@@ -45,9 +45,10 @@ from src.brain.regime_classifier import RegimeClassifier
 from src.v10.lstm_predictor import get_lstm_predictor, PricePrediction
 from src.v10.ai_integration import get_ai_bridge
 
-# HYBRID AI SYSTEM - Macro Context + LLM Brain
+# HYBRID AI SYSTEM - Macro Context + LLM Brain + Momentum Detector
 from src.brain.macro_context import get_macro_context
 from src.brain.llm_brain import get_llm_brain
+from src.brain.momentum_detector import get_momentum_context
 
 logger = logging.getLogger("EARLY_SIGNAL_ENGINE")
 
@@ -284,7 +285,8 @@ class EarlySignalEngine:
             asyncio.to_thread(self.volatility_predictor.predict_volatility, symbol),
             asyncio.to_thread(self.news_scraper.get_market_sentiment),
             self._analyze_regime(symbol),
-            get_macro_context()  # NEW: Macro context
+            get_macro_context(),
+            get_momentum_context(symbol)  # NEW: Momentum for breakout detection
         ]
         
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -297,6 +299,7 @@ class EarlySignalEngine:
         news_data = results[5] if not isinstance(results[5], Exception) else {}
         regime_data = results[6] if not isinstance(results[6], Exception) else {"regime": "UNKNOWN"}
         macro_context = results[7] if not isinstance(results[7], Exception) else None
+        momentum_context = results[8] if not isinstance(results[8], Exception) else None
         
         if not leading_signal:
              return None
@@ -330,7 +333,8 @@ class EarlySignalEngine:
             vol_data=volatility_data,
             news_data=news_data,
             regime_data=regime_data,
-            macro_context=macro_context  # NEW: Macro data for hybrid AI
+            macro_context=macro_context,
+            momentum_context=momentum_context  # NEW: Breakout detection
         )
         
         # 6. Training için veri topla
@@ -507,7 +511,8 @@ class EarlySignalEngine:
         vol_data: Dict,
         news_data: Dict,
         regime_data: Dict,
-        macro_context = None  # NEW: MacroContext object
+        macro_context = None,
+        momentum_context = None  # NEW: MomentumContext for breakout detection
     ) -> EarlySignal:
         """
         HYBRID AI BRAIN DECISION
@@ -649,7 +654,59 @@ class EarlySignalEngine:
             except Exception as e:
                 logger.debug(f"Macro scoring error: {e}")
         
-        # --- 9. LLM BRAIN ANALYSIS (Weight: 15%) --- NEW!
+        # --- 9. MOMENTUM / BREAKOUT DETECTION (Weight: 15%) --- NEW!
+        momentum_weight = 15
+        if momentum_context:
+            try:
+                # Volume Spike = Strong signal
+                if momentum_context.volume_spike:
+                    if momentum_context.momentum_direction in ["STRONG_BULL", "BULL"]:
+                        ai_score += momentum_weight * 0.4
+                        reasons.append(f"🔥 Volume Spike + Bullish Momentum ({momentum_context.volume_ratio:.1f}x)")
+                    elif momentum_context.momentum_direction in ["STRONG_BEAR", "BEAR"]:
+                        ai_score -= momentum_weight * 0.4
+                        reasons.append(f"🔥 Volume Spike + Bearish Momentum ({momentum_context.volume_ratio:.1f}x)")
+                
+                # Strong momentum
+                if abs(momentum_context.momentum_5m) > 0.5:
+                    if momentum_context.momentum_5m > 0:
+                        ai_score += momentum_weight * 0.3
+                        reasons.append(f"📈 5m Momentum: {momentum_context.momentum_5m:+.2f}%")
+                    else:
+                        ai_score -= momentum_weight * 0.3
+                        reasons.append(f"📉 5m Momentum: {momentum_context.momentum_5m:+.2f}%")
+                
+                # OI Surge = Position building
+                if momentum_context.oi_surge:
+                    reasons.append(f"📊 OI Surge: {momentum_context.oi_change_5m:+.1f}%")
+                
+                # CVD Divergence = Reversal warning
+                if momentum_context.cvd_divergence:
+                    # Opposite direction signal
+                    if momentum_context.momentum_5m > 0:
+                        ai_score -= momentum_weight * 0.2  # Price up but CVD down = bearish
+                        reasons.append("⚠️ CVD Divergence (Bearish)")
+                    else:
+                        ai_score += momentum_weight * 0.2  # Price down but CVD up = bullish
+                        reasons.append("⚠️ CVD Divergence (Bullish)")
+                
+                # Liquidation magnet
+                if momentum_context.liq_magnet != "NONE" and momentum_context.liq_distance_pct < 2:
+                    if momentum_context.liq_magnet == "LONG_LIQ":
+                        ai_score -= momentum_weight * 0.2
+                        reasons.append(f"🧲 Long Liq Magnet ({momentum_context.liq_distance_pct:.1f}% away)")
+                    elif momentum_context.liq_magnet == "SHORT_LIQ":
+                        ai_score += momentum_weight * 0.2
+                        reasons.append(f"🧲 Short Liq Magnet ({momentum_context.liq_distance_pct:.1f}% away)")
+                
+                # High breakout probability
+                if momentum_context.breakout_probability > 60:
+                    reasons.append(f"🚀 Breakout Prob: {momentum_context.breakout_probability:.0f}%")
+                    
+            except Exception as e:
+                logger.debug(f"Momentum scoring error: {e}")
+        
+        # --- 10. LLM BRAIN ANALYSIS (Weight: 15%) --- NEW!
         llm_weight = 15
         try:
             if self.llm_brain and self.llm_brain.is_enabled:
@@ -665,6 +722,7 @@ class EarlySignalEngine:
                 }
                 
                 macro_data = macro_context.to_dict() if macro_context else {}
+                momentum_data = momentum_context.to_dict() if momentum_context else {}
                 
                 onchain_data = {
                     'whale_flow': leading.whale_score,
@@ -684,7 +742,8 @@ class EarlySignalEngine:
                     technical_data=technical_data,
                     macro_data=macro_data,
                     onchain_data=onchain_data,
-                    sentiment_data=sentiment_data
+                    sentiment_data=sentiment_data,
+                    momentum_data=momentum_data  # NEW: Momentum context
                 )
                 
                 if llm_analysis:

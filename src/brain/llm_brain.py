@@ -102,7 +102,8 @@ KURALLAR:
         technical_data: Dict[str, Any],
         macro_data: Dict[str, Any],
         onchain_data: Dict[str, Any] = None,
-        sentiment_data: Dict[str, Any] = None
+        sentiment_data: Dict[str, Any] = None,
+        momentum_data: Dict[str, Any] = None
     ) -> LLMAnalysis:
         """
         Tüm verileri Claude'a gönder ve analiz al.
@@ -114,6 +115,7 @@ KURALLAR:
             macro_data: BTC.D, Fear Index, Market Cap
             onchain_data: Whale, exchange flow (opsiyonel)
             sentiment_data: News, social sentiment (opsiyonel)
+            momentum_data: Breakout, volume spike (opsiyonel)
         
         Returns:
             LLMAnalysis: Claude'un analiz sonucu
@@ -127,7 +129,7 @@ KURALLAR:
             # Build context prompt
             prompt = self._build_prompt(
                 symbol, current_price, technical_data, 
-                macro_data, onchain_data, sentiment_data
+                macro_data, onchain_data, sentiment_data, momentum_data
             )
             
             # Call Claude
@@ -159,7 +161,8 @@ KURALLAR:
         technical_data: Dict,
         macro_data: Dict,
         onchain_data: Dict = None,
-        sentiment_data: Dict = None
+        sentiment_data: Dict = None,
+        momentum_data: Dict = None
     ) -> str:
         """Analiz promptu oluştur"""
         
@@ -184,6 +187,17 @@ ${current_price:,.2f}
 - MC Değişim (24h): {macro_data.get('total_market_cap_change_24h', 0):+.2f}%
 """
         
+        if momentum_data:
+            prompt += f"""
+## MOMENTUM VE BREAKOUT SİNYALLERİ (ÖNEMLİ)
+- Volume Spike: {"EVET" if momentum_data.get('volume_spike') else "HAYIR"} ({momentum_data.get('volume_ratio', 1.0):.1f}x)
+- 5m Momentum: {momentum_data.get('momentum_5m', 0):+.2f}%
+- Momentum Yönü: {momentum_data.get('momentum_direction', 'NEUTRAL')}
+- Breakout Olasılığı: {momentum_data.get('breakout_probability', 0):.0f}%
+- CVD Divergence: {"VAR" if momentum_data.get('cvd_divergence') else "YOK"}
+- Liq Magnet: {momentum_data.get('liq_magnet', 'NONE')}
+"""
+
         if onchain_data:
             prompt += f"""
 ## ON-CHAIN VERİLER
