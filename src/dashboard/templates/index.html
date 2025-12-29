@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DEMIR AI v10 - Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #0f172a; color: #e2e8f0; font-family: 'Inter', sans-serif; }
+        .card { background-color: #1e293b; border: 1px solid #334155; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .table { color: #e2e8f0; }
+        .status-badge { font-size: 0.8em; padding: 5px 10px; border-radius: 12px; }
+        .badge-buy { background-color: #059669; color: white; }
+        .badge-sell { background-color: #dc2626; color: white; }
+        .badge-hold { background-color: #475569; color: white; }
+        .risk-low { color: #34d399; }
+        .risk-high { color: #f87171; }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(52, 211, 153, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand fw-bold text-primary" href="#">🤖 DEMIR AI v10</a>
+            <span class="navbar-text ms-auto" id="last-updated">Waiting for data...</span>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- Summary Cards -->
+        <div class="row g-4 mb-4" id="summary-cards">
+            <!-- Dynamic Content Here -->
+            <div class="col-12 text-center text-muted">Loading System Status...</div>
+        </div>
+
+        <!-- Main Table -->
+        <div class="card p-3">
+            <h5 class="card-title text-uppercase text-secondary mb-3">Live Market Intelligence</h5>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Price</th>
+                            <th>Change (24h)</th>
+                            <th>AI Signal</th>
+                            <th>Confidence</th>
+                            <th>Rec. Risk Profile</th>
+                            <th>AI Logic</th>
+                        </tr>
+                    </thead>
+                    <tbody id="market-table-body">
+                        <!-- Rows will be injected by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function fetchData() {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+                
+                if (data.status === 'waiting_data') {
+                    document.getElementById('last-updated').innerText = "Waiting for Engine...";
+                    return;
+                }
+                
+                updateUI(data);
+            } catch (error) {
+                console.error("Fetch error:", error);
+            }
+        }
+
+        function updateUI(data) {
+            // Update Timestamp
+            const now = new Date();
+            document.getElementById('last-updated').innerText = "Last Sync: " + now.toLocaleTimeString();
+
+            // 1. Summary Cards
+            const cardsContainer = document.getElementById('summary-cards');
+            let macroHtml = '';
+            
+            // Macro Data (if available)
+            if (data.macro_context) {
+                const mac = data.macro_context;
+                macroHtml += `
+                    <div class="col-md-3">
+                        <div class="card p-3 text-center">
+                            <h6 class="text-secondary">Fear & Greed</h6>
+                            <h3 class="${mac.fear_index < 30 ? 'text-danger' : 'text-success'}">${mac.fear_index}</h3>
+                            <small>${mac.fear_label}</small>
+                        </div>
+                    </div>
+                     <div class="col-md-3">
+                        <div class="card p-3 text-center">
+                            <h6 class="text-secondary">BTC Dominance</h6>
+                            <h3>${mac.btc_dominance}%</h3>
+                            <small>${mac.btc_dominance_trend}</small>
+                        </div>
+                    </div>
+                `;
+            }
+            cardsContainer.innerHTML = macroHtml || '<div class="col-12 text-center">Waiting for Macro Data...</div>';
+
+            // 2. Table
+            const tbody = document.getElementById('market-table-body');
+            tbody.innerHTML = ''; // Clear
+
+            if (data.signals) {
+                data.signals.forEach(sig => {
+                    // Badge Color
+                    let badgeClass = 'badge-hold';
+                    if (sig.action === 'BUY') badgeClass = 'badge-buy';
+                    if (sig.action === 'SELL') badgeClass = 'badge-sell';
+
+                    // Risk Info
+                    let riskInfo = '-';
+                    if (sig.risk_profile) {
+                        riskInfo = `${sig.risk_profile.leverage}x | %${sig.risk_profile.position_size_pct}`;
+                    }
+
+                    const row = `
+                        <tr>
+                            <td class="fw-bold">${sig.symbol}</td>
+                            <td>$${sig.price}</td>
+                            <td class="${sig.change_24h >= 0 ? 'text-success' : 'text-danger'}">
+                                ${sig.change_24h > 0 ? '+' : ''}${sig.change_24h}%
+                            </td>
+                            <td><span class="status-badge ${badgeClass}">${sig.action}</span></td>
+                            <td>
+                                <div class="progress" style="height: 6px; width: 80px;">
+                                    <div class="progress-bar bg-primary" role="progressbar" style="width: ${sig.confidence}%"></div>
+                                </div>
+                                <small>${sig.confidence}%</small>
+                            </td>
+                            <td>${riskInfo}</td>
+                            <td class="text-truncate" style="max-width: 250px;" title="${sig.reasoning}">${sig.reasoning}</td>
+                        </tr>
+                    `;
+                    tbody.innerHTML += row;
+                });
+            }
+        }
+
+        // Poll every 2 seconds
+        setInterval(fetchData, 2000);
+        fetchData(); // Initial call
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

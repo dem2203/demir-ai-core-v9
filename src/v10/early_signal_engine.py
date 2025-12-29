@@ -89,6 +89,9 @@ class EarlySignal:
             'take_profit': round(self.take_profit, 2),
             'risk_reward': round(self.risk_reward, 2),
             'reasoning': self.reasoning,
+            'llm_reasoning': self.llm_reasoning,
+            'momentum_alerts': self.momentum_alerts,
+            'risk_profile': self.risk_profile,
             'leading_indicators': self.leading_signal.to_dict(),
             'ml_prediction': self.ml_prediction,
             'timestamp': self.timestamp.isoformat()
@@ -247,6 +250,10 @@ class EarlySignalEngine:
         self.news_scraper = CryptoNewsScraper()
         self.regime_classifier = RegimeClassifier()
         
+        # Dashboard Cache State
+        self.latest_signals: Dict[str, Dict] = {}
+        self.latest_macro: Optional[Dict] = None
+        
         # AI BRAIN - Real AI Decision Making
         self.lstm_predictor = get_lstm_predictor()
         self.ai_bridge = get_ai_bridge()  # For RL Agent access
@@ -353,6 +360,12 @@ class EarlySignalEngine:
         
         # Cache'e kaydet
         self._last_signals[symbol] = signal
+        
+        # 7. Dashboard Update (NEW)
+        self.latest_signals[symbol] = signal.to_dict()
+        if macro_context:
+            self.latest_macro = macro_context.to_dict()
+        self._update_dashboard_json()
         
         return signal
     
@@ -997,6 +1010,30 @@ class EarlySignalEngine:
             await self.leading_indicators.close()
         self.feature_collector._flush_buffer()
 
+    def _update_dashboard_json(self):
+        """Dashboard verilerini JSON dosyasına yaz"""
+        try:
+            # Prepare data
+            dashboard_data = {
+                "updated_at": datetime.now().isoformat(),
+                "macro_context": self.latest_macro,
+                "signals": list(self.latest_signals.values())
+            }
+            
+            # File path: data/dashboard_data.json
+            # Use self.DATA_DIR if available, else derive from current file
+            base_dir = Path(__file__).parent.parent.parent
+            data_file = base_dir / "data" / "dashboard_data.json"
+            
+            # Ensure dir exists
+            if not data_file.parent.exists():
+                data_file.parent.mkdir(parents=True, exist_ok=True)
+                
+            with open(data_file, 'w', encoding='utf-8') as f:
+                json.dump(dashboard_data, f, indent=4, default=str)
+                
+        except Exception as e:
+            logger.error(f"Dashboard update error: {e}")
 
 # Global instance
 _engine: Optional[EarlySignalEngine] = None
