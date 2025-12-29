@@ -520,14 +520,39 @@ class EarlySignalEngine:
         
         logger.info(f"🤖 AI Brain {symbol}: Score={ai_score:.0f} → {action} ({confidence:.0f}%)")
         
-        # --- PRECISION LEVELS (SL/TP) ---
+        # === DYNAMIC SL/TP (ATR-Based) ===
+        # Volatility determines SL/TP distance
+        volatility_ratio = vol_data.get('volatility_ratio', 1.0)
         
-        # Default limits
-        stop_loss = current_price * 0.98
-        take_profit = current_price * 1.04
+        # Base multipliers (will be adjusted by volatility)
+        if volatility_ratio < 0.7:  # Low volatility / Squeeze
+            sl_mult = 0.015  # Tighter SL (1.5%)
+            tp_mult = 0.025  # Tighter TP (2.5%)
+            vol_reason = "📉 Low Vol: Tight SL/TP"
+        elif volatility_ratio > 1.3:  # High volatility / Expansion
+            sl_mult = 0.03   # Wider SL (3%)
+            tp_mult = 0.06   # Wider TP (6%)
+            vol_reason = "📈 High Vol: Wide SL/TP"
+        else:  # Normal volatility
+            sl_mult = 0.02   # Standard SL (2%)
+            tp_mult = 0.04   # Standard TP (4%)
+            vol_reason = ""
         
-        # Use Pivot Points for Precision
+        # Apply dynamic SL/TP
+        if action == "BUY":
+            stop_loss = current_price * (1 - sl_mult)
+            take_profit = current_price * (1 + tp_mult)
+        elif action == "SELL":
+            stop_loss = current_price * (1 + sl_mult)
+            take_profit = current_price * (1 - tp_mult)
+        else:
+            stop_loss = current_price * 0.98
+            take_profit = current_price * 1.04
+        
+        # Initialize reasons list
         reasons = []
+        if vol_reason:
+            reasons.append(vol_reason)
         
         if pivot_data and 'daily_pivots' in pivot_data:
             pivots = pivot_data['daily_pivots']

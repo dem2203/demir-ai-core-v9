@@ -575,77 +575,40 @@ DOGRULAMA:
         elapsed = (datetime.now() - self._last_signal_time[symbol]).total_seconds()
         return elapsed < self.SIGNAL_COOLDOWN
     
-
-
-
-
-_engine: Optional[V10Engine] = None
-
-def get_v10_engine() -> V10Engine:
-    global _engine
-    if _engine is None:
-        _engine = V10Engine()
-    return _engine
-
-
-async def run_v10():
-    """V10 Engine'i baslat"""
-    engine = get_v10_engine()
-    try:
-        await engine.start()
-    except KeyboardInterrupt:
-        await engine.stop()
-
-
-if __name__ == "__main__":
-    asyncio.run(run_v10())
     async def _check_auto_retrain(self):
         """
-        Check for closed trades and retrain model if needed.
+        Auto-retrain LSTM model with latest data.
+        Called every 15 minutes, actually retrains every 24 hours.
         """
-        # 1. Generate Feedback Data
-        history = self.paper_trader.get_trade_history()
-        new_samples = self.feedback_loop.process_closed_trades(history)
-        
-        if new_samples > 0:
-            logger.info(f"🔄 Auto-Retrain: Found {new_samples} new feedback samples.")
+        try:
+            # Check if 24 hours passed since last train
+            if not hasattr(self, '_last_lstm_train'):
+                self._last_lstm_train = datetime.now() - timedelta(hours=25)  # Force first train
             
-            # 2. Check Trainer Stats
-            stats = self.trainer.get_data_stats()
-            # If we have enough data (even if total samples are low, feedback is high value)
-            # Or if we have newly added feedback
+            hours_since_train = (datetime.now() - self._last_lstm_train).total_seconds() / 3600
             
-            # Trigger Training
-            logger.info("🧠 Starting Dynamic Retraining...")
-            
-            # Run in thread to not block engine
-            loop = asyncio.get_event_loop()
-            results = await loop.run_in_executor(None, self.trainer.train)
-            
-            if 'error' in results:
-                logger.warning(f"⚠️ Retrain skipped: {results['error']}")
-            else:
-                logger.info(f"✅ Model Updated! Val Acc: {results.get('best_val_accuracy')}")
-                # Reload engine's model?
-                pass
-
-    async def scan_once(self) -> Dict[str, dict]:
-        """Tek seferlik tarama (test icin)."""
-        results = {}
-        snapshots = await self.data_hub.get_all_snapshots()
-        
-        for symbol, snapshot in snapshots.items():
-            if snapshot.is_valid:
-                signal = self.predictor.generate_signal(snapshot)
-                results[symbol] = {
-                    'signal': signal.signal_type.value,
-                    'confidence': signal.confidence,
-                    'is_valid': signal.is_valid
-                }
-            else:
-                results[symbol] = {'signal': 'ERROR', 'errors': snapshot.errors}
-        
-        return results
+            if hours_since_train >= 24:
+                logger.info("🧠 LSTM Auto-Retrain: 24 hours passed, starting retrain...")
+                
+                # Retrain for main symbols
+                from src.v10.lstm_predictor import get_lstm_predictor
+                lstm = get_lstm_predictor()
+                
+                for symbol in ["BTCUSDT", "ETHUSDT"]:
+                    try:
+                        result = await lstm.train(symbol)
+                        if result.get('success'):
+                            logger.info(f"✅ {symbol} LSTM model updated. Accuracy: {result.get('accuracy', 0):.1f}%")
+                        else:
+                            logger.warning(f"⚠️ {symbol} LSTM train failed: {result.get('error')}")
+                    except Exception as e:
+                        logger.error(f"❌ {symbol} LSTM train error: {e}")
+                
+                self._last_lstm_train = datetime.now()
+                logger.info("✅ LSTM Auto-Retrain completed")
+                
+        except Exception as e:
+            logger.error(f"Auto-retrain error: {e}")
 
 
 _engine: Optional[V10Engine] = None
