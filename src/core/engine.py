@@ -274,7 +274,7 @@ class BotEngine:
                         try:
                             aggregator = get_aggregator()
                             
-                            for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:
+                            for symbol in ['BTCUSDT', 'ETHUSDT']:
                                 alert_snapshot = await aggregator.check_sudden_triggers(symbol)
                                 
                                 if alert_snapshot.should_alert:
@@ -290,7 +290,7 @@ class BotEngine:
                     if not hasattr(self, 'last_premium_signal'):
                         self.last_premium_signal = {}
                     
-                    for symbol in ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'LTCUSDT']:
+                    for symbol in ['BTCUSDT', 'ETHUSDT']:
                         if symbol not in self.last_premium_signal:
                             self.last_premium_signal[symbol] = datetime.now() - timedelta(minutes=20)
                         
@@ -361,7 +361,7 @@ class BotEngine:
                     if not hasattr(self, 'last_technical_signal'):
                         self.last_technical_signal = {}
                     
-                    for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:
+                    for symbol in ['BTCUSDT', 'ETHUSDT']:
                         try:
                             # MarketAnalyzer'dan analiz al
                             analysis = await self.analyzer.analyze_market(symbol)
@@ -419,7 +419,7 @@ class BotEngine:
                     if not hasattr(self, 'last_ai_vision'):
                         self.last_ai_vision = {}
                     
-                    for symbol in ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']:  # 4 coin
+                    for symbol in ['BTCUSDT', 'ETHUSDT']:  # 2 coin
                         if symbol not in self.last_ai_vision:
                             self.last_ai_vision[symbol] = datetime.now() - timedelta(hours=2)
                         
