@@ -242,35 +242,35 @@ TAVSİYE:
         except Exception as e:
             logger.error(f"Dashboard data save error: {e}")
 
-        # === 3 SINYAL SISTEMI ===
+        # === ESKI SİSTEMLER DEVRE DIŞI (Premium Signals ile değiştirildi) ===
         
-        # 1. PİYASA RAPORU (15 dakika)
-        if not hasattr(self, '_last_market_summary'):
-            self._last_market_summary = datetime.now() - timedelta(minutes=20)
+        # 1. PİYASA RAPORU (15 dakika) - DEVRE DIŞI
+        # if not hasattr(self, '_last_market_summary'):
+        #     self._last_market_summary = datetime.now() - timedelta(minutes=20)
+        # 
+        # if (datetime.now() - self._last_market_summary).total_seconds() >= 15 * 60:
+        #     try:
+        #         logger.info("[MARKET] Sending 15-Min Market Summary...")
+        #         self._last_market_summary = datetime.now()
+        #         await self.notifier.send_market_summary(snapshots)
+        #     except Exception as e:
+        #         logger.error(f"Market summary error: {e}")
         
-        if (datetime.now() - self._last_market_summary).total_seconds() >= 15 * 60:
-            try:
-                logger.info("[MARKET] Sending 15-Min Market Summary...")
-                self._last_market_summary = datetime.now()
-                await self.notifier.send_market_summary(snapshots)
-            except Exception as e:
-                logger.error(f"Market summary error: {e}")
-        
-        # 2. DERİN TEKNİK ANALİZ (10 dakika) - Tüm modüller
-        if not hasattr(self, '_last_deep_technical'):
-            self._last_deep_technical = datetime.now() - timedelta(minutes=12)
-        
-        if (datetime.now() - self._last_deep_technical).total_seconds() >= 10 * 60:
-            try:
-                logger.info("[DEEP-TECH] Sending 10-Min Deep Technical...")
-                self._last_deep_technical = datetime.now()
-                
-                # Her coin için derin analiz
-                for symbol in snapshots.keys():
-                    await self.notifier.send_deep_technical_report(symbol)
-                    await asyncio.sleep(2)  # Rate limit
-            except Exception as e:
-                logger.error(f"Deep technical error: {e}")
+        # 2. DERİN TEKNİK ANALİZ (10 dakika) - DEVRE DIŞI
+        # if not hasattr(self, '_last_deep_technical'):
+        #     self._last_deep_technical = datetime.now() - timedelta(minutes=12)
+        # 
+        # if (datetime.now() - self._last_deep_technical).total_seconds() >= 10 * 60:
+        #     try:
+        #         logger.info("[DEEP-TECH] Sending 10-Min Deep Technical...")
+        #         self._last_deep_technical = datetime.now()
+        #         
+        #         # Her coin için derin analiz
+        #         for symbol in snapshots.keys():
+        #             await self.notifier.send_deep_technical_report(symbol)
+        #             await asyncio.sleep(2)  # Rate limit
+        #     except Exception as e:
+        #         logger.error(f"Deep technical error: {e}")
         
         # Performance report (4 saatte bir)
         if (datetime.now() - self._last_performance_report).total_seconds() >= self.PERFORMANCE_REPORT_INTERVAL:
