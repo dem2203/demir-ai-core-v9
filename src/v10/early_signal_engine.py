@@ -66,7 +66,16 @@ class EarlySignal:
     leading_signal: LeadingSignal
     ml_prediction: Optional[Dict] = None
     reasoning: str = ""
+    llm_reasoning: str = ""        # Claude Haiku reasoning
+    momentum_alerts: list = None   # Volume spike, etc.
+    score_breakdown: Dict = None   # Tech, Macro, Onchain scores
     timestamp: datetime = field(default_factory=datetime.now)
+    
+    def __post_init__(self):
+        if self.momentum_alerts is None:
+            self.momentum_alerts = []
+        if self.score_breakdown is None:
+            self.score_breakdown = {}
     
     def to_dict(self) -> Dict:
         return {
@@ -935,6 +944,17 @@ class EarlySignalEngine:
         
         reasoning = " | ".join(reasons) if reasons else "No strong signals"
         
+        # Prepare additional data for wrapper
+        momentum_alerts = momentum_context.alerts if momentum_context else []
+        
+        # Calculate score breakdown (approximated for display)
+        score_breakdown = {
+            'technical': min(40, max(-40, leading.strength * 0.4)),
+            'macro': ai_score * 0.25, # Simplified
+            'onchain': leading.whale_score * 0.2 + leading.funding_score * 10,
+            'llm': 15 if "Claude: BUY" in reasoning else -15 if "Claude: SELL" in reasoning else 0
+        }
+
         return EarlySignal(
             symbol=symbol,
             action=action,
@@ -945,7 +965,10 @@ class EarlySignalEngine:
             risk_reward=risk_reward,
             leading_signal=leading,
             ml_prediction=ml_pred,
-            reasoning=reasoning
+            reasoning=reasoning,
+            llm_reasoning=llm_reasoning,
+            momentum_alerts=[a.to_dict() for a in momentum_alerts],
+            score_breakdown=score_breakdown
         )
     
     def get_last_signal(self, symbol: str) -> Optional[EarlySignal]:

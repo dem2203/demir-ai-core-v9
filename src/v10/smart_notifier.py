@@ -653,6 +653,80 @@ class SmartNotifier:
         
         return self._send_message(message)
     
+    def send_signal(self, signal) -> bool:
+        """
+        HYBRID AI SIGNAL FORMATI
+        
+        İçerik:
+        1. Ana Yön ve Güven
+        2. AI Reasoning (Madde madde)
+        3. Momentum & Breakout (Varsa)
+        4. Claude Haiku Yorumu
+        5. Seviyeler (Entry, TP, SL)
+        """
+        if not signal:
+            return False
+            
+        # Emoji seçimi
+        if signal.action == "BUY":
+            header_emoji = "🟢"
+            direction = "LONG"
+        elif signal.action == "SELL":
+            header_emoji = "🔴"
+            direction = "SHORT"
+        else:
+            header_emoji = "⏸️"
+            direction = "BEKLE"
+            
+        lines = [
+            f"🧠 *AI TRADE SİNYALİ - {signal.symbol}*",
+            "━━━━━━━━━━━━━━━━━━",
+            f"",
+            f"📍 YÖN: {header_emoji} *{direction}*",
+            f"🎯 GÜVEN: *%{signal.confidence:.0f}*",
+            f"",
+            "🔍 *AI REASONING:*"
+        ]
+        
+        # 1. Ana Reasoning (Maddeler)
+        reasons = signal.reasoning.split(" | ")
+        for r in reasons[:4]:  # İlk 4 sebep
+            lines.append(f"• {r}")
+            
+        # 2. Momentum Alerts
+        if hasattr(signal, 'momentum_alerts') and signal.momentum_alerts:
+            for alert in signal.momentum_alerts:
+                atype = alert.get('alert_type', '')
+                if atype == 'VOLUME_SPIKE':
+                    lines.append(f"• 🔥 *Volume Spike ({alert.get('value', 0):.1f}x)*")
+                elif atype == 'LIQ_CLUSTER':
+                    lines.append(f"• 🧲 *Likidasyon Mıknatısı (Yakın)*")
+                elif atype == 'CVD_DIVERGENCE':
+                    lines.append(f"• ⚠️ *CVD Uyumsuzluğu (Tuzak?)*")
+                    
+        # 3. Skor Dağılımı
+        if hasattr(signal, 'score_breakdown') and signal.score_breakdown:
+            sb = signal.score_breakdown
+            lines.append(f"")
+            lines.append(f"📊 *Skor:* Tech:{sb.get('technical',0):.0f} | Macro:{sb.get('macro',0):.0f} | 🐋:{sb.get('onchain',0):.0f} | 🤖:{sb.get('llm',0):.0f}")
+
+        # 4. Claude Yorumu
+        if hasattr(signal, 'llm_reasoning') and signal.llm_reasoning:
+            lines.append(f"")
+            lines.append(f"🤖 *Claude:* \"{signal.llm_reasoning}\"")
+            
+        # 5. Seviyeler
+        if signal.action != "HOLD":
+            lines.append(f"")
+            lines.append(f"🚪 *GİRİŞ:* ${signal.entry_zone[0]:,.2f} - ${signal.entry_zone[1]:,.2f}")
+            lines.append(f"🎯 *HEDEF:* ${signal.take_profit:,.2f}")
+            lines.append(f"🛡️ *STOP:* ${signal.stop_loss:,.2f} (R/R: {signal.risk_reward:.2f})")
+        
+        lines.append(f"")
+        lines.append("━━ DEMIR AI v10 HYBRID ━━")
+        
+        return self._send_message("\n".join(lines))
+
     def send_error_alert(self, error_message: str) -> bool:
         """
         Hata bildirimi gönder.
