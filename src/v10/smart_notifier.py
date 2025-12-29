@@ -83,9 +83,16 @@ class SmartNotifier:
     
     async def send_market_summary(self, snapshots: dict) -> bool:
         """
-        Tüm coinlerin özet durumunu gönder.
+        Tüm coinlerin özet durumunu gönder + AI TAVSİYESİ
         """
-        lines = ["📊 *PİYASA ÖZETİ*\n━━━━━━━━━━━━━━━━━━"]
+        lines = ["📊 *PİYASA ÖZETİ + AI TAVSİYE*\n━━━━━━━━━━━━━━━━━━"]
+        
+        # Get LSTM predictions for AI recommendation
+        try:
+            from src.v10.lstm_predictor import get_lstm_predictor
+            lstm = get_lstm_predictor()
+        except:
+            lstm = None
         
         for symbol, snapshot in snapshots.items():
             # Sadece price varsa yeterli (web fallback OK)
@@ -104,11 +111,35 @@ class SmartNotifier:
             change = snapshot.price_change_24h
             change_emoji = "🟢" if change > 0 else "🔴" if change < 0 else "⚪"
             
+            # AI Recommendation based on LSTM + RSI
+            ai_advice = "⏸️ BEKLE"
+            try:
+                if lstm:
+                    pred = await lstm.predict(symbol)
+                    if pred:
+                        rsi = snapshot.rsi_1h
+                        # Decision logic
+                        if pred.direction == "UP" and pred.confidence > 40:
+                            if rsi < 70:  # Not overbought
+                                ai_advice = "🟢 AL fırsatı"
+                            else:
+                                ai_advice = "⚠️ RSI yüksek, bekle"
+                        elif pred.direction == "DOWN" and pred.confidence > 40:
+                            if rsi > 30:  # Not oversold
+                                ai_advice = "🔴 SAT/Short"
+                            else:
+                                ai_advice = "⚠️ RSI düşük, bekle"
+                        else:
+                            ai_advice = "⏸️ Yön belirsiz"
+            except:
+                pass
+            
             lines.append(
                 f"\n{trend_emoji} *{symbol}*\n"
                 f"💰 ${snapshot.price:,.0f} ({change_emoji}{change:+.1f}%)\n"
                 f"📊 RSI: {snapshot.rsi_1h:.0f} | OB: {snapshot.bid_ask_ratio:.2f}x\n"
-                f"💰 FR: {snapshot.funding_rate:.3f}% | 🐋: {snapshot.whale_net_flow:+.0f}"
+                f"💰 FR: {snapshot.funding_rate:.3f}% | 🐋: {snapshot.whale_net_flow:+.0f}\n"
+                f"🤖 *TAVSİYE: {ai_advice}*"
             )
         
         lines.append(f"\n━━━━━━━━━━━━━━━━━━\n⏰ {datetime.now().strftime('%H:%M:%S')}")
@@ -557,6 +588,54 @@ class SmartNotifier:
                 lines.append("\n📰 *SENTIMENT (Haber Bazlı)*")
                 emoji = "🐂" if mood == 'BULLISH' else "🐻" if mood == 'BEARISH' else "⚪"
                 lines.append(f"  {emoji} {mood} (Skor: {score:.1f}/10)")
+            
+            # === 🎯 NET AI TAVSİYE ===
+            try:
+                from src.v10.lstm_predictor import get_lstm_predictor
+                lstm = get_lstm_predictor()
+                pred = await lstm.predict(symbol)
+                
+                if pred:
+                    lines.append("\n🎯 *AI TAVSİYE*")
+                    
+                    # Decision logic combining LSTM + Volatility + Sentiment
+                    action = "⏸️ BEKLE"
+                    reason = ""
+                    
+                    # LSTM direction
+                    is_bullish = pred.direction == "UP" and pred.confidence > 40
+                    is_bearish = pred.direction == "DOWN" and pred.confidence > 40
+                    
+                    # Volatility squeeze = be cautious
+                    is_squeeze = vol_status and vol_status.get('state') == 'SQUEEZE'
+                    
+                    # Sentiment boost
+                    sentiment_bullish = sentiment_data and sentiment_data.get('overall') == 'BULLISH'
+                    sentiment_bearish = sentiment_data and sentiment_data.get('overall') == 'BEARISH'
+                    
+                    if is_bullish and not is_squeeze:
+                        action = "🟢 AL (Long)"
+                        if sentiment_bullish:
+                            reason = "LSTM UP + Pozitif haber"
+                        else:
+                            reason = f"LSTM: +{pred.predicted_change_pct:.1f}%"
+                    elif is_bearish and not is_squeeze:
+                        action = "🔴 SAT (Short)"
+                        if sentiment_bearish:
+                            reason = "LSTM DOWN + Negatif haber"
+                        else:
+                            reason = f"LSTM: {pred.predicted_change_pct:.1f}%"
+                    elif is_squeeze:
+                        action = "⏸️ BEKLE"
+                        reason = "Volatilite sıkışması - patlama bekle"
+                    else:
+                        action = "⏸️ BEKLE"
+                        reason = "Net yön yok"
+                    
+                    lines.append(f"  {action}")
+                    lines.append(f"  📝 Neden: {reason}")
+            except Exception as e:
+                logger.debug(f"AI advice error: {e}")
             
         except Exception as e:
             logger.error(f"Deep technical analysis error for {symbol}: {e}")
