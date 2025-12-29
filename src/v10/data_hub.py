@@ -122,7 +122,7 @@ class DataHub:
         "Content-Type": "application/json"
     }
     
-    SUPPORTED_COINS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'LTCUSDT']
+    SUPPORTED_COINS = ['BTCUSDT', 'ETHUSDT']
     
     def __init__(self):
         self._session: Optional[aiohttp.ClientSession] = None

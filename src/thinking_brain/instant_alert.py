@@ -50,7 +50,7 @@ class InstantAlertSystem:
     Ani hareket tespit ederse HEMEN bildirim gonderir.
     """
     
-    COINS = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']
+    COINS = ['BTCUSDT', 'ETHUSDT']
     
     # Esik degerleri
     THRESHOLDS = {

@@ -115,7 +115,7 @@ class MarketResearcher:
     Bir analist gibi TUM verileri toplar ve analiz eder.
     """
     
-    COINS = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']
+    COINS = ['BTCUSDT', 'ETHUSDT']
     
     def __init__(self):
         logger.info("Market Researcher initialized")

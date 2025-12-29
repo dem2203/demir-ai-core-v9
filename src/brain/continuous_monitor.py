@@ -76,7 +76,7 @@ class ContinuousMonitor:
     """
     
     # Takip edilen coinler
-    SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']
+    SYMBOLS = ['BTCUSDT', 'ETHUSDT']
     
     def __init__(self, notification_callback: Optional[Callable] = None):
         self.cooldown = AlertCooldown()

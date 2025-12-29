@@ -50,7 +50,7 @@ class TechnicalScanner:
     Entry, SL, TP hesaplar.
     """
     
-    SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']
+    SYMBOLS = ['BTCUSDT', 'ETHUSDT']
     CONFIDENCE_THRESHOLD = 70  # Minimum %70 güven
     
     def __init__(self):

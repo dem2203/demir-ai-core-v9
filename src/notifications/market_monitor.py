@@ -30,7 +30,7 @@ class MarketMonitor:
     - ResearchAgent (araştırma)
     """
     
-    COINS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'LTCUSDT']
+    COINS = ['BTCUSDT', 'ETHUSDT']
     
     # Zamanlama (saniye)
     SIGNAL_CHECK_INTERVAL = 60  # Her 1 dakika

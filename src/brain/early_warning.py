@@ -153,7 +153,7 @@ class EarlyWarningSystem:
     async def scan_all(self, symbols: List[str] = None) -> List[Warning]:
         """Tüm coinleri tara ve uyarıları topla."""
         if symbols is None:
-            symbols = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']
+            symbols = ['BTCUSDT', 'ETHUSDT']
         
         all_warnings = []
         

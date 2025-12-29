@@ -39,7 +39,7 @@ class AutoTrainer:
     - Telegram bildirimi gönderir
     """
     
-    SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'LTCUSDT', 'SOLUSDT']
+    SYMBOLS = ['BTCUSDT', 'ETHUSDT']
     TRAINING_INTERVAL = 86400  # 24 saat
     MIN_CANDLES = 500  # Minimum eğitim verisi
     
