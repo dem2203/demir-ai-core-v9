@@ -427,32 +427,41 @@ TAVSİYE:
                 elif self._current_regime == "RANGING":
                     regime_hint = "📦 Range: Trade extremes, mean-reversion"
                 
-                action_tr = "AL" if early_signal.action == "BUY" else "SAT"
-                tag = "[BUY]" if early_signal.action == "BUY" else "[SELL]"
+                action_tr = "AL (LONG)" if early_signal.action == "BUY" else "SAT (SHORT)"
+                arrow = "📈" if early_signal.action == "BUY" else "📉"
+                tag = f"{arrow} LONG" if early_signal.action == "BUY" else f"{arrow} SHORT"
                 
                 # Dogrulama verileri topla
                 verification = await self._get_verification_data(symbol)
                 
-                # Build enhanced message with self-learning info
-                msg = f"""{tag} EARLY SIGNAL: {symbol}
+                # Calculate P/L potential
+                risk_amount = abs(early_signal.entry_zone[0] - early_signal.stop_loss)
+                reward_amount = abs(early_signal.take_profit - early_signal.entry_zone[0])
+                
+                # Build enhanced message with clear direction
+                msg = f"""{tag} | {symbol}
+━━━━━━━━━━━━━━━━━━━━
 
-Sinyal: {action_tr} | Guven: {final_confidence:.0f}%
-R/R: {early_signal.risk_reward:.1f}x
+📍 YÖN: {action_tr}
+🎯 GÜVEN: {final_confidence:.0f}%
+📊 R/R: {early_signal.risk_reward:.1f}x
 
-Giris: ${early_signal.entry_zone[0]:,.0f} - ${early_signal.entry_zone[1]:,.0f}
-SL: ${early_signal.stop_loss:,.0f}
-TP: ${early_signal.take_profit:,.0f}
+💰 GİRİŞ: ${early_signal.entry_zone[0]:,.2f}
+🛡️ STOP LOSS: ${early_signal.stop_loss:,.2f}
+🎯 HEDEF: ${early_signal.take_profit:,.2f}
 
-Oncu Gostergeler:
+📊 RİSK: ${risk_amount:,.0f} | KAZANÇ: ${reward_amount:,.0f}
+
+🧠 AI BRAIN:
 {early_signal.reasoning}
 
-🧠 SELF-LEARNING:
+🔄 SELF-LEARNING:
   Win Rate: {adjustment_info.get('regime_win_rate', 0)*100:.0f}%
-  Adjustment: {adjustment_info.get('reason', 'neutral')}
   {regime_hint}
 
-DOGRULAMA:
-{verification}"""
+✅ DOĞRULAMA:
+{verification}
+━━ DEMIR AI v10 ━━"""
                 
                 self.notifier._send_message(msg)
                 self._last_signal_time[symbol] = datetime.now()
