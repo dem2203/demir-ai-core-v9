@@ -567,7 +567,7 @@ class EarlySignalEngine:
         vol_data: Dict,
         news_data: Dict,
         regime_data: Dict,
-        macro_context = None,
+        macro_ctx = None, # Renamed to fix sync issue
         momentum_context = None,  # NEW: MomentumContext for breakout detection
         fractal_match = None,      # NEW: Fractal memory
         inst_snapshot: LiveDataSnapshot = None, # NEW
@@ -575,12 +575,6 @@ class EarlySignalEngine:
     ) -> EarlySignal:
         """
         HYBRID AI BRAIN DECISION
-        
-        Combines:
-        - Technical (LSTM + Indicators): 40%
-        - Macro (BTC.D, Fear Index): 25%
-        - On-Chain (Whale, Funding): 20%
-        - LLM Brain (Claude Analysis): 15%
         """
         # === HYBRID AI DECISION SYSTEM ===
         
@@ -786,7 +780,7 @@ class EarlySignalEngine:
                     'volatility_state': vol_state
                 }
                 
-                macro_data = macro_context.to_dict() if macro_context else {}
+                macro_data = macro_ctx.to_dict() if macro_ctx else {}
                 momentum_data = momentum_context.to_dict() if momentum_context else {}
                 
                 onchain_data = {
