@@ -26,6 +26,7 @@ from src.brain.feedback_db import get_feedback_db  # Trade outcomes
 from src.execution.paper_trader import get_paper_trader
 from src.execution.feedback_loop import FeedbackLoop
 from src.v10.early_signal_trainer import get_trainer
+from src.brain.rl_agent.auto_retrain import AutoRetrainPipeline  # Smart Pipeline
 
 logger = logging.getLogger("V10_ENGINE")
 
@@ -57,6 +58,7 @@ class V10Engine:
         self.feedback_loop = FeedbackLoop()
         self.trainer = get_trainer()
         self.last_retrain_check = datetime.now()
+        self.auto_retrain_pipeline = AutoRetrainPipeline(enable_auto_deploy=True) # Pipeline init
         
         # SELF-LEARNING COMPONENTS
         self.online_learner = get_online_learner()
@@ -627,35 +629,33 @@ TAVSİYE:
     async def _check_auto_retrain(self):
         """
         Auto-retrain LSTM model with latest data.
-        Called every 15 minutes, actually retrains every 24 hours.
+        Called every 15 minutes, actually checks needs via pipeline.
         """
         try:
-            # Check if 24 hours passed since last train
-            if not hasattr(self, '_last_lstm_train'):
-                self._last_lstm_train = datetime.now() - timedelta(hours=25)  # Force first train
+            # Check pipeline status (Smart Check)
+            needs_retrain = self.auto_retrain_pipeline.check_retrain_needed()
             
-            hours_since_train = (datetime.now() - self._last_lstm_train).total_seconds() / 3600
+            # Filter symbols that need retrain
+            symbols_to_train = [s for s, needed in needs_retrain.items() if needed]
             
-            if hours_since_train >= 24:
-                logger.info("🧠 LSTM Auto-Retrain: 24 hours passed, starting retrain...")
+            if symbols_to_train:
+                logger.info(f"🧠 Smart Auto-Retrain triggered for: {symbols_to_train}")
                 
-                # Retrain for main symbols
-                from src.v10.lstm_predictor import get_lstm_predictor
-                lstm = get_lstm_predictor()
+                # Execute retrain using pipeline (handles backup, train, compare, rollback)
+                results = await self.auto_retrain_pipeline.retrain_all()
                 
-                for symbol in ["BTCUSDT", "ETHUSDT"]:
-                    try:
-                        result = await lstm.train(symbol)
-                        if result.get('success'):
-                            logger.info(f"✅ {symbol} LSTM model updated. Accuracy: {result.get('accuracy', 0):.1f}%")
-                        else:
-                            logger.warning(f"⚠️ {symbol} LSTM train failed: {result.get('error')}")
-                    except Exception as e:
-                        logger.error(f"❌ {symbol} LSTM train error: {e}")
-                
-                self._last_lstm_train = datetime.now()
-                logger.info("✅ LSTM Auto-Retrain completed")
-                
+                for symbol, metrics in results.items():
+                    if metrics.status == "success":
+                         # Deployed automatically if enable_auto_deploy=True
+                         logger.info(f"✅ {symbol} Retrain Success: Sharpe={metrics.sharpe_ratio:.2f}")
+                         self.notifier.send_telegram_message(f"🧠 **AI Self-Learning**\n\n{symbol} Modeli güncellendi.\nYeni Sharpe: {metrics.sharpe_ratio:.2f}")
+                    elif metrics.status == "failed":
+                         logger.warning(f"❌ {symbol} Retrain Failed (Rolled back)")
+                         
+            else:
+                 # No retrain needed
+                 pass
+
         except Exception as e:
             logger.error(f"Auto-retrain error: {e}")
 

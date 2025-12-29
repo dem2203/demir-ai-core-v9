@@ -62,12 +62,12 @@ class AutoRetrainPipeline:
         self,
         models_dir: str = "src/brain/rl_agent/storage",
         metrics_file: str = "training_metrics.json",
-        retrain_interval_days: int = 7,
-        min_sharpe_threshold: float = 0.0,  # Don't deploy if Sharpe negative
-        performance_drop_threshold: float = 0.3,  # Alert if 30% drop
-        max_retrain_hours: int = 4,  # Max training time
-        enable_auto_deploy: bool = False,  # Manual approval by default
-        backup_count: int = 3  # Keep last 3 versions
+        retrain_interval_days: int = 3,  # More frequent checks (3 days)
+        min_sharpe_threshold: float = 1.2,  # Stricter quality control
+        performance_drop_threshold: float = 0.2,  # 20% drop triggers alert
+        max_retrain_hours: int = 4,
+        enable_auto_deploy: bool = True,  # AUTO DEPLOY ON
+        backup_count: int = 5
     ):
         self.models_dir = models_dir
         self.metrics_file = os.path.join(models_dir, metrics_file)
@@ -78,12 +78,11 @@ class AutoRetrainPipeline:
         self.enable_auto_deploy = enable_auto_deploy
         self.backup_count = backup_count
         
-        # Coins and their models
+        # Coins and their models (Initialized to v1)
         self.model_configs = {
-            "BTC/USDT": {"name": "ppo_btc", "current_version": "v5"},
-            "ETH/USDT": {"name": "ppo_eth", "current_version": "v5"},
-            "LTC/USDT": {"name": "ppo_ltc", "current_version": "v5"},
-            "SOL/USDT": {"name": "ppo_sol", "current_version": "v5"}
+            "BTC/USDT": {"name": "ppo_btc", "current_version": "v1"},
+            "ETH/USDT": {"name": "ppo_eth", "current_version": "v1"},
+            "SOL/USDT": {"name": "ppo_sol", "current_version": "v1"}
         }
         
         # Performance history

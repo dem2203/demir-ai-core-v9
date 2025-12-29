@@ -23,6 +23,10 @@ class MacroContext:
     btc_dominance: float = 0.0
     btc_dominance_change_24h: float = 0.0
     
+    # USDT Dominance
+    usdt_dominance: float = 0.0
+    usdt_dominance_change_24h: float = 0.0
+    
     # Market Cap
     total_market_cap: float = 0.0
     total_market_cap_change_24h: float = 0.0
@@ -41,6 +45,8 @@ class MacroContext:
         return {
             'btc_dominance': self.btc_dominance,
             'btc_dominance_change_24h': self.btc_dominance_change_24h,
+            'usdt_dominance': self.usdt_dominance,
+            'usdt_dominance_change_24h': self.usdt_dominance_change_24h,
             'total_market_cap': self.total_market_cap,
             'total_market_cap_change_24h': self.total_market_cap_change_24h,
             'fear_greed_index': self.fear_greed_index,
@@ -70,6 +76,12 @@ class MacroContext:
             signals.append("📉 BTC.D düşüyor (Altcoin sezonu?)")
         elif self.btc_dominance_change_24h > 1:
             signals.append("📈 BTC.D yükseliyor (Risk-off)")
+            
+        # USDT Dominance
+        if self.usdt_dominance_change_24h > 1:
+            signals.append("🚨 USDT.D PUMP (DANGER)")
+        elif self.usdt_dominance_change_24h < -1:
+            signals.append("📉 USDT.D DUMP (Risk-on)")
         
         return " | ".join(signals)
 
@@ -125,11 +137,14 @@ class MacroContextCollector:
                         # BTC Dominance
                         context.btc_dominance = global_data.get('market_cap_percentage', {}).get('btc', 0)
                         
+                        # USDT Dominance
+                        context.usdt_dominance = global_data.get('market_cap_percentage', {}).get('usdt', 0)
+                        
                         # Total Market Cap
                         context.total_market_cap = global_data.get('total_market_cap', {}).get('usd', 0)
                         context.total_market_cap_change_24h = global_data.get('market_cap_change_percentage_24h_usd', 0)
                         
-                        logger.debug(f"CoinGecko: BTC.D={context.btc_dominance:.1f}%, MCap=${context.total_market_cap/1e12:.2f}T")
+                        logger.debug(f"CoinGecko: BTC.D={context.btc_dominance:.1f}%, USDT.D={context.usdt_dominance:.1f}%, MCap=${context.total_market_cap/1e12:.2f}T")
             except Exception as e:
                 logger.warning(f"CoinGecko error: {e}")
             

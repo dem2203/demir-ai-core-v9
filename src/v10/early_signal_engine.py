@@ -260,6 +260,7 @@ class EarlySignalEngine:
         
         # HYBRID AI - LLM Brain (Claude Haiku)
         self.llm_brain = get_llm_brain()
+        self.fractal_analyzer = get_fractal_analyzer() # NEW
         
         self.feature_collector = FeatureCollector()
         self.ml_model = None  # Legacy - replaced by lstm_predictor
@@ -321,6 +322,18 @@ class EarlySignalEngine:
         
         if not leading_signal:
              return None
+             
+        # Use snapshot klines for Fractal check
+        fractal_match = None
+        if self.leading_indicators and self.leading_indicators.latest_snapshot:
+             try:
+                 snapshot = self.leading_indicators.latest_snapshot
+                 # Need at least 100 candles
+                 if len(snapshot.klines) > 100:
+                     closes = [float(k[4]) for k in snapshot.klines]
+                     fractal_match = self.fractal_analyzer.find_fractal_match(closes, closes)
+             except Exception as e:
+                 logger.debug(f"Fractal check failed: {e}")
 
         # 2. Güncel fiyatı al
         current_price = await self._get_current_price(symbol)
@@ -352,7 +365,10 @@ class EarlySignalEngine:
             news_data=news_data,
             regime_data=regime_data,
             macro_context=macro_context,
-            momentum_context=momentum_context  # NEW: Breakout detection
+            regime_data=regime_data,
+            macro_context=macro_context,
+            momentum_context=momentum_context,
+            fractal_match=fractal_match # NEW
         )
         
         # 6. Training için veri topla
@@ -536,7 +552,9 @@ class EarlySignalEngine:
         news_data: Dict,
         regime_data: Dict,
         macro_context = None,
-        momentum_context = None  # NEW: MomentumContext for breakout detection
+        macro_context = None,
+        momentum_context = None,  # NEW: MomentumContext for breakout detection
+        fractal_match = None      # NEW: Fractal memory
     ) -> EarlySignal:
         """
         HYBRID AI BRAIN DECISION
@@ -673,8 +691,18 @@ class EarlySignalEngine:
                     if symbol == "BTCUSDT":
                         ai_score += macro_weight * 0.2
                     else:
-                        ai_score -= macro_weight * 0.2
-                        reasons.append(f"📉 BTC.D yükseliyor → Risk-off")
+                        ai_score -= macro_weight * 0.4  # Stronger penalty for alts
+                        reasons.append(f"📉 BTC.D yükseliyor → Altcoin Baskısı")
+                        
+                # --- MACRO SHIELD (NEW) ---
+                # USDT Dominance check
+                usdt_d = macro_context.usdt_dominance
+                usdt_d_change = macro_context.usdt_dominance_change_24h
+                
+                if usdt_d_change > 1.0: # Dolar güçleniyor (Panic selling)
+                    ai_score -= 30  # MASSIVE PENALTY FOR ANY BUY SIGNAL
+                    reasons.append(f"🛡️ MACRO SHIELD: USDT.D PUMP ({usdt_d_change:+.1f}%) → Risk Off!")
+                    
             except Exception as e:
                 logger.debug(f"Macro scoring error: {e}")
         
@@ -691,46 +719,42 @@ class EarlySignalEngine:
                         ai_score -= momentum_weight * 0.4
                         reasons.append(f"🔥 Volume Spike + Bearish Momentum ({momentum_context.volume_ratio:.1f}x)")
                 
+                if momentum_context.liq_magnet and momentum_context.liq_magnet != "NONE":
+                    dist = momentum_context.liq_distance_pct
+                    if dist < 2.0: # Very close (2%)
+                        # Trade TOWARDS the magnet
+                        if momentum_context.liq_magnet == "SHORT_LIQ": # Shorts will be squeezed (Price UP)
+                             ai_score += 25 
+                             reasons.append(f"🧲 LIQUIDATION HUNTER: $50M+ Short Cluster nearby ({dist:.1f}%) → Magnet UP")
+                        elif momentum_context.liq_magnet == "LONG_LIQ": # Longs will be squeezed (Price DOWN)
+                             ai_score -= 25
+                             reasons.append(f"🧲 LIQUIDATION HUNTER: $50M+ Long Cluster nearby ({dist:.1f}%) → Magnet DOWN")
+
+                
                 # Strong momentum
                 if abs(momentum_context.momentum_5m) > 0.5:
                     if momentum_context.momentum_5m > 0:
-                        ai_score += momentum_weight * 0.3
                         reasons.append(f"📈 5m Momentum: {momentum_context.momentum_5m:+.2f}%")
                     else:
-                        ai_score -= momentum_weight * 0.3
                         reasons.append(f"📉 5m Momentum: {momentum_context.momentum_5m:+.2f}%")
-                
-                # OI Surge = Position building
-                if momentum_context.oi_surge:
-                    reasons.append(f"📊 OI Surge: {momentum_context.oi_change_5m:+.1f}%")
-                
-                # CVD Divergence = Reversal warning
-                if momentum_context.cvd_divergence:
-                    # Opposite direction signal
-                    if momentum_context.momentum_5m > 0:
-                        ai_score -= momentum_weight * 0.2  # Price up but CVD down = bearish
-                        reasons.append("⚠️ CVD Divergence (Bearish)")
-                    else:
-                        ai_score += momentum_weight * 0.2  # Price down but CVD up = bullish
-                        reasons.append("⚠️ CVD Divergence (Bullish)")
-                
-                # Liquidation magnet
-                if momentum_context.liq_magnet != "NONE" and momentum_context.liq_distance_pct < 2:
-                    if momentum_context.liq_magnet == "LONG_LIQ":
-                        ai_score -= momentum_weight * 0.2
-                        reasons.append(f"🧲 Long Liq Magnet ({momentum_context.liq_distance_pct:.1f}% away)")
-                    elif momentum_context.liq_magnet == "SHORT_LIQ":
-                        ai_score += momentum_weight * 0.2
-                        reasons.append(f"🧲 Short Liq Magnet ({momentum_context.liq_distance_pct:.1f}% away)")
-                
-                # High breakout probability
-                if momentum_context.breakout_probability > 60:
-                    reasons.append(f"🚀 Breakout Prob: {momentum_context.breakout_probability:.0f}%")
-                    
             except Exception as e:
                 logger.debug(f"Momentum scoring error: {e}")
+                
+        # --- 10. FRACTAL MEMORY (Weight: 10%) --- NEW!
+        if fractal_match:
+            try:
+                # Sim > 0.85
+                fractal_weight = 10
+                if fractal_match.future_change_pct > 1.0: # History says UP
+                    ai_score += fractal_weight
+                    reasons.append(f"🧩 FRACTAL MEMORY: History repeating ({fractal_match.similarity*100:.0f}% match) → +{fractal_match.future_change_pct:.1f}%")
+                elif fractal_match.future_change_pct < -1.0: # History says DOWN
+                    ai_score -= fractal_weight
+                    reasons.append(f"🧩 FRACTAL MEMORY: History repeating ({fractal_match.similarity*100:.0f}% match) → {fractal_match.future_change_pct:.1f}%")
+            except Exception as e:
+                logger.debug(f"Fractal scoring error: {e}")
         
-        # --- 10. LLM BRAIN ANALYSIS (Weight: 15%) --- NEW!
+        # --- 11. LLM BRAIN ANALYSIS (Weight: 15%) --- NEW!
         llm_weight = 15
         try:
             if self.llm_brain and self.llm_brain.is_enabled:
