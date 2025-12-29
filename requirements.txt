@@ -37,6 +37,7 @@ scipy>=1.10.0
 apscheduler
 google-generativeai
 openai
+anthropic>=0.20.0
 plotly
 kaleido
 pillow

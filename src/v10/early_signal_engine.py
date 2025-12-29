@@ -45,6 +45,10 @@ from src.brain.regime_classifier import RegimeClassifier
 from src.v10.lstm_predictor import get_lstm_predictor, PricePrediction
 from src.v10.ai_integration import get_ai_bridge
 
+# HYBRID AI SYSTEM - Macro Context + LLM Brain
+from src.brain.macro_context import get_macro_context
+from src.brain.llm_brain import get_llm_brain
+
 logger = logging.getLogger("EARLY_SIGNAL_ENGINE")
 
 
@@ -235,14 +239,15 @@ class EarlySignalEngine:
         self.lstm_predictor = get_lstm_predictor()
         self.ai_bridge = get_ai_bridge()  # For RL Agent access
         
+        # HYBRID AI - LLM Brain (Claude Haiku)
+        self.llm_brain = get_llm_brain()
+        
         self.feature_collector = FeatureCollector()
         self.ml_model = None  # Legacy - replaced by lstm_predictor
         self._last_signals: Dict[str, EarlySignal] = {}
         
         logger.info("🚀 Early Signal Engine + AI BRAIN + ENSEMBLE VOTING initialized")
     
-    async def initialize(self):
-        """Async initialization"""
     async def initialize(self):
         """Async initialization"""
         self.leading_indicators = await get_leading_indicators()
@@ -252,7 +257,9 @@ class EarlySignalEngine:
     
     async def analyze(self, symbol: str = "BTCUSDT") -> EarlySignal:
         """
+        HYBRID AI ANALYSIS
         Sembol için erken sinyal analizi yap.
+        Teknik + Makro + LLM kombinasyonu kullanır.
         """
         if not self.leading_indicators:
             await self.initialize()
@@ -266,7 +273,8 @@ class EarlySignalEngine:
         # 4. Pivot Points (Support/Resistance)
         # 5. Volatility (Squeeze/Breakout)
         # 6. News Sentiment (Global Mood)
-        # 7. Market Regime (Trending/Ranging) via internal helper
+        # 7. Market Regime (Trending/Ranging)
+        # 8. MACRO CONTEXT (BTC.D, Fear Index) - NEW!
         
         tasks = [
             self.leading_indicators.calculate_all(symbol),
@@ -275,7 +283,8 @@ class EarlySignalEngine:
             self.pivot_analyzer.analyze(symbol),
             asyncio.to_thread(self.volatility_predictor.predict_volatility, symbol),
             asyncio.to_thread(self.news_scraper.get_market_sentiment),
-            self._analyze_regime(symbol) # Helper for RegimeClassifier
+            self._analyze_regime(symbol),
+            get_macro_context()  # NEW: Macro context
         ]
         
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -287,6 +296,7 @@ class EarlySignalEngine:
         volatility_data = results[4] if not isinstance(results[4], Exception) else {}
         news_data = results[5] if not isinstance(results[5], Exception) else {}
         regime_data = results[6] if not isinstance(results[6], Exception) else {"regime": "UNKNOWN"}
+        macro_context = results[7] if not isinstance(results[7], Exception) else None
         
         if not leading_signal:
              return None
@@ -308,18 +318,19 @@ class EarlySignalEngine:
         except Exception as e:
             logger.warning(f"LSTM prediction failed: {e}")
         
-        # 5. Sinyal üret - AI BRAIN DECISION
-        signal = self._generate_signal(
+        # 5. Sinyal üret - HYBRID AI BRAIN DECISION
+        signal = await self._generate_signal(
             symbol=symbol, 
             leading=leading_signal, 
             current_price=current_price, 
-            ml_pred=lstm_prediction,  # Now using real LSTM prediction
+            ml_pred=lstm_prediction,
             liq_data=liquidation_data,
             pattern_data=pattern_data,
             pivot_data=pivot_data,
             vol_data=volatility_data,
             news_data=news_data,
-            regime_data=regime_data
+            regime_data=regime_data,
+            macro_context=macro_context  # NEW: Macro data for hybrid AI
         )
         
         # 6. Training için veri topla
@@ -484,7 +495,7 @@ class EarlySignalEngine:
             'note': 'Replaced by LSTM predictor'
         }
     
-    def _generate_signal(
+    async def _generate_signal(
         self, 
         symbol: str, 
         leading: LeadingSignal,
@@ -495,20 +506,24 @@ class EarlySignalEngine:
         pivot_data: Dict,
         vol_data: Dict,
         news_data: Dict,
-        regime_data: Dict
+        regime_data: Dict,
+        macro_context = None  # NEW: MacroContext object
     ) -> EarlySignal:
         """
-        AI BRAIN DECISION - LSTM + Ensemble Indicators
+        HYBRID AI BRAIN DECISION
         
-        OLD: Rule-based (if RSI > 70 → SELL)
-        NEW: AI-based (LSTM prediction + weighted voting)
+        Combines:
+        - Technical (LSTM + Indicators): 40%
+        - Macro (BTC.D, Fear Index): 25%
+        - On-Chain (Whale, Funding): 20%
+        - LLM Brain (Claude Analysis): 15%
         """
-        # === AI BRAIN DECISION SYSTEM ===
+        # === HYBRID AI DECISION SYSTEM ===
         
         # Score tracking: -100 to +100
-        # Positive = BUY, Negative = SELL, Near 0 = HOLD
         ai_score = 0
         reasons = []
+        llm_reasoning = ""
         
         # --- 1. LSTM PREDICTION (Weight: 40%) ---
         lstm_weight = 40
@@ -602,6 +617,93 @@ class EarlySignalEngine:
         elif regime == 'TRENDING_BEAR' and ai_score < 0:
             ai_score *= 1.1  # Boost bearish signals in bear market
         reasons.append(f"🧠 Regime: {regime}")
+        
+        # --- 8. MACRO CONTEXT (Weight: 25%) --- NEW!
+        macro_weight = 25
+        if macro_context:
+            try:
+                # Fear & Greed contrarian signals
+                fear_index = macro_context.fear_greed_index
+                if fear_index < 25:  # Extreme Fear
+                    ai_score += macro_weight * 0.5  # Contrarian BUY
+                    reasons.append(f"📊 Fear Index: {fear_index} (Extreme Fear → Contrarian BUY)")
+                elif fear_index > 75:  # Extreme Greed
+                    ai_score -= macro_weight * 0.5  # Contrarian SELL
+                    reasons.append(f"📊 Fear Index: {fear_index} (Extreme Greed → Contrarian SELL)")
+                else:
+                    reasons.append(f"📊 Fear Index: {fear_index} ({macro_context.fear_greed_label})")
+                
+                # BTC Dominance trend
+                btc_d = macro_context.btc_dominance
+                btc_d_change = macro_context.btc_dominance_change_24h
+                if btc_d_change < -1:  # BTC.D falling = money flowing to alts
+                    if symbol != "BTCUSDT":
+                        ai_score += macro_weight * 0.3
+                        reasons.append(f"📈 BTC.D düşüyor ({btc_d:.1f}%, {btc_d_change:+.1f}%) → Altcoin fırsatı")
+                elif btc_d_change > 1:  # BTC.D rising = risk-off
+                    if symbol == "BTCUSDT":
+                        ai_score += macro_weight * 0.2
+                    else:
+                        ai_score -= macro_weight * 0.2
+                        reasons.append(f"📉 BTC.D yükseliyor → Risk-off")
+            except Exception as e:
+                logger.debug(f"Macro scoring error: {e}")
+        
+        # --- 9. LLM BRAIN ANALYSIS (Weight: 15%) --- NEW!
+        llm_weight = 15
+        try:
+            if self.llm_brain and self.llm_brain.is_enabled:
+                # Build technical data for LLM
+                technical_data = {
+                    'lstm_direction': ml_pred.direction if ml_pred else 'N/A',
+                    'lstm_change': ml_pred.predicted_change_pct if ml_pred else 0,
+                    'lstm_confidence': ml_pred.confidence if ml_pred else 0,
+                    'rsi': leading.indicators[0].value if leading.indicators else 50,
+                    'orderbook_score': leading.orderbook_score,
+                    'wyckoff_phase': pattern_data.get('wyckoff', {}).get('phase', 'N/A'),
+                    'volatility_state': vol_state
+                }
+                
+                macro_data = macro_context.to_dict() if macro_context else {}
+                
+                onchain_data = {
+                    'whale_flow': leading.whale_score,
+                    'funding_rate': leading.funding_score,
+                    'exchange_flow': 'N/A'
+                }
+                
+                sentiment_data = {
+                    'news_sentiment': sentiment,
+                    'social_sentiment': 'N/A'
+                }
+                
+                # Call LLM Brain
+                llm_analysis = await self.llm_brain.analyze(
+                    symbol=symbol,
+                    current_price=current_price,
+                    technical_data=technical_data,
+                    macro_data=macro_data,
+                    onchain_data=onchain_data,
+                    sentiment_data=sentiment_data
+                )
+                
+                if llm_analysis:
+                    # Add LLM contribution to score
+                    if llm_analysis.direction == "BUY":
+                        ai_score += llm_weight * (llm_analysis.confidence / 100)
+                        reasons.append(f"🤖 Claude: BUY ({llm_analysis.confidence}%)")
+                    elif llm_analysis.direction == "SELL":
+                        ai_score -= llm_weight * (llm_analysis.confidence / 100)
+                        reasons.append(f"🤖 Claude: SELL ({llm_analysis.confidence}%)")
+                    else:
+                        reasons.append(f"🤖 Claude: HOLD")
+                    
+                    # Store LLM reasoning for display
+                    llm_reasoning = llm_analysis.reasoning
+                    
+                    logger.info(f"🧠 LLM Brain: {llm_analysis.direction} ({llm_analysis.confidence}%)")
+        except Exception as e:
+            logger.warning(f"LLM Brain error: {e}")
         
         # --- ADD INDIVIDUAL INDICATOR SCORES TO REASONING ---
         if leading.whale_score != 0:
