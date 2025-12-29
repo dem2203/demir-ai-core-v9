@@ -121,16 +121,16 @@ class SmartNotifier:
                         # Decision logic
                         if pred.direction == "UP" and pred.confidence > 40:
                             if rsi < 70:  # Not overbought
-                                ai_advice = "🟢 AL fırsatı"
+                                ai_advice = f"🟢 LONG (%{pred.confidence:.0f})"
                             else:
-                                ai_advice = "⚠️ RSI yüksek, bekle"
+                                ai_advice = "⚠️ RSI Yüksek"
                         elif pred.direction == "DOWN" and pred.confidence > 40:
                             if rsi > 30:  # Not oversold
-                                ai_advice = "🔴 SAT/Short"
+                                ai_advice = f"🔴 SHORT (%{pred.confidence:.0f})"
                             else:
-                                ai_advice = "⚠️ RSI düşük, bekle"
+                                ai_advice = "⚠️ RSI Düşük"
                         else:
-                            ai_advice = "⏸️ Yön belirsiz"
+                            ai_advice = "⏸️ BEKLE"
             except:
                 pass
             
@@ -589,6 +589,51 @@ class SmartNotifier:
                 emoji = "🐂" if mood == 'BULLISH' else "🐻" if mood == 'BEARISH' else "⚪"
                 lines.append(f"  {emoji} {mood} (Skor: {score:.1f}/10)")
             
+            # 7. MACRO CONTEXT & MOMENTUM (NEW)
+            try:
+                from src.brain.macro_context import get_macro_context
+                from src.brain.momentum_detector import get_momentum_context
+                
+                # Fetch data
+                import asyncio
+                # Use asyncio.gather for parallel fetching if needed, but direct await is fine here
+                macro = await get_macro_context()
+                momentum = await get_momentum_context(symbol)
+                
+                if macro:
+                    lines.append("\n🌍 *MAKRO BAĞLAM*")
+                    fear = macro.fear_greed_index
+                    fear_label = macro.fear_greed_label
+                    btc_d = macro.btc_dominance
+                    
+                    fear_emoji = "😨" if fear < 30 else "🤑" if fear > 70 else "😐"
+                    lines.append(f"  {fear_emoji} Fear & Greed: {fear} ({fear_label})")
+                    lines.append(f"  📊 BTC.D: {btc_d:.1f}% ({macro.btc_dominance_trend})")
+                    if macro.altcoin_season_index > 50:
+                        lines.append(f"  🔥 Altcoin Season: {macro.altcoin_season_index:.0f}/100")
+
+                if momentum:
+                    lines.append("\n⚡ *MOMENTUM & BREAKOUT*")
+                    
+                    # Volume Spike
+                    if momentum.volume_spike:
+                        lines.append(f"  🔥 Volume Spike: {momentum.volume_ratio:.1f}x (ANLIK)")
+                    
+                    # Momentum
+                    mom_5m = momentum.momentum_5m
+                    mom_emoji = "🚀" if mom_5m > 0.5 else "🩸" if mom_5m < -0.5 else "➡️"
+                    lines.append(f"  {mom_emoji} 5m Momentum: {mom_5m:+.2f}%")
+                    
+                    # CVD & Breakout
+                    if momentum.cvd_divergence:
+                        lines.append(f"  ⚠️ CVD Uyumsuzluğu (Dönüş riski)")
+                    
+                    if momentum.breakout_probability > 60:
+                        lines.append(f"  🎯 Breakout İhtimali: {momentum.breakout_probability:.0f}%")
+
+            except Exception as e:
+                logger.debug(f"Macro/Momentum part skipped: {e}")
+            
             # === 🎯 NET AI TAVSİYE ===
             try:
                 from src.v10.lstm_predictor import get_lstm_predictor
@@ -596,7 +641,7 @@ class SmartNotifier:
                 pred = await lstm.predict(symbol)
                 
                 if pred:
-                    lines.append("\n🎯 *AI TAVSİYE*")
+                    lines.append("\n🎯 *AI SMART TAVSİYE*") # Replaced title
                     
                     # Decision logic combining LSTM + Volatility + Sentiment
                     action = "⏸️ BEKLE"
@@ -619,40 +664,46 @@ class SmartNotifier:
                             reason = "LSTM UP + Pozitif haber"
                         else:
                             reason = f"LSTM: +{pred.predicted_change_pct:.1f}%"
+                        
+                        # Momentum boost
+                        if momentum and momentum.volume_spike and momentum.momentum_5m > 0:
+                            action = "🚀 GÜÇLÜ AL"
+                            reason += " + Hacim Patlaması"
+
                     elif is_bearish and not is_squeeze:
                         action = "🔴 SAT (Short)"
                         if sentiment_bearish:
                             reason = "LSTM DOWN + Negatif haber"
                         else:
                             reason = f"LSTM: {pred.predicted_change_pct:.1f}%"
+                            
+                        # Momentum boost
+                        if momentum and momentum.volume_spike and momentum.momentum_5m < 0:
+                            action = "🩸 GÜÇLÜ SAT"
+                            reason += " + Hacim Patlaması"
+
                     elif is_squeeze:
                         action = "⏸️ BEKLE"
-                        reason = "Volatilite sıkışması - patlama bekle"
+                        reason = "Volatilite sıkışması - Patlama bekleniyor"
                     else:
                         action = "⏸️ BEKLE"
-                        reason = "Net yön yok"
+                        reason = "Net sinyal yok"
                     
                     lines.append(f"  {action}")
                     lines.append(f"  📝 Neden: {reason}")
             except Exception as e:
-                logger.debug(f"AI advice error: {e}")
+                logger.debug(f"AI recommendation skipped: {e}")
+            
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━")
+            lines.append(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
+            lines.append("📡 *DEMIR AI v10 - HYBRID MODE*")
+            
+            return self._send_message("\n".join(lines))
             
         except Exception as e:
-            logger.error(f"Deep technical analysis error for {symbol}: {e}")
-            lines.append(f"\n❌ Analiz hatası: {str(e)[:50]}")
-        
-        # Footer
-        lines.append("\n━━━━━━━━━━━━━━━━━━━━━━")
-        lines.append(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
-        lines.append("📡 *DEMIR AI v10 - LIVE DATA*")
-        
-        # Fix Telegram Markdown (escape special chars in dynamic content)
-        message = "\n".join(lines)
-        # Escape problematic characters in non-markdown parts
-        # (Already using \n escape, no need for additional escape)
-        
-        return self._send_message(message)
-    
+            logger.error(f"Deep technical analysis error: {e}")
+            return self._send_message(f"❌ Rapor hatası: {str(e)[:50]}")
+
     def send_signal(self, signal) -> bool:
         """
         HYBRID AI SIGNAL FORMATI
