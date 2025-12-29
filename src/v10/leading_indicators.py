@@ -53,6 +53,12 @@ class LeadingSignal:
     reasoning: str = ""
     timestamp: datetime = field(default_factory=datetime.now)
     
+    # Individual indicator scores for AI Brain
+    orderbook_score: float = 0.0   # -100 to +100
+    whale_score: float = 0.0       # -100 to +100
+    funding_score: float = 0.0     # -100 to +100
+    oi_divergence_score: float = 0.0  # -100 to +100
+    
     def to_dict(self) -> Dict:
         return {
             'symbol': self.symbol,
@@ -596,13 +602,23 @@ class LeadingIndicators:
         else:
             reasoning = "No strong signals"
         
+        # Extract individual scores for AI Brain
+        orderbook_val = next((i.value for i in indicators if i.name == 'orderbook'), 0.0)
+        whale_val = next((i.value for i in indicators if i.name == 'whale'), 0.0)
+        funding_val = next((i.value for i in indicators if i.name == 'funding'), 0.0)
+        oi_div_val = next((i.value for i in indicators if i.name == 'oi_divergence'), 0.0)
+        
         return LeadingSignal(
             symbol=symbol,
             direction=direction,
             strength=strength,
             confidence=final_confidence,
             indicators=indicators,
-            reasoning=reasoning
+            reasoning=reasoning,
+            orderbook_score=orderbook_val,
+            whale_score=whale_val,
+            funding_score=funding_val,
+            oi_divergence_score=oi_div_val
         )
 
 
