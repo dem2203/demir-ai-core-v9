@@ -746,7 +746,7 @@ class EarlySignalEngine:
             risk_reward = 0
             
         # Add Module Reasons
-        if is_breakout:
+        if vol_state == 'SQUEEZE':
             reasons.append("🌋 Volatility Squeeze (Big Move Incoming)")
             
         if regime != "UNKNOWN":
