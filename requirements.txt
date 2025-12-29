@@ -48,6 +48,13 @@ beautifulsoup4>=3.10.0
 matplotlib>=3.7.0
 
 # --- Browser-Based Web Scraping ---
+playwright
+
+# --- Interactive Features ---
+python-telegram-bot>=20.0
+fastapi
+uvicorn
+jinja2
 playwright>=1.40.0
 
 # --- Async Support ---
