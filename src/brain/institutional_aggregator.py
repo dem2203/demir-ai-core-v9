@@ -164,35 +164,48 @@ class InstitutionalAggregator:
     # ANA VERİ TOPLAMA
     # =========================================
     
+    async def _safe_fetch(self, coro, name, timeout=10):
+        """Timeout korumalı güvenli veri çekme"""
+        try:
+            return await asyncio.wait_for(coro, timeout=timeout)
+        except asyncio.TimeoutError:
+            logger.warning(f"⏳ Timeout fetching {name} ({timeout}s)")
+            return None
+        except Exception as e:
+            logger.warning(f"❌ Error fetching {name}: {e}")
+            return None
+
     async def get_live_snapshot(self, symbol: str = "BTCUSDT") -> LiveDataSnapshot:
         """
         Tüm 17 veri kaynağından anlık görüntü al.
-        Paralel çağrılarla hızlandırılmış.
+        Paralel çağrılarla hızlandırılmış + Fail Fast Timeout.
         """
         snapshot = LiveDataSnapshot(symbol=symbol)
         
-        # Paralel veri çekme
-        results = await asyncio.gather(
-            self._fetch_whale_data(symbol),
-            self._fetch_named_whales(symbol), # NEW PHASE 15
-            self._fetch_orderbook(symbol),
-            self._fetch_liquidation(symbol),
-            self._fetch_funding(symbol),
-            self._fetch_open_interest(symbol),
-            self._fetch_long_short_ratio(symbol),
-            self._fetch_cvd(symbol),
-            self._fetch_exchange_flow(symbol),
-            self._fetch_stablecoin_supply(),
-            self._fetch_defi_tvl(),
-            self._fetch_options_data(symbol),
-            self._fetch_cme_gap(symbol),
-            self._fetch_cross_exchange(symbol),
-            self._fetch_etf_flow(),
-            self._fetch_fear_greed(),
-            self._fetch_network_metrics(symbol),
-            self._fetch_taker_volume(symbol),
-            return_exceptions=True
-        )
+        # 17 Kaynak için görevler
+        tasks = [
+            self._safe_fetch(self._fetch_whale_data(symbol), 'whale'),
+            self._safe_fetch(self._fetch_named_whales(symbol), 'named_whale'),
+            self._safe_fetch(self._fetch_orderbook(symbol), 'orderbook'),
+            self._safe_fetch(self._fetch_liquidation(symbol), 'liquidation'),
+            self._safe_fetch(self._fetch_funding(symbol), 'funding'),
+            self._safe_fetch(self._fetch_open_interest(symbol), 'oi'),
+            self._safe_fetch(self._fetch_long_short_ratio(symbol), 'ls_ratio'),
+            self._safe_fetch(self._fetch_cvd(symbol), 'cvd'),
+            self._safe_fetch(self._fetch_exchange_flow(symbol), 'exchange_flow', timeout=15), # Web scrape needs more time
+            self._safe_fetch(self._fetch_stablecoin_supply(), 'stablecoin', timeout=15),
+            self._safe_fetch(self._fetch_defi_tvl(), 'defi', timeout=15),
+            self._safe_fetch(self._fetch_options_data(symbol), 'options', timeout=15),
+            self._safe_fetch(self._fetch_cme_gap(symbol), 'cme'),
+            self._safe_fetch(self._fetch_cross_exchange(symbol), 'cross_exchange'),
+            self._safe_fetch(self._fetch_etf_flow(), 'etf', timeout=15),
+            self._safe_fetch(self._fetch_fear_greed(), 'fear_greed'),
+            self._safe_fetch(self._fetch_network_metrics(symbol), 'network', timeout=15),
+            self._safe_fetch(self._fetch_taker_volume(symbol), 'taker')
+        ]
+        
+        # Paralel veri çekme (Hepsi safe_fetch ile sarılı)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         
         # Sonuçları snapshot'a yaz
         keys = [
@@ -205,7 +218,9 @@ class InstitutionalAggregator:
             if isinstance(result, Exception):
                 logger.debug(f"Data fetch error ({keys[i]}): {result}")
                 continue
-            self._apply_result(snapshot, keys[i], result)
+            # safe_fetch returns None on timeout/error
+            if result: 
+                self._apply_result(snapshot, keys[i], result)
         
         return snapshot
     
