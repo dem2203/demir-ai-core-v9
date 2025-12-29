@@ -761,12 +761,21 @@ class SmartNotifier:
             lines.append(f"")
             lines.append(f"📊 *Skor:* Tech:{sb.get('technical',0):.0f} | Macro:{sb.get('macro',0):.0f} | 🐋:{sb.get('onchain',0):.0f} | 🤖:{sb.get('llm',0):.0f}")
 
-        # 4. Claude Yorumu
+        # 4. Kasa Yönetimi (Risk Manager)
+        if hasattr(signal, 'risk_profile') and signal.risk_profile:
+            rp = signal.risk_profile
+            lines.append(f"")
+            lines.append(f"💰 *KASA YÖNETİMİ:*")
+            lines.append(f"• Kaldıraç: *{rp.get('leverage', 1)}x*")
+            lines.append(f"• Marjin: *%{rp.get('position_size_pct', 1.0):.1f}* (Kasa Oranı)")
+            lines.append(f"• Not: {rp.get('reason', '')}")
+
+        # 5. Claude Yorumu
         if hasattr(signal, 'llm_reasoning') and signal.llm_reasoning:
             lines.append(f"")
             lines.append(f"🤖 *Claude:* \"{signal.llm_reasoning}\"")
             
-        # 5. Seviyeler
+        # 6. Seviyeler
         if signal.action != "HOLD":
             lines.append(f"")
             lines.append(f"🚪 *GİRİŞ:* ${signal.entry_zone[0]:,.2f} - ${signal.entry_zone[1]:,.2f}")

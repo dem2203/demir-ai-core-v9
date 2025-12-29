@@ -49,6 +49,7 @@ from src.v10.ai_integration import get_ai_bridge
 from src.brain.macro_context import get_macro_context
 from src.brain.llm_brain import get_llm_brain
 from src.brain.momentum_detector import get_momentum_context
+from src.brain.risk_manager import get_risk_manager
 
 logger = logging.getLogger("EARLY_SIGNAL_ENGINE")
 
@@ -69,6 +70,7 @@ class EarlySignal:
     llm_reasoning: str = ""        # Claude Haiku reasoning
     momentum_alerts: list = None   # Volume spike, etc.
     score_breakdown: Dict = None   # Tech, Macro, Onchain scores
+    risk_profile: Dict = None      # 💰 Smart Risk Manager output
     timestamp: datetime = field(default_factory=datetime.now)
     
     def __post_init__(self):
@@ -955,6 +957,19 @@ class EarlySignalEngine:
             'llm': 15 if "Claude: BUY" in reasoning else -15 if "Claude: SELL" in reasoning else 0
         }
 
+        # 💰 Calculate Risk Profile
+        risk_manager = get_risk_manager()
+        vol_ratio = vol_data.get('volatility_ratio', 1.0)
+        risk_profile_obj = risk_manager.calculate_risk(confidence, vol_ratio)
+        
+        # Convert dataclass to dict for usage
+        risk_profile = {
+            'position_size_pct': risk_profile_obj.position_size_pct,
+            'leverage': risk_profile_obj.leverage,
+            'risk_usd': risk_profile_obj.risk_per_trade_usd,
+            'reason': risk_profile_obj.reason
+        }
+
         return EarlySignal(
             symbol=symbol,
             action=action,
@@ -968,7 +983,8 @@ class EarlySignalEngine:
             reasoning=reasoning,
             llm_reasoning=llm_reasoning,
             momentum_alerts=[a.to_dict() for a in momentum_alerts],
-            score_breakdown=score_breakdown
+            score_breakdown=score_breakdown,
+            risk_profile=risk_profile
         )
     
     def get_last_signal(self, symbol: str) -> Optional[EarlySignal]:
