@@ -41,6 +41,9 @@ from src.brain.volatility_predictor import VolatilityPredictor
 from src.brain.news_scraper import CryptoNewsScraper
 from src.brain.regime_classifier import RegimeClassifier
 
+# AI MODELS - Real AI Decision Making
+from src.v10.lstm_predictor import get_lstm_predictor, PricePrediction
+
 logger = logging.getLogger("EARLY_SIGNAL_ENGINE")
 
 
@@ -227,11 +230,14 @@ class EarlySignalEngine:
         self.news_scraper = CryptoNewsScraper()
         self.regime_classifier = RegimeClassifier()
         
+        # AI BRAIN - Real AI Decision Making
+        self.lstm_predictor = get_lstm_predictor()
+        
         self.feature_collector = FeatureCollector()
-        self.ml_model = None  # Sonra yüklenecek
+        self.ml_model = None  # Legacy - replaced by lstm_predictor
         self._last_signals: Dict[str, EarlySignal] = {}
         
-        logger.info("🚀 Early Signal Engine initialized")
+        logger.info("🚀 Early Signal Engine + AI BRAIN initialized")
     
     async def initialize(self):
         """Async initialization"""
@@ -291,17 +297,21 @@ class EarlySignalEngine:
         # 3. Feature vector çıkar
         features = self.feature_collector.extract_features(leading_signal, current_price)
         
-        # 4. ML prediction (eğer model varsa)
-        ml_prediction = None
-        if self.ml_model:
-            ml_prediction = self._predict_with_ml(features)
+        # 4. AI BRAIN - LSTM Prediction (REAL AI)
+        lstm_prediction = None
+        try:
+            lstm_prediction = await self.lstm_predictor.predict(symbol)
+            if lstm_prediction:
+                logger.info(f"🧠 LSTM: {symbol} → {lstm_prediction.direction} ({lstm_prediction.predicted_change_pct:+.2f}%)")
+        except Exception as e:
+            logger.warning(f"LSTM prediction failed: {e}")
         
-        # 5. Sinyal üret - ENRICHED WITH ALL DATA
+        # 5. Sinyal üret - AI BRAIN DECISION
         signal = self._generate_signal(
             symbol=symbol, 
             leading=leading_signal, 
             current_price=current_price, 
-            ml_pred=ml_prediction,
+            ml_pred=lstm_prediction,  # Now using real LSTM prediction
             liq_data=liquidation_data,
             pattern_data=pattern_data,
             pivot_data=pivot_data,
@@ -412,7 +422,7 @@ class EarlySignalEngine:
         symbol: str, 
         leading: LeadingSignal,
         current_price: float,
-        ml_pred: Optional[Dict],
+        ml_pred,  # PricePrediction or None
         liq_data: Dict,
         pattern_data: Dict,
         pivot_data: Dict,
@@ -421,67 +431,94 @@ class EarlySignalEngine:
         regime_data: Dict
     ) -> EarlySignal:
         """
-        Leading signals + All Modules'dan trading sinyali üret.
-        """
-        # Yön belirleme
-        action = "HOLD"
+        AI BRAIN DECISION - LSTM + Ensemble Indicators
         
-        # 1. Core Direction
-        if leading.direction in [SignalDirection.STRONG_BULLISH, SignalDirection.BULLISH]:
-            action = "BUY"
-        elif leading.direction in [SignalDirection.STRONG_BEARISH, SignalDirection.BEARISH]:
-            action = "SELL"
-            
-        # --- MARKET REGIME & SENTIMENT FILTER ---
+        OLD: Rule-based (if RSI > 70 → SELL)
+        NEW: AI-based (LSTM prediction + weighted voting)
+        """
+        # === AI BRAIN DECISION SYSTEM ===
+        
+        # Score tracking: -100 to +100
+        # Positive = BUY, Negative = SELL, Near 0 = HOLD
+        ai_score = 0
+        reasons = []
+        
+        # --- 1. LSTM PREDICTION (Weight: 40%) ---
+        lstm_weight = 40
+        if ml_pred and hasattr(ml_pred, 'direction'):
+            if ml_pred.direction == "UP":
+                lstm_contribution = lstm_weight * (ml_pred.confidence / 100)
+                ai_score += lstm_contribution
+                reasons.append(f"🧠 LSTM: UP +{ml_pred.predicted_change_pct:.1f}%")
+            elif ml_pred.direction == "DOWN":
+                lstm_contribution = lstm_weight * (ml_pred.confidence / 100)
+                ai_score -= lstm_contribution
+                reasons.append(f"🧠 LSTM: DOWN {ml_pred.predicted_change_pct:.1f}%")
+            else:
+                reasons.append(f"🧠 LSTM: FLAT")
+        else:
+            # Fallback: Use leading indicators (reduced weight)
+            if leading.direction in [SignalDirection.STRONG_BULLISH, SignalDirection.BULLISH]:
+                ai_score += 20
+            elif leading.direction in [SignalDirection.STRONG_BEARISH, SignalDirection.BEARISH]:
+                ai_score -= 20
+        
+        # --- 2. ORDER BOOK PRESSURE (Weight: 25%) ---
+        ob_weight = 25
+        orderbook_score = leading.orderbook_score
+        if orderbook_score > 50:  # Strong buy pressure
+            ai_score += ob_weight * (orderbook_score / 100)
+            reasons.append(f"📗 OB: BUY Pressure +{orderbook_score}")
+        elif orderbook_score < -50:  # Strong sell pressure
+            ai_score -= ob_weight * (abs(orderbook_score) / 100)
+            reasons.append(f"📕 OB: SELL Pressure {orderbook_score}")
+        
+        # --- 3. WHALE ACTIVITY (Weight: 15%) ---
+        whale_weight = 15
+        whale_score = leading.whale_score
+        if whale_score > 30:
+            ai_score += whale_weight * (whale_score / 100)
+            reasons.append(f"🐋 Whale: Accumulating +{whale_score}")
+        elif whale_score < -30:
+            ai_score -= whale_weight * (abs(whale_score) / 100)
+            reasons.append(f"🐋 Whale: Distributing {whale_score}")
+        
+        # --- 4. VOLATILITY STATE (Weight: 10%) ---
+        vol_state = vol_data.get('state', 'NORMAL')
+        if vol_state == 'SQUEEZE':
+            reasons.append("🌋 Volatility Squeeze (Big Move Incoming)")
+            # Don't change direction, but increase confidence
+        
+        # --- 5. REGIME CONTEXT (Weight: 10%) ---
         regime = regime_data.get('regime', 'UNKNOWN')
         sentiment = news_data.get('sentiment', 'NEUTRAL')
+        reasons.append(f"🧠 Regime: {regime}")
+        reasons.append(f"🐂 Sentiment: {sentiment}" if sentiment == "BULLISH" else f"🐻 Sentiment: {sentiment}" if sentiment == "BEARISH" else "")
         
-        # Filter: Don't trade against extreme Sentiment (Contra-trading logic can be risky for bots)
-        # If Sentiment is BEARISH and Signal is BUY -> Reduce Confidence
-        if sentiment == 'BEARISH' and action == "BUY":
-            confidence_penalty = 20
-        elif sentiment == 'BULLISH' and action == "SELL":
-            confidence_penalty = 20
+        # --- ADD INDIVIDUAL INDICATOR SCORES TO REASONING ---
+        if leading.whale_score != 0:
+            color = "🟢" if leading.whale_score > 0 else "🔴"
+            reasons.append(f"{color} whale: {leading.whale_score:+.0f}")
+        if leading.orderbook_score != 0:
+            color = "🟢" if leading.orderbook_score > 0 else "🔴"
+            reasons.append(f"{color} orderbook: {leading.orderbook_score:+.0f}")
+        if leading.oi_divergence_score != 0:
+            color = "🟢" if leading.oi_divergence_score > 0 else "🔴"
+            reasons.append(f"{color} oi divergence: {leading.oi_divergence_score:+.0f}")
+        
+        # === FINAL DECISION ===
+        # Threshold: Need significant score to generate signal
+        if ai_score > 30:
+            action = "BUY"
+            confidence = min(95, 50 + ai_score)  # 50-95% range
+        elif ai_score < -30:
+            action = "SELL"
+            confidence = min(95, 50 + abs(ai_score))
         else:
-            confidence_penalty = 0
-
-        # Regime Adjustment
-        regime_adj = regime_data.get('risk_adjustment', {})
-        target_confidence = regime_adj.get('confidence_threshold', 0.60) * 100
-        
-        # Confidence calculation
-        confidence = leading.confidence 
-        if leading.direction.value.startswith("STRONG"):
-            confidence += 15
-            
-        confidence -= confidence_penalty
-        
-        # 2. Pattern Validation (Confirmation)
-        pattern_score = 0
-        pattern_reason = ""
-        if pattern_data and 'patterns' in pattern_data:
-            for pat in pattern_data['patterns']:
-                if pat['confidence'] > 50:
-                    icon = "📈" if pat['type'] == 'BULLISH' else "📉"
-                    pattern_reason = f"{icon} {pat['name']}"
-                    # Bonus confidence for patterns
-                    confidence += 10
-
-        # 3. Volatility Check (Breakout Validation)
-        vol_state = vol_data.get('state', 'NORMAL')
-        is_breakout = vol_state == 'SQUEEZE' or vol_data.get('volatility_ratio', 1) < 0.8
-        
-        # Confidence hesapla
-        confidence = leading.confidence
-        if leading.direction.value.startswith("STRONG"):
-            confidence += 15
-        
-        if is_breakout:
-            confidence += 10 # Bonus for timing
-        
-        # Minimum confidence threshold
-        if confidence < 50:
             action = "HOLD"
+            confidence = 30
+        
+        logger.info(f"🤖 AI Brain {symbol}: Score={ai_score:.0f} → {action} ({confidence:.0f}%)")
         
         # --- PRECISION LEVELS (SL/TP) ---
         
