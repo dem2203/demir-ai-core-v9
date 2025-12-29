@@ -112,10 +112,11 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
-if __name__ == '__main__':
+def get_application():
+    """Bot uygulamasını oluştur ve döndür"""
     if not TOKEN:
         logger.error("TELEGRAM_TOKEN env variable not found!")
-        exit(1)
+        return None
         
     application = ApplicationBuilder().token(TOKEN).build()
     
@@ -125,5 +126,12 @@ if __name__ == '__main__':
     application.add_handler(start_handler)
     application.add_handler(analiz_handler)
     
-    logger.info("🤖 Telegram Bot Started Polling...")
-    application.run_polling()
+    return application
+
+if __name__ == '__main__':
+    app = get_application()
+    if app:
+        logger.info("🤖 Telegram Bot Started Polling...")
+        app.run_polling()
+    else:
+        logger.error("Bot başlatılamadı.")
