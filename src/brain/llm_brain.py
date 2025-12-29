@@ -73,17 +73,26 @@ KURALLAR:
   "key_factors": ["faktör1", "faktör2", "faktör3"]
 }"""
 
+    # BUDGET PROTECTION: $5 = ~10,000 calls with Haiku
+    DAILY_CALL_LIMIT = 50  # Conservative: 50 calls/day = ~$0.03/day
+    CACHE_TTL_SECONDS = 300  # 5 minute cache to avoid duplicate calls
+    
     def __init__(self):
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
         self._client = None
         self._enabled = False
+        
+        # Budget tracking
+        self._daily_calls = 0
+        self._last_reset_date = datetime.now().date()
+        self._cache: Dict[str, tuple] = {}  # {cache_key: (timestamp, result)}
         
         if self.api_key:
             try:
                 import anthropic
                 self._client = anthropic.Anthropic(api_key=self.api_key)
                 self._enabled = True
-                logger.info("🧠 LLM Brain initialized with Claude Haiku")
+                logger.info("🧠 LLM Brain initialized with Claude Haiku (Budget: $5)")
             except ImportError:
                 logger.warning("⚠️ anthropic package not installed. Run: pip install anthropic")
             except Exception as e:
@@ -91,9 +100,45 @@ KURALLAR:
         else:
             logger.warning("⚠️ ANTHROPIC_API_KEY not set. LLM Brain disabled.")
     
+    def _check_daily_limit(self) -> bool:
+        """Günlük limit kontrolü ve reset"""
+        today = datetime.now().date()
+        if today != self._last_reset_date:
+            self._daily_calls = 0
+            self._last_reset_date = today
+            logger.info("🔄 Daily Claude call counter reset")
+        
+        if self._daily_calls >= self.DAILY_CALL_LIMIT:
+            logger.warning(f"⚠️ Daily Claude limit reached ({self.DAILY_CALL_LIMIT}). Using fallback.")
+            return False
+        return True
+    
+    def _get_cache_key(self, symbol: str, technical_data: Dict) -> str:
+        """Cache key oluştur (hassas olmayan verilerden)"""
+        lstm_dir = technical_data.get('lstm_direction', 'N/A')
+        rsi = int(technical_data.get('rsi', 50) / 10) * 10  # RSI'yi 10'luk gruplara böl
+        return f"{symbol}_{lstm_dir}_{rsi}"
+    
+    def _check_cache(self, cache_key: str) -> Optional[LLMAnalysis]:
+        """Cache'den sonuç kontrol et"""
+        if cache_key in self._cache:
+            timestamp, result = self._cache[cache_key]
+            age = (datetime.now() - timestamp).total_seconds()
+            if age < self.CACHE_TTL_SECONDS:
+                logger.debug(f"🎯 Cache hit for {cache_key} (age: {age:.0f}s)")
+                return result
+            else:
+                del self._cache[cache_key]
+        return None
+    
     @property
     def is_enabled(self) -> bool:
         return self._enabled and self._client is not None
+    
+    @property
+    def remaining_calls(self) -> int:
+        """Günlük kalan çağrı sayısı"""
+        return max(0, self.DAILY_CALL_LIMIT - self._daily_calls)
     
     async def analyze(
         self,
@@ -108,21 +153,24 @@ KURALLAR:
         """
         Tüm verileri Claude'a gönder ve analiz al.
         
-        Args:
-            symbol: Trading pair (örn: BTCUSDT)
-            current_price: Şu anki fiyat
-            technical_data: RSI, LSTM, patterns vb.
-            macro_data: BTC.D, Fear Index, Market Cap
-            onchain_data: Whale, exchange flow (opsiyonel)
-            sentiment_data: News, social sentiment (opsiyonel)
-            momentum_data: Breakout, volume spike (opsiyonel)
-        
-        Returns:
-            LLMAnalysis: Claude'un analiz sonucu
+        BUDGET PROTECTION:
+        - Günlük 50 çağrı limiti
+        - 5 dakika cache (aynı koşullarda tekrar çağırmaz)
+        - Limit aşılırsa fallback kullanılır
         """
         
         if not self.is_enabled:
             logger.debug("LLM Brain disabled, returning fallback")
+            return self._fallback_analysis(symbol, current_price, technical_data, macro_data)
+        
+        # 1. Cache kontrolü (API çağrısı yapmadan önce)
+        cache_key = self._get_cache_key(symbol, technical_data)
+        cached_result = self._check_cache(cache_key)
+        if cached_result:
+            return cached_result
+        
+        # 2. Günlük limit kontrolü
+        if not self._check_daily_limit():
             return self._fallback_analysis(symbol, current_price, technical_data, macro_data)
         
         try:
@@ -146,7 +194,11 @@ KURALLAR:
             response_text = message.content[0].text
             analysis = self._parse_response(response_text, current_price)
             
-            logger.info(f"🧠 LLM Analysis for {symbol}: {analysis.direction} ({analysis.confidence}%)")
+            # 3. Başarılı çağrı - sayacı artır ve cache'e kaydet
+            self._daily_calls += 1
+            self._cache[cache_key] = (datetime.now(), analysis)
+            
+            logger.info(f"🧠 LLM Analysis for {symbol}: {analysis.direction} ({analysis.confidence}%) [Calls: {self._daily_calls}/{self.DAILY_CALL_LIMIT}]")
             
             return analysis
             
