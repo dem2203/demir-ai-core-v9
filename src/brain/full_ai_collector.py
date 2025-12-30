@@ -326,25 +326,25 @@ class FullAIDataCollector:
         return []
     
     async def _get_lstm_prediction(self, symbol: str) -> Dict:
-        """LSTM tahminini al"""
+        """LSTM tahminini al (Real TensorFlow LSTM)"""
         try:
             from src.v10.lstm_predictor import get_lstm_predictor
             predictor = get_lstm_predictor()
             
-            klines = await self._get_klines(symbol, "1h", 200)
-            if klines:
-                closes = [float(k[4]) for k in klines]
-                prediction = predictor.predict(closes)
-                
-                if prediction:
-                    return {
-                        'direction': prediction.get('direction', 'NEUTRAL'),
-                        'change_pct': prediction.get('change_percent', 0.0),
-                        'confidence': prediction.get('confidence', 0)
-                    }
+            # Yeni async predict metodu
+            prediction = await predictor.predict(symbol)
+            
+            if prediction:
+                return {
+                    'direction': prediction.direction,
+                    'change_pct': prediction.predicted_change_pct,
+                    'confidence': int(prediction.confidence),
+                    'model_type': prediction.model_type
+                }
         except Exception as e:
             logger.debug(f"LSTM error: {e}")
         return {}
+
     
     async def _get_technical_indicators(self, symbol: str) -> Dict:
         """Teknik indikatörleri hesapla"""
