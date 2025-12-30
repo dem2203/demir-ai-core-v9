@@ -65,7 +65,14 @@ from src.brain.premium_signals import get_premium_generator, send_premium_signal
 # PHASE 600: PAPER TRADING MANAGER - Sinyal Takibi ve Günlük Rapor
 from src.brain.paper_trading_manager import get_paper_trading_manager
 
+# PHASE 700: TELEGRAM COMMANDS - /info, /durum, /piyasa, vb.
+from src.v10.telegram_commands import get_telegram_commands, handle_command
+
+# PHASE 800: BREAKOUT DETECTOR - Volume spike, price breakout
+from src.brain.breakout_detector import get_breakout_detector
+
 logger = logging.getLogger("DEMIR_AI_CORE_ENGINE")
+
 
 class BotEngine:
     """
