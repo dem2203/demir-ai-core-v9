@@ -317,15 +317,16 @@ class EarlySignalEngine:
         
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        leading_signal = results[0] if not isinstance(results[0], Exception) else None
-        liquidation_data = results[1] if not isinstance(results[1], Exception) else {}
-        pattern_data = results[2] if not isinstance(results[2], Exception) else {}
-        pivot_data = results[3] if not isinstance(results[3], Exception) else {}
-        volatility_data = results[4] if not isinstance(results[4], Exception) else {}
-        news_data = results[5] if not isinstance(results[5], Exception) else {}
-        regime_data = results[6] if not isinstance(results[6], Exception) else {"regime": "UNKNOWN"}
-        macro_context = results[7] if not isinstance(results[7], Exception) else None
-        momentum_context = results[8] if not isinstance(results[8], Exception) else None
+        # Safe parsing with defaults to prevent NameError
+        leading_signal = results[0] if len(results) > 0 and not isinstance(results[0], Exception) else None
+        liquidation_data = results[1] if len(results) > 1 and not isinstance(results[1], Exception) else {}
+        pattern_data = results[2] if len(results) > 2 and not isinstance(results[2], Exception) else {}
+        pivot_data = results[3] if len(results) > 3 and not isinstance(results[3], Exception) else {}
+        volatility_data = results[4] if len(results) > 4 and not isinstance(results[4], Exception) else {}
+        news_data = results[5] if len(results) > 5 and not isinstance(results[5], Exception) else {}
+        regime_data = results[6] if len(results) > 6 and not isinstance(results[6], Exception) else {"regime": "UNKNOWN"}
+        macro_context = results[7] if len(results) > 7 and not isinstance(results[7], Exception) else None
+        momentum_context = results[8] if len(results) > 8 and not isinstance(results[8], Exception) else None
         
         if not leading_signal:
              return None
