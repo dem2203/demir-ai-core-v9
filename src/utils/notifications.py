@@ -523,11 +523,31 @@ _{recommendation_reason}_
                 if str(chat_id) != str(self.telegram_chat_id):
                     continue
                 
-                # Check for coin analysis command
-                await self._handle_coin_command(text)
+                # Check for SLASH COMMANDS first (/info, /brain, /durum, etc.)
+                if text.startswith('/'):
+                    await self._handle_slash_command(text)
+                else:
+                    # Check for coin analysis command (BTC, ETH, etc.)
+                    await self._handle_coin_command(text)
                 
         except Exception as e:
             logger.debug(f"Telegram command check error: {e}")
+    
+    async def _handle_slash_command(self, text: str):
+        """Slash komutlarını işle (/info, /brain, /durum, etc.)"""
+        try:
+            from src.v10.telegram_commands import handle_command
+            
+            # Komut handler'ı çağır
+            response = await handle_command(text.lower())
+            
+            # Yanıtı gönder
+            if response:
+                await self.send_message_raw(response)
+                logger.info(f"📱 Telegram command handled: {text}")
+        except Exception as e:
+            logger.error(f"Slash command error: {e}")
+            await self.send_message_raw(f"❌ Komut hatası: {text}")
     
     async def _handle_coin_command(self, text: str):
         """Coin analiz komutlarını işle"""
