@@ -3,6 +3,7 @@
 DEMIR AI v10 - Early Signal Engine
 ===================================
 ML-Enhanced Leading Indicator System.
+VERSION: 2.0.1 - Fixed macro_context NameError (2024-12-31)
 
 Bu motor:
 1. Leading indicators'ı hesaplar
