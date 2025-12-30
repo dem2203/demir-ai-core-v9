@@ -288,6 +288,10 @@ class EarlySignalEngine:
         Sembol için erken sinyal analizi yap.
         Teknik + Makro + LLM kombinasyonu kullanır.
         """
+        # Initialize all variables with defaults to prevent NameError
+        macro_context = None
+        momentum_context = None
+        
         if not self.leading_indicators:
             await self.initialize()
         
