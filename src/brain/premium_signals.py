@@ -125,6 +125,19 @@ class PremiumSignalGenerator:
             self._full_collector = get_full_ai_collector()
         return self._full_collector
     
+    async def _get_thinking_brain(self):
+        """Thinking Brain - Gerçek düşünen AI"""
+        if not hasattr(self, '_thinking_brain') or self._thinking_brain is None:
+            try:
+                from src.brain.thinking_brain import get_thinking_brain
+                self._thinking_brain = get_thinking_brain()
+                logger.info("🧠 Thinking Brain loaded!")
+            except Exception as e:
+                logger.warning(f"Thinking Brain load failed: {e}")
+                self._thinking_brain = None
+        return self._thinking_brain
+
+    
     async def _get_past_performance(self) -> Dict:
         """Geçmiş trade sonuçları (Self-Learning)"""
         try:
@@ -354,29 +367,119 @@ class PremiumSignalGenerator:
             else:
                 trend_aligned = False
             
-            # 6. FİNAL KARAR
-            data_sources = bullish_count + bearish_count + len(risk_factors)
+            # =================================================================
+            # 6. THINKING BRAIN - GERÇEK DÜŞÜNEN AI KARARI
+            # =================================================================
+            thinking_brain = await self._get_thinking_brain()
             
-            if not confluence_passed:
-                direction = "BEKLE"
-                confidence = 35
-                logger.info(f"⚠️ {symbol}: Confluence fail ({confluence_score}/{self.MIN_CONFLUENCE})")
-            elif not trend_aligned and primary_direction != "BEKLE":
-                direction = "BEKLE"
-                confidence = 40
-                logger.info(f"⚠️ {symbol}: Trend not aligned (4H:{trend_4h}, 1D:{trend_1d})")
-            elif bullish_score > bearish_score + 3.0:
-                direction = "LONG"
-                confidence = min(95, int(60 + (bullish_score - bearish_score) * 4))
-            elif bearish_score > bullish_score + 3.0:
-                direction = "SHORT"
-                confidence = min(95, int(60 + (bearish_score - bullish_score) * 4))
+            if thinking_brain is not None:
+                # Rule analysis'ı dict formatına çevir
+                rule_analysis_dict = {
+                    'total_bullish_signals': bullish_count,
+                    'total_bearish_signals': bearish_count,
+                    'rsi': ai_data.rsi,
+                    'macd_signal': ai_data.macd_signal,
+                    'macd_histogram': ai_data.macd_histogram,
+                    'adx_value': ai_data.adx_value,
+                    'adx_trend': ai_data.adx_trend,
+                    'stoch_signal': ai_data.stoch_signal,
+                    'bb_position': ai_data.bb_position,
+                    'lstm_direction': ai_data.lstm_direction,
+                    'lstm_confidence': ai_data.lstm_confidence,
+                    'lstm_change_pct': ai_data.lstm_change_pct,
+                    'elliott_direction': ai_data.elliott_direction,
+                    'elliott_current_wave': ai_data.elliott_current_wave,
+                    'elliott_confidence': ai_data.elliott_confidence,
+                    'harmonic_pattern': ai_data.harmonic_pattern,
+                    'harmonic_bullish': ai_data.harmonic_bullish,
+                    'harmonic_confidence': ai_data.harmonic_confidence,
+                    'mtf_confluence': ai_data.mtf_confluence,
+                    'trend_1h': ai_data.trend_1h,
+                    'trend_4h': ai_data.trend_4h,
+                    'trend_1d': ai_data.trend_1d,
+                    'mvrv': ai_data.mvrv,
+                    'nupl': ai_data.nupl,
+                    'exchange_netflow': ai_data.exchange_netflow,
+                    'dxy_trend': ai_data.dxy_trend,
+                    'vix_level': ai_data.vix_level,
+                    'news_score': ai_data.news_score,
+                    'current_price': current_price
+                }
+                
+                # State vector oluştur (RL için)
+                market_state = thinking_brain.get_state_vector(rule_analysis_dict)
+                
+                # Claude analizi (varsa)
+                claude_analysis_dict = None
+                try:
+                    llm = await self._get_llm_brain()
+                    if llm and llm.is_enabled:
+                        result = await llm.get_analysis(symbol, rule_analysis_dict, {}, {})
+                        if result:
+                            claude_analysis_dict = {
+                                'direction': result.direction,
+                                'confidence': result.confidence
+                            }
+                except:
+                    pass
+                
+                # 🧠 THINKING BRAIN KARARI
+                thinking_result = await thinking_brain.think(
+                    symbol=symbol,
+                    market_state=market_state,
+                    rule_analysis=rule_analysis_dict,
+                    claude_analysis=claude_analysis_dict
+                )
+                
+                # Thinking Brain kararını kullan
+                direction = thinking_result.direction
+                confidence = int(thinking_result.confidence)
+                
+                # Reasoning'i faktörlere ekle
+                for r in thinking_result.reasoning:
+                    if "LONG" in r or "Bullish" in r.upper() or "🟢" in r:
+                        bullish_factors.append(r)
+                    elif "SHORT" in r or "Bearish" in r.upper() or "🔴" in r:
+                        bearish_factors.append(r)
+                
+                for w in thinking_result.risk_warnings:
+                    risk_factors.append(w)
+                
+                # Memory ve regime bilgisi ekle
+                if thinking_result.similar_past_trades > 0:
+                    bullish_factors.append(
+                        f"🧠 Memory: {thinking_result.similar_past_trades} benzer trade, "
+                        f"win rate: %{thinking_result.past_win_rate*100:.0f}"
+                    )
+                
+                bullish_factors.append(f"🎭 Regime: {thinking_result.regime}")
+                
+                logger.info(f"🧠 Thinking Brain: {direction} ({confidence}%) - {thinking_result.regime}")
+                
             else:
-                direction = "BEKLE"
-                confidence = 40
-            
-            if confidence < self.MIN_CONFIDENCE:
-                direction = "BEKLE"
+                # Fallback: Eski kural tabanlı sistem
+                data_sources = bullish_count + bearish_count + len(risk_factors)
+                
+                if not confluence_passed:
+                    direction = "BEKLE"
+                    confidence = 35
+                    logger.info(f"⚠️ {symbol}: Confluence fail ({confluence_score}/{self.MIN_CONFLUENCE})")
+                elif not trend_aligned and primary_direction != "BEKLE":
+                    direction = "BEKLE"
+                    confidence = 40
+                    logger.info(f"⚠️ {symbol}: Trend not aligned (4H:{trend_4h}, 1D:{trend_1d})")
+                elif bullish_score > bearish_score + 3.0:
+                    direction = "LONG"
+                    confidence = min(95, int(60 + (bullish_score - bearish_score) * 4))
+                elif bearish_score > bullish_score + 3.0:
+                    direction = "SHORT"
+                    confidence = min(95, int(60 + (bearish_score - bullish_score) * 4))
+                else:
+                    direction = "BEKLE"
+                    confidence = 40
+                
+                if confidence < self.MIN_CONFIDENCE:
+                    direction = "BEKLE"
             
             # 7. ENTRY/TP/SL
             if direction == "LONG":

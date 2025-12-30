@@ -244,6 +244,24 @@ class PaperTradingManager:
         trade.duration_hours = (datetime.now() - opened).total_seconds() / 3600
         
         logger.info(f"📊 Trade Closed: {trade.id} → {status} ({pnl:+.2f}%)")
+        
+        # 🧠 THINKING BRAIN FEEDBACK - Trade sonucundan öğren
+        try:
+            from src.brain.thinking_brain import get_thinking_brain
+            thinking_brain = get_thinking_brain()
+            
+            was_correct = pnl > 0
+            
+            # Karar timestamp'ini bul (trade.opened_at kullan)
+            thinking_brain.learn_from_outcome(
+                decision_timestamp=trade.opened_at,
+                pnl=pnl,
+                was_correct=was_correct
+            )
+            
+            logger.info(f"🧠 Thinking Brain learned from trade: {'✅' if was_correct else '❌'}")
+        except Exception as e:
+            logger.debug(f"Thinking Brain feedback error: {e}")
     
     def _analyze_trade(self, trade: PaperTrade) -> Dict:
         """Trade sonucunu analiz et - Ne işe yaradı, ne yaramadı?"""
