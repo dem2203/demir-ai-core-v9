@@ -183,14 +183,19 @@ class LeadingIndicators:
                     else:
                         big_buys += value
             
-            tracker = get_whale_tracker()
-            if not tracker.running:
-                # Lazy start if not running
-                try:
-                    await tracker.start()
-                    await asyncio.sleep(1)
-                except:
-                    pass
+            # PHASE 15: Whale Tracker integration (with safe import)
+            try:
+                from src.brain.whale_tracker import get_whale_tracker
+                tracker = get_whale_tracker()
+                if not tracker.running:
+                    # Lazy start if not running
+                    try:
+                        await tracker.start()
+                        await asyncio.sleep(1)
+                    except:
+                        pass
+            except Exception as whale_err:
+                logger.debug(f"Whale tracker unavailable: {whale_err}")
             
             # PHASE 15: DYNAMIC THRESHOLD
             # Calculate threshold based on 24h volume

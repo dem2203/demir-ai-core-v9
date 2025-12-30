@@ -330,13 +330,13 @@ class EarlySignalEngine:
         if not leading_signal:
              return None
              
-        # Use snapshot klines for Fractal check
+        # Use snapshot klines for Fractal check (with safe attribute check)
         fractal_match = None
-        if self.leading_indicators and self.leading_indicators.latest_snapshot:
+        if self.leading_indicators and hasattr(self.leading_indicators, 'latest_snapshot') and self.leading_indicators.latest_snapshot:
              try:
                  snapshot = self.leading_indicators.latest_snapshot
                  # Need at least 100 candles
-                 if len(snapshot.klines) > 100:
+                 if hasattr(snapshot, 'klines') and len(snapshot.klines) > 100:
                      closes = [float(k[4]) for k in snapshot.klines]
                      fractal_match = self.fractal_analyzer.find_fractal_match(closes, closes)
              except Exception as e:
