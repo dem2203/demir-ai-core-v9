@@ -293,6 +293,9 @@ class EarlySignalEngine:
         macro_context = None
         momentum_context = None
         
+        # DEBUG: Verify new code is deployed (2024-12-31 00:45 UTC)
+        logger.info(f"🔧 DEBUG v2.0.1: macro_context initialized to None for {symbol}")
+        
         if not self.leading_indicators:
             await self.initialize()
         
