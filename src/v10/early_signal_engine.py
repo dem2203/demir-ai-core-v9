@@ -395,8 +395,11 @@ class EarlySignalEngine:
         
         # 7. Dashboard Update (NEW)
         self.latest_signals[symbol] = signal.to_dict()
-        if macro_context:
-            self.latest_macro = macro_context.to_dict()
+        try:
+            if macro_context and hasattr(macro_context, 'to_dict'):
+                self.latest_macro = macro_context.to_dict()
+        except NameError:
+            pass  # macro_context not defined in this scope
         self._update_dashboard_json()
         
         return signal
