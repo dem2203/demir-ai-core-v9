@@ -205,3 +205,56 @@ def get_engine_status() -> Dict[str, str]:
     except Exception:
         pass
     return status
+
+
+# ==========================================
+# 4. THINKING BRAIN STATUS (NEW!)
+# ==========================================
+
+def fetch_thinking_brain_stats() -> Dict[str, Any]:
+    """Fetch Thinking Brain status for dashboard."""
+    stats = {
+        'status': 'INACTIVE',
+        'weights': {'rl': 35, 'claude': 30, 'rules': 35},
+        'performance': {'rl': 0, 'claude': 0, 'rules': 0},
+        'history_count': 0,
+        'rl_agent_loaded': False,
+        'current_regime': 'UNKNOWN'
+    }
+    
+    try:
+        from src.brain.thinking_brain import get_thinking_brain
+        brain = get_thinking_brain()
+        
+        stats['status'] = 'ACTIVE'
+        
+        # Weights (as percentages)
+        stats['weights'] = {
+            'rl': int(brain._weights['rl'] * 100),
+            'claude': int(brain._weights['claude'] * 100),
+            'rules': int(brain._weights['rules'] * 100)
+        }
+        
+        # Performance (win rates)
+        perf = brain._performance_by_source
+        for source in ['rl', 'claude', 'rules']:
+            if perf[source]['total'] > 0:
+                stats['performance'][source] = int(
+                    perf[source]['wins'] / perf[source]['total'] * 100
+                )
+        
+        # History
+        stats['history_count'] = len(brain._decision_history)
+        
+        # RL Agent
+        stats['rl_agent_loaded'] = bool(brain._rl_agent and brain._rl_agent.model)
+        
+        # Current regime from last decision
+        if brain._decision_history:
+            stats['current_regime'] = brain._decision_history[-1].get('regime', 'UNKNOWN')
+        
+    except Exception as e:
+        logger.debug(f"TB stats error: {e}")
+    
+    return stats
+

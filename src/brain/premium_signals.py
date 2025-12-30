@@ -588,7 +588,7 @@ class PremiumSignalGenerator:
             return None
     
     def format_telegram_message(self, signal: PremiumSignal) -> str:
-        """Ultra Premium Telegram formatı."""
+        """Ultra Premium Telegram formatı - THINKING BRAIN ile."""
         if signal.direction == "LONG":
             direction_emoji = "🟢"
             direction_text = "LONG"
@@ -607,15 +607,36 @@ class PremiumSignalGenerator:
         # AI Modül durum çubuğu
         ai_bar = f"[{signal.ai_modules_count}/12 AI]"
         
+        # Thinking Brain bilgileri (faktörlerden çıkar)
+        tb_rl = "N/A"
+        tb_claude = "N/A"
+        tb_rules = "N/A"
+        tb_regime = "UNKNOWN"
+        tb_memory = ""
+        
+        for f in signal.bullish_factors + signal.bearish_factors:
+            if "RL Agent" in f:
+                tb_rl = f.split(":")[1].strip() if ":" in f else "LONG"
+            elif "Claude AI" in f or "🧠 Claude" in f:
+                tb_claude = f.split(":")[1].strip() if ":" in f else "LONG"
+            elif "Rules:" in f or "📈 Rules" in f:
+                tb_rules = f.split(":")[1].strip() if ":" in f else "LONG"
+            elif "Regime" in f or "Rejim" in f:
+                tb_regime = f.split(":")[1].strip() if ":" in f else "UNKNOWN"
+            elif "Memory" in f:
+                tb_memory = f
+        
         bullish_text = ""
         if signal.bullish_factors:
             for f in signal.bullish_factors[:6]:
-                bullish_text += f"  • {f}\n"
+                if "RL Agent" not in f and "Claude AI" not in f and "Rules:" not in f and "Regime" not in f and "Memory" not in f:
+                    bullish_text += f"  • {f}\n"
         
         bearish_text = ""
         if signal.bearish_factors:
             for f in signal.bearish_factors[:6]:
-                bearish_text += f"  • {f}\n"
+                if "RL Agent" not in f and "Claude AI" not in f and "Rules:" not in f:
+                    bearish_text += f"  • {f}\n"
         
         risk_text = ""
         if signal.risk_factors:
@@ -633,12 +654,20 @@ class PremiumSignalGenerator:
         else:
             levels_text = "\n⏳ *Filtreler geçmedi - Sinyal yok*\n"
         
-        msg = f"""🧠 *DEMIR AI ULTRA PREMIUM*
+        msg = f"""🧠 *DEMIR AI - DÜŞÜNEN BOT*
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
 {direction_emoji} *{signal.symbol}* → *{direction_text}*
 🎯 Güven: *%{signal.confidence}* [{conf_bars}]
 💰 Fiyat: ${signal.entry_price:,.2f}
+
+🧠 *KARAR KAYNAKLARI:*
+  🤖 RL Agent: {tb_rl}
+  🧠 Claude: {tb_claude}
+  📊 Rules: {tb_rules}
+
+🎭 *Piyasa Rejimi:* {tb_regime}
+{f"🧠 {tb_memory}" if tb_memory else ""}
 
 🤖 *AI ANALİZ:* {ai_bar}
   📊 LSTM: {signal.lstm_direction} ({signal.lstm_confidence}%)

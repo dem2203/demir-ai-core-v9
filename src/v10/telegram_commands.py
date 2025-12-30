@@ -53,6 +53,7 @@ class TelegramCommands:
 📋 *GENEL:*
   /info → Bu mesajı göster
   /durum → Bot durumu ve uptime
+  /brain → 🧠 Thinking Brain durumu
   
 📊 *ANALİZ:*
   /piyasa → BTC/ETH anlık durum
@@ -336,6 +337,69 @@ class TelegramCommands:
         else:
             self._stats['bekle_signals'] += 1
     
+    # ==========================================================================
+    # /brain - Thinking Brain durumu
+    # ==========================================================================
+    async def cmd_brain(self) -> str:
+        """Thinking Brain durumunu göster"""
+        try:
+            from src.brain.thinking_brain import get_thinking_brain
+            brain = get_thinking_brain()
+            
+            # Weights
+            weights = brain._weights
+            
+            # Performance
+            perf = brain._performance_by_source
+            rl_wr = (perf['rl']['wins'] / perf['rl']['total'] * 100) if perf['rl']['total'] > 0 else 0
+            claude_wr = (perf['claude']['wins'] / perf['claude']['total'] * 100) if perf['claude']['total'] > 0 else 0
+            rules_wr = (perf['rules']['wins'] / perf['rules']['total'] * 100) if perf['rules']['total'] > 0 else 0
+            
+            # Decision history
+            history_count = len(brain._decision_history)
+            
+            # RL Agent status
+            rl_status = "✅ Yüklü" if brain._rl_agent and brain._rl_agent.model else "⏳ Bekleniyor"
+            
+            return f"""🧠 *THINKING BRAIN DURUMU*
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎛️ *KAYNAK AĞIRLIKLARI:*
+  🤖 RL Agent: %{weights['rl']*100:.0f}
+  🧠 Claude: %{weights['claude']*100:.0f}
+  📊 Rules: %{weights['rules']*100:.0f}
+
+📊 *KAYNAK PERFORMANSI:*
+  🤖 RL: {perf['rl']['wins']}/{perf['rl']['total']} (%{rl_wr:.0f})
+  🧠 Claude: {perf['claude']['wins']}/{perf['claude']['total']} (%{claude_wr:.0f})
+  📊 Rules: {perf['rules']['wins']}/{perf['rules']['total']} (%{rules_wr:.0f})
+
+🧠 *HAFIZA:*
+  📝 Karar Sayısı: {history_count}/500
+  🤖 RL Agent: {rl_status}
+
+💡 *NASIL ÇALIŞIR:*
+  1. Her sinyal için 3 kaynak analiz eder
+  2. Ağırlıklı fusion ile karar verir
+  3. Geçmiş benzer durumları kontrol eder
+  4. Piyasa rejimine göre adapte olur
+  5. Her trade'den öğrenir
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+⏰ {datetime.now().strftime('%H:%M:%S')}
+"""
+        except Exception as e:
+            logger.error(f"Brain status error: {e}")
+            return f"""🧠 *THINKING BRAIN DURUMU*
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ Thinking Brain henüz aktif değil.
+
+İlk sinyal üretildiğinde aktif olacak.
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+    
     async def close(self):
         if self._session and not self._session.closed:
             await self._session.close()
@@ -377,6 +441,8 @@ async def handle_command(command: str) -> str:
         return await cmd.cmd_son()
     elif command in ['/risk', 'risk', '/positions']:
         return await cmd.cmd_risk()
+    elif command in ['/brain', 'brain', '/thinking']:
+        return await cmd.cmd_brain()
     else:
         return f"""❌ Bilinmeyen komut: `{command}`
 
