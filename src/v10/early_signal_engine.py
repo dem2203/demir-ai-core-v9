@@ -380,7 +380,7 @@ class EarlySignalEngine:
             vol_data=volatility_data,
             news_data=news_data,
             regime_data=regime_data,
-            macro_context=macro_context,
+            macro_ctx=macro_context,  # Fixed: was macro_context
             momentum_context=momentum_context,
             fractal_match=fractal_match, # NEW
             inst_snapshot=inst_snapshot, # NEW

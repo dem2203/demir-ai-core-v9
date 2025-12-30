@@ -252,19 +252,38 @@ class RealLSTMPredictor:
             # Feature extraction
             features = self._extract_features(klines[-self.SEQUENCE_LENGTH:])
             
-            # Normalize
-            scaler = self._scalers[symbol]
-            features_norm = (features - scaler['X_mean']) / scaler['X_std']
+            # Scaler varsa kullan
+            scaler = self._scalers.get(symbol)
             
             if TF_AVAILABLE and isinstance(self._models[symbol], keras.Model):
                 # LSTM prediction
+                if scaler:
+                    # Normalize - scaler boyutu (48,9) veya (432,) olabilir
+                    X_mean = scaler.get('X_mean', 0)
+                    X_std = scaler.get('X_std', 1)
+                    
+                    # Shape uyumu kontrolü
+                    if isinstance(X_mean, np.ndarray) and X_mean.shape != features.shape:
+                        # Flatten varsa, features'ı da flatten yap, normalize et, sonra reshape
+                        if X_mean.shape[0] == features.size:
+                            features_flat = features.flatten()
+                            features_norm = (features_flat - X_mean) / X_std
+                            features_norm = features_norm.reshape(features.shape)
+                        else:
+                            # Boyut uymuyor, normalize etme
+                            features_norm = features
+                    else:
+                        features_norm = (features - X_mean) / X_std
+                else:
+                    features_norm = features
+                
                 X_input = features_norm.reshape(1, self.SEQUENCE_LENGTH, self.FEATURES)
                 y_pred_norm = self._models[symbol].predict(X_input, verbose=0)[0][0]
                 model_type = "LSTM"
             else:
                 # Linear fallback
                 model = self._models[symbol]
-                X_flat = features_norm.flatten()
+                X_flat = features.flatten()
                 X_norm = (X_flat - model['X_mean']) / model['X_std']
                 y_pred_norm = np.dot(X_norm, model['weights'])
                 model_type = "LINEAR"
