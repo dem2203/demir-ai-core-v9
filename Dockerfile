@@ -32,6 +32,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Playwright browserları indir
 RUN playwright install chromium
 
+# Cache busting - change date to force rebuild (2024-12-31-00:39)
+ARG CACHE_BUST=2024123100039
+
 # Kodları kopyala
 COPY . .
 
