@@ -1023,8 +1023,8 @@ class EarlySignalEngine:
             icon = "🐂" if sentiment == 'BULLISH' else "🐻"
             reasons.append(f"{icon} Sentiment: {sentiment}")
             
-        if pattern_reason:
-            reasons.append(pattern_reason)
+        # if pattern_reason:
+        #     reasons.append(pattern_reason)
 
         if liq_data and 'heatmap_clusters' in liq_data:
              clusters = liq_data['heatmap_clusters']
