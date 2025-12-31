@@ -12,6 +12,7 @@ import aiohttp
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from typing import Optional, Dict
+from src.brain.public_harvester import PublicHarvester
 
 logger = logging.getLogger("MACRO_CONTEXT")
 
@@ -37,7 +38,17 @@ class MacroContext:
     
     # Altcoin Season
     altcoin_season_index: int = 50  # 0-100, >75 = altcoin season
-    
+
+    # DefiLlama & News (New)
+    total_tvl: float = 0.0
+    stablecoin_mcap: float = 0.0
+    news_sentiment: str = "NEUTRAL"
+    news_score: float = 0.0
+
+    # Options (Deribit)
+    options_sentiment: str = "NEUTRAL"
+    options_pc_ratio: float = 1.0
+
     # Timestamps
     last_updated: str = ""
     
@@ -52,6 +63,11 @@ class MacroContext:
             'fear_greed_index': self.fear_greed_index,
             'fear_greed_label': self.fear_greed_label,
             'altcoin_season_index': self.altcoin_season_index,
+            'total_tvl': self.total_tvl,
+            'stablecoin_mcap': self.stablecoin_mcap,
+            'news_sentiment': self.news_sentiment,
+            'options_sentiment': self.options_sentiment,
+            'options_pc_ratio': self.options_pc_ratio,
             'last_updated': self.last_updated
         }
     
@@ -102,8 +118,9 @@ class MacroContextCollector:
         self._cache_time: Optional[datetime] = None
         self._cache_duration = timedelta(minutes=5)  # 5 dakika cache
         self._session: Optional[aiohttp.ClientSession] = None
+        self.harvester = PublicHarvester()
         
-        logger.info("📊 Macro Context Collector initialized")
+        logger.info("📊 Macro Context Collector initialized (with Public Harvester)")
     
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -186,11 +203,31 @@ class MacroContextCollector:
             
             context.last_updated = datetime.now().isoformat()
             
+            # 4. Public Harvester Data (DefiLlama & News)
+            try:
+                llama = self.harvester.fetch_defillama_macro()
+                if llama:
+                     context.total_tvl = llama.get('total_tvl', 0)
+                     context.stablecoin_mcap = llama.get('stablecoin_mcap', 0)
+                
+                news = self.harvester.fetch_news_sentiment()
+                if news:
+                    context.news_sentiment = news.get('sentiment', 'NEUTRAL')
+                    context.news_score = news.get('score', 0)
+                
+                opts = self.harvester.fetch_options_sentiment()
+                if opts:
+                    context.options_sentiment = opts.get('sentiment', 'NEUTRAL')
+                    context.options_pc_ratio = opts.get('pc_ratio_volume', 1.0)
+
+            except Exception as e:
+                logger.warning(f"Harvester integration error: {e}")
+
             # Update cache
             self._cache = context
             self._cache_time = datetime.now()
             
-            logger.info(f"📊 Macro Context updated: BTC.D={context.btc_dominance:.1f}%, Fear={context.fear_greed_index}")
+            logger.info(f"📊 Macro Context updated: BTC.D={context.btc_dominance:.1f}%, Fear={context.fear_greed_index}, News={context.news_sentiment}, Options={context.options_sentiment}")
             
         except Exception as e:
             logger.error(f"Macro context collection error: {e}")
