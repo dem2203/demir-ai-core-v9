@@ -250,7 +250,10 @@ class BotEngine:
             
             try:
                 # Ana İşlem Bloğu
-                await self.process_market_cycle()
+                try:
+                    await self.process_market_cycle()
+                except Exception as cycle_err:
+                    logger.error(f"Cycle processing failed: {cycle_err}", exc_info=True)
                 
                 # Phase 31: Check Telegram Commands (inout, status, help)
                 await self.notifier.check_telegram_commands(self.money_flow_analyzer)
