@@ -71,34 +71,36 @@ class MacroContext:
             'last_updated': self.last_updated
         }
     
+
+
     def get_market_sentiment(self) -> str:
         """Genel piyasa sentiment özeti"""
         signals = []
         
         # Fear & Greed
         if self.fear_greed_index < 25:
-            signals.append("🔴 Extreme Fear (Contrarian BUY)")
-        elif self.fear_greed_index < 40:
-            signals.append("🟠 Fear")
+            signals.append("🔴 Extreme Fear")
         elif self.fear_greed_index > 75:
-            signals.append("🔴 Extreme Greed (Contrarian SELL)")
-        elif self.fear_greed_index > 60:
-            signals.append("🟢 Greed")
+            signals.append("🟢 Extreme Greed")
         else:
-            signals.append("⚪ Neutral")
+            signals.append(f"⚪ F&G: {self.fear_greed_label}")
+        
+        # News Sentiment (New)
+        if self.news_sentiment == "BULLISH":
+            signals.append("📰 News: BULLISH")
+        elif self.news_sentiment == "BEARISH":
+            signals.append("📰 News: BEARISH")
+            
+        # Options Sentiment (New)
+        if self.options_sentiment == "BULLISH":
+            signals.append("📈 Opts: BULLISH (Put Call Ratio Low)")
+        elif self.options_sentiment == "BEARISH":
+            signals.append("📉 Opts: BEARISH (Put Call Ratio High)")
         
         # BTC Dominance
         if self.btc_dominance_change_24h < -1:
-            signals.append("📉 BTC.D düşüyor (Altcoin sezonu?)")
-        elif self.btc_dominance_change_24h > 1:
-            signals.append("📈 BTC.D yükseliyor (Risk-off)")
+            signals.append("📉 BTC.D düşüyor")
             
-        # USDT Dominance
-        if self.usdt_dominance_change_24h > 1:
-            signals.append("🚨 USDT.D PUMP (DANGER)")
-        elif self.usdt_dominance_change_24h < -1:
-            signals.append("📉 USDT.D DUMP (Risk-on)")
-        
         return " | ".join(signals)
 
 
