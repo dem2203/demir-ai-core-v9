@@ -1079,7 +1079,7 @@ class EarlySignalEngine:
             momentum_alerts=[a.to_dict() for a in momentum_alerts],
             score_breakdown=score_breakdown,
             risk_profile=risk_profile,
-            institutional_data=inst_data # NEW
+            institutional_data=inst_snapshot # NEW
         )
     
     def get_last_signal(self, symbol: str) -> Optional[EarlySignal]:
