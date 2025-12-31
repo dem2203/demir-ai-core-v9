@@ -690,10 +690,10 @@ class EarlySignalEngine:
         
         # --- 8. MACRO CONTEXT (Weight: 25%) --- NEW!
         macro_weight = 25
-        if macro_context:
+        if macro_ctx:
             try:
                 # Fear & Greed contrarian signals
-                fear_index = macro_context.fear_greed_index
+                fear_index = macro_ctx.fear_greed_index
                 if fear_index < 25:  # Extreme Fear
                     ai_score += macro_weight * 0.5  # Contrarian BUY
                     reasons.append(f"📊 Fear Index: {fear_index} (Extreme Fear → Contrarian BUY)")
@@ -701,11 +701,11 @@ class EarlySignalEngine:
                     ai_score -= macro_weight * 0.5  # Contrarian SELL
                     reasons.append(f"📊 Fear Index: {fear_index} (Extreme Greed → Contrarian SELL)")
                 else:
-                    reasons.append(f"📊 Fear Index: {fear_index} ({macro_context.fear_greed_label})")
+                    reasons.append(f"📊 Fear Index: {fear_index} ({macro_ctx.fear_greed_label})")
                 
                 # BTC Dominance trend
-                btc_d = macro_context.btc_dominance
-                btc_d_change = macro_context.btc_dominance_change_24h
+                btc_d = macro_ctx.btc_dominance
+                btc_d_change = macro_ctx.btc_dominance_change_24h
                 if btc_d_change < -1:  # BTC.D falling = money flowing to alts
                     if symbol != "BTCUSDT":
                         ai_score += macro_weight * 0.3
@@ -719,8 +719,8 @@ class EarlySignalEngine:
                         
                 # --- MACRO SHIELD (NEW) ---
                 # USDT Dominance check
-                usdt_d = macro_context.usdt_dominance
-                usdt_d_change = macro_context.usdt_dominance_change_24h
+                usdt_d = macro_ctx.usdt_dominance
+                usdt_d_change = macro_ctx.usdt_dominance_change_24h
                 
                 if usdt_d_change > 1.0: # Dolar güçleniyor (Panic selling)
                     ai_score -= 30  # MASSIVE PENALTY FOR ANY BUY SIGNAL
