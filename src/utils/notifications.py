@@ -492,6 +492,7 @@ _{recommendation_reason}_
         Telegram'dan gelen mesajları kontrol et.
         BTC, ETH, SOL, LTC yazılırsa detaylı analiz gönder.
         """
+        logger.info("🔍 Checking Telegram commands...")
         try:
             # Get updates from Telegram
             url = f"https://api.telegram.org/bot{self.telegram_token}/getUpdates?offset=-10&timeout=1"
@@ -531,7 +532,7 @@ _{recommendation_reason}_
                     await self._handle_coin_command(text)
                 
         except Exception as e:
-            logger.debug(f"Telegram command check error: {e}")
+            logger.error(f"❌ Telegram command check error: {e}", exc_info=True)
     
     async def _handle_slash_command(self, text: str):
         """Slash komutlarını işle (/info, /brain, /durum, etc.)"""
