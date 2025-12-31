@@ -27,6 +27,7 @@ from src.execution.paper_trader import get_paper_trader
 from src.execution.feedback_loop import FeedbackLoop
 from src.v10.early_signal_trainer import get_trainer
 from src.brain.rl_agent.auto_retrain import AutoRetrainPipeline  # Smart Pipeline
+from src.brain.correlation_analyzer import get_correlation_analyzer  # Multi-Coin Correlation
 
 logger = logging.getLogger("V10_ENGINE")
 
@@ -64,7 +65,8 @@ class V10Engine:
         self.online_learner = get_online_learner()
         self.feedback_db = get_feedback_db()
         self._current_regime = "UNKNOWN"  # Gets updated per cycle
-        
+        self.correlation_analyzer = get_correlation_analyzer()  # Multi-Coin Correlation
+
         self._last_signal_time: Dict[str, datetime] = {}
         self._last_performance_report = datetime.now()
         self._last_daily_report = datetime.now()
@@ -447,7 +449,32 @@ TAVSİYE:
                     self._signal_cooldowns = {}
                 
                 self._signal_cooldowns[cooldown_key] = datetime.now()
-                
+
+                # === 5. CORRELATION RISK CHECK (NEW) ===
+                try:
+                    # Get open paper trade positions
+                    open_positions = []
+                    for pos_sym, pos_data in self.paper_trader.positions.items():
+                        if pos_data.get('quantity', 0) > 0:
+                            open_positions.append({
+                                'symbol': pos_sym,
+                                'direction': 'BUY'  # Paper trades are always long for now
+                            })
+                    
+                    if open_positions:
+                        should_skip, corr_reason = await self.correlation_analyzer.should_skip_signal(
+                            new_signal_symbol=symbol,
+                            new_signal_direction=early_signal.action,
+                            open_positions=open_positions
+                        )
+                        
+                        if should_skip:
+                            logger.warning(f"[CORRELATION] Signal skipped: {corr_reason}")
+                            self.notifier._send_message(f"⚠️ *SINYAL ATLANDI*\n{corr_reason}")
+                            return
+                except Exception as e:
+                    logger.debug(f"Correlation check error: {e}")
+
                 # === SELF-LEARNING CONFIDENCE ADJUSTMENT ===
                 base_confidence = early_signal.confidence
                 adjusted_prediction = self.online_learner.adjust_prediction(
