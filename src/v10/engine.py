@@ -551,11 +551,16 @@ TAVSİYE:
                         "side": early_signal.action,
                         "entry_price": early_signal.entry_zone[0],
                         "sl_price": early_signal.stop_loss,
-                        "confidence": early_signal.confidence
+                        "tp_price": early_signal.tp_levels[0] if early_signal.tp_levels else early_signal.entry_zone[0] * 1.02,
+                        "confidence": early_signal.confidence,
+                        "rsi": getattr(self, '_last_rsi', -1),
+                        "regime": self._current_regime
                     }
                     if self.paper_trader.execute_trade(trade_signal):
-                        logger.info(f"📝 Paper Trade Executed: {symbol}")
-                        self.notifier._send_message(f"📝 *PAPER TRADE AÇILDI* - {symbol}\nFiyat: {early_signal.entry_zone[0]}")
+                        logger.info(f"📝 Paper Trade Executed: {symbol} | Entry: ${early_signal.entry_zone[0]:,.0f} | SL: ${early_signal.stop_loss:,.0f} | TP: ${trade_signal['tp_price']:,.0f}")
+                        self.notifier._send_message(f"📝 *PAPER TRADE AÇILDI* - {symbol}\n💰 Giriş: ${early_signal.entry_zone[0]:,.0f}\n🛡️ SL: ${early_signal.stop_loss:,.0f}\n🎯 TP: ${trade_signal['tp_price']:,.0f}")
+                    else:
+                        logger.warning(f"⚠️ Paper trade NOT executed: {symbol} (maybe already open?)")
                 except Exception as pt_err:
                     logger.error(f"Paper trade execution error: {pt_err}")
 

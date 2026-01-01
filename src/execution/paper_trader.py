@@ -215,10 +215,14 @@ class PaperTrader:
                     logger.warning("Yetersiz bakiye")
                     return False
                 
+                # TP price from signal or default to entry + (entry - SL) * R/R
+                tp_price = float(signal.get('tp_price', price + (price - sl_price) * 1.5))  # Default 1.5 R/R
+                
                 self.portfolio['balance'] -= cost
                 self.portfolio['positions'][symbol] = {
                     "entry_price": price,
                     "sl_price": sl_price,
+                    "tp_price": tp_price,  # TP eklendi!
                     "amount": amount,
                     "cost": cost,
                     "side": "LONG",
@@ -341,61 +345,81 @@ class PaperTrader:
         AKILLI POZİSYON YÖNETİMİ
         
         Her döngüde çalışır:
-        1. Trailing Stop günceller
-        2. DCA fırsatlarını kontrol eder
-        3. SL/TP kontrolü yapar (otomatik kapat)
+        1. SL/TP kontrolü yapar (OTOMATİK KAPAT)
+        2. Trailing Stop günceller
+        3. DCA fırsatlarını kontrol eder
         
         Args:
             current_prices: {symbol: current_price}
         """
+        if not self.portfolio.get('positions'):
+            return
+            
         closed_positions = []
         
         for symbol in list(self.portfolio['positions'].keys()):
             if symbol not in current_prices:
+                logger.debug(f"⚠️ No price for {symbol}, skipping update")
                 continue
                 
             current_price = current_prices[symbol]
             pos = self.portfolio['positions'][symbol]
             entry_price = pos['entry_price']
             current_sl = pos['sl_price']
-            
-            # 1. TRAILING STOP UPDATE
-            self._update_trailing_stop(symbol, current_price, entry_price, current_sl)
-            
-            # 2. DCA CHECK
-            self._check_and_execute_dca(symbol, current_price, entry_price, pos['amount'])
-            
-            # 3. SL/TP CHECK (Auto-close)
-            # Refresh SL (may have been updated by trailing stop)
-            current_sl = self.portfolio['positions'][symbol]['sl_price']
+            tp_price = pos.get('tp_price', entry_price * 1.02)  # Default TP +2%
             side = pos.get('side', 'LONG')
             
-            # Check Stop Loss (LONG vs SHORT logic)
+            # Calculate current PnL
             if side == 'LONG':
-                # LONG: SL below entry, TP above
-                if current_price <= current_sl:
-                    logger.info(f"🛑 STOP LOSS HIT (LONG): {symbol} @ ${current_price:.2f}")
-                    self.execute_trade({
-                        "symbol": symbol,
-                        "side": "SELL",
-                        "entry_price": current_price
-                    })
-                    closed_positions.append(symbol)
-                    continue
+                pnl_pct = ((current_price - entry_price) / entry_price) * 100
             else:  # SHORT
-                # SHORT: SL above entry, TP below
-                if current_price >= current_sl:
-                    logger.info(f"🛑 STOP LOSS HIT (SHORT): {symbol} @ ${current_price:.2f}")
-                    self.execute_trade({
-                        "symbol": symbol,
-                        "side": "SELL",  # Close SHORT
-                        "entry_price": current_price
-                    })
-                    closed_positions.append(symbol)
-                    continue
+                pnl_pct = ((entry_price - current_price) / entry_price) * 100
             
-            # Simple TP check (if we had TP field)
-            # For now, manual TP via Early Signal confidence
+            logger.debug(f"📊 {symbol}: Price ${current_price:.2f} | Entry ${entry_price:.2f} | PnL {pnl_pct:+.2f}%")
+            
+            # === 1. STOP LOSS CHECK ===
+            sl_hit = False
+            if side == 'LONG':
+                if current_price <= current_sl:
+                    sl_hit = True
+            else:  # SHORT
+                if current_price >= current_sl:
+                    sl_hit = True
+            
+            if sl_hit:
+                logger.info(f"🛑 STOP LOSS HIT ({side}): {symbol} @ ${current_price:.2f} | SL was ${current_sl:.2f}")
+                self.execute_trade({
+                    "symbol": symbol,
+                    "side": "SELL",
+                    "entry_price": current_price
+                })
+                closed_positions.append(symbol)
+                continue
+            
+            # === 2. TAKE PROFIT CHECK ===
+            tp_hit = False
+            if side == 'LONG':
+                if current_price >= tp_price:
+                    tp_hit = True
+            else:  # SHORT
+                if current_price <= tp_price:
+                    tp_hit = True
+            
+            if tp_hit:
+                logger.info(f"🎯 TAKE PROFIT HIT ({side}): {symbol} @ ${current_price:.2f} | TP was ${tp_price:.2f}")
+                self.execute_trade({
+                    "symbol": symbol,
+                    "side": "SELL",
+                    "entry_price": current_price
+                })
+                closed_positions.append(symbol)
+                continue
+            
+            # === 3. TRAILING STOP UPDATE ===
+            self._update_trailing_stop(symbol, current_price, entry_price, current_sl)
+            
+            # === 4. DCA CHECK ===
+            self._check_and_execute_dca(symbol, current_price, entry_price, pos['amount'])
         
         # Clean up trailing stop data for closed positions
         for symbol in closed_positions:
