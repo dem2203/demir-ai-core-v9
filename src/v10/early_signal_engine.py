@@ -943,19 +943,12 @@ class EarlySignalEngine:
         veto_reason = ""
         
         # --- VETO 1: AI COUNCIL VETO ---
-        # If AI Council majority says HOLD, VETO the signal
+        # Use AI Council's internal veto only (fixed to require unanimous HOLD)
+        # REMOVED: Duplicate majority check that was overriding ai_council.py fix
         if hasattr(self, '_last_council_decision') and self._last_council_decision:
             council = self._last_council_decision
-            hold_votes = council.vote_count.get("HOLD", 0)
-            total_votes = sum(council.vote_count.values())
             
-            # If majority says HOLD (more than half)
-            if total_votes > 0 and hold_votes >= total_votes / 2:
-                veto_active = True
-                veto_reason = f"🗳️ AI Council VETO: {hold_votes}/{total_votes} HOLD oyu"
-                logger.warning(f"[VETO] AI Council blocked signal: {veto_reason}")
-            
-            # Council's own VETO (from its internal logic)
+            # Only use Council's internal VETO (now requires 3/3 HOLD)
             if council.veto_active:
                 veto_active = True
                 veto_reason = council.veto_reason

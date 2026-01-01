@@ -428,9 +428,11 @@ TAVSİYE:
                     logger.debug(f"Skipped {symbol}: Low confidence {early_signal.confidence:.0f}% < {min_confidence}%")
                     return
                 
-                # 2. Minimum R/R ratio (INCREASED from 1.0 to 1.5)
-                if early_signal.risk_reward < 1.5:
-                    logger.warning(f"Skipped {symbol}: R/R too low ({early_signal.risk_reward:.1f}x < 1.5x)")
+                # 2. Minimum R/R ratio (ADJUSTED: lower for breakout signals)
+                is_breakout_signal = 'BREAKOUT' in early_signal.reasoning or 'Squeeze' in early_signal.reasoning
+                min_rr = 1.0 if is_breakout_signal else 1.5
+                if early_signal.risk_reward < min_rr:
+                    logger.warning(f"Skipped {symbol}: R/R too low ({early_signal.risk_reward:.1f}x < {min_rr}x)")
                     return
                 
                 # 3. No HOLD signals - but track as shadow trade for learning
