@@ -245,13 +245,20 @@ def build_premium_report(signal, breakout_signal=None, council_decision=None, li
     # LSTM data from ml_prediction
     if signal.ml_prediction:
         ml = signal.ml_prediction
-        report.lstm_direction = ml.get('direction', '')
-        report.lstm_change = ml.get('predicted_change', 0)
+        # Fix: PricePrediction is an object, not a dict
+        if hasattr(ml, 'direction'):
+            report.lstm_direction = ml.direction
+            report.lstm_change = ml.predicted_change
+        elif isinstance(ml, dict):
+            report.lstm_direction = ml.get('direction', '')
+            report.lstm_change = ml.get('predicted_change', 0)
+            
         report.lstm_target = report.price * (1 + report.lstm_change / 100)
     
     # Risk data
     if signal.risk_profile:
         rp = signal.risk_profile
+        # risk_profile is explicitly converted to dict in engine
         report.leverage = rp.get('leverage', 0)
         report.margin_pct = rp.get('position_size_pct', 0)
         report.position_size = rp.get('position_usd', 0)
