@@ -418,7 +418,7 @@ class GeminiAnalyzer(AIAnalyzer):
         super().__init__()
         self.api_key = os.getenv("GOOGLE_API_KEY")
         self.enabled = bool(self.api_key)
-        self.model = "gemini-1.5-flash"
+        self.model = "gemini-2.0-flash-exp"
         
         if self.enabled:
             try:

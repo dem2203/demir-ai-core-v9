@@ -315,7 +315,7 @@ ONLY return JSON, nothing else."""
             import google.generativeai as genai
             
             genai.configure(api_key=self.google_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            model = genai.GenerativeModel('gemini-2.0-flash-exp')
             
             # Decode base64 to bytes for Gemini
             import base64
