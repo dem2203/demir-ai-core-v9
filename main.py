@@ -31,6 +31,7 @@ async def main():
     - Entry/TP/SL hesaplar
     - HATA YUTMAZ
     - Mock/Fallback YOK
+    - Telegram Bot entegrasyonu
     """
     print("=" * 60)
     print(f"🚀 DEMIR AI v10 - PREDICTIVE TRADING SYSTEM")
@@ -41,6 +42,24 @@ async def main():
     from src.v10.engine import get_v10_engine
     
     engine = get_v10_engine()
+    
+    # Telegram Bot'u başlat
+    telegram_app = None
+    try:
+        from src.v10.telegram_bot import get_application
+        telegram_app = get_application()
+        if telegram_app:
+            await telegram_app.initialize()
+            await telegram_app.start()
+            await telegram_app.updater.start_polling()
+            print("✅ Telegram Bot Başlatıldı (Polling)")
+            logger.info("✅ Telegram Bot Başlatıldı (Polling)")
+        else:
+            print("⚠️ Telegram Bot başlatılamadı - TOKEN eksik olabilir")
+            logger.warning("⚠️ Telegram Bot başlatılamadı - TOKEN eksik olabilir")
+    except Exception as e:
+        print(f"❌ Telegram Bot hatası: {e}")
+        logger.error(f"❌ Telegram Bot hatası: {e}")
     
     try:
         print("📡 Starting V10 Engine...")
@@ -54,6 +73,10 @@ async def main():
     except KeyboardInterrupt:
         print("\n🛑 Shutdown requested...")
         await engine.stop()
+        if telegram_app:
+            await telegram_app.updater.stop()
+            await telegram_app.stop()
+            await telegram_app.shutdown()
     except Exception as e:
         logger.error(f"❌ FATAL ERROR: {e}")
         # Telegram'a bildir
