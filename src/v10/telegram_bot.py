@@ -112,20 +112,46 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
+async def cmd_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Generic command handler - routes to telegram_commands"""
+    try:
+        from src.v10.telegram_commands import handle_command
+        command = update.message.text
+        response = await handle_command(command)
+        await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
+    except Exception as e:
+        logger.error(f"Command error: {e}")
+        await update.message.reply_text(f"❌ Komut hatası: {str(e)[:100]}")
+
 def get_application():
-    """Bot uygulamasını oluştur ve döndür"""
+    """Bot uygulamasını oluştur ve döndür - TÜM KOMUTLAR"""
     if not TOKEN:
         logger.error("TELEGRAM_TOKEN env variable not found!")
         return None
         
     application = ApplicationBuilder().token(TOKEN).build()
     
-    start_handler = CommandHandler('start', start)
-    analiz_handler = CommandHandler('analiz', analyze)
+    # === TÜM KOMUTLAR ===
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('analiz', analyze))
     
-    application.add_handler(start_handler)
-    application.add_handler(analiz_handler)
+    # telegram_commands.py'den gelen komutlar
+    application.add_handler(CommandHandler('info', cmd_handler))
+    application.add_handler(CommandHandler('help', cmd_handler))
+    application.add_handler(CommandHandler('durum', cmd_handler))
+    application.add_handler(CommandHandler('status', cmd_handler))
+    application.add_handler(CommandHandler('piyasa', cmd_handler))
+    application.add_handler(CommandHandler('market', cmd_handler))
+    application.add_handler(CommandHandler('istatistik', cmd_handler))
+    application.add_handler(CommandHandler('stats', cmd_handler))
+    application.add_handler(CommandHandler('son', cmd_handler))
+    application.add_handler(CommandHandler('recent', cmd_handler))
+    application.add_handler(CommandHandler('risk', cmd_handler))
+    application.add_handler(CommandHandler('positions', cmd_handler))
+    application.add_handler(CommandHandler('brain', cmd_handler))
+    application.add_handler(CommandHandler('thinking', cmd_handler))
     
+    logger.info("✅ Telegram Bot: 16 komut yüklendi")
     return application
 
 if __name__ == '__main__':
@@ -135,3 +161,4 @@ if __name__ == '__main__':
         app.run_polling()
     else:
         logger.error("Bot başlatılamadı.")
+
