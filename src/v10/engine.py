@@ -574,7 +574,7 @@ TAVSİYE:
                         "side": early_signal.action,
                         "entry_price": early_signal.entry_zone[0],
                         "sl_price": early_signal.stop_loss,
-                        "tp_price": early_signal.tp_levels[0] if early_signal.tp_levels else early_signal.entry_zone[0] * 1.02,
+                        "tp_price": early_signal.take_profit,  # Fixed: was tp_levels[0]
                         "confidence": early_signal.confidence,
                         "rsi": getattr(self, '_last_rsi', -1),
                         "regime": self._current_regime

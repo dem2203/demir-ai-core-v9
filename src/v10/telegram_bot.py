@@ -104,60 +104,77 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def run_analysis(update: Update, symbol: str):
-    """Analiz çalıştır - hem komut hem buton için"""
+    """Analiz çalıştır - Premium Report ile"""
     # Determine where to send the reply
     if update.callback_query:
         message = update.callback_query.message
-        status_msg = await message.reply_text(f"🔍 {symbol} analiz ediliyor... Lütfen bekleyin.")
+        status_msg = await message.reply_text(f"🔍 {symbol} PRO analiz ediliyor... Lütfen bekleyin.")
     else:
         message = update.message
-        status_msg = await message.reply_text(f"🔍 {symbol} analiz ediliyor... Lütfen bekleyin.")
+        status_msg = await message.reply_text(f"🔍 {symbol} PRO analiz ediliyor... Lütfen bekleyin.")
 
     try:
         from src.v10.early_signal_engine import EarlySignalEngine
+        from src.v10.premium_report import build_premium_report
+        from src.brain.breakout_hunter import get_breakout_hunter
+        from src.brain.liquidation_hunter import LiquidationHunter
         
         engine = EarlySignalEngine()
         signal = await engine.analyze(symbol)
         
         if signal:
-            # Emoji selection
-            if signal.action == "BUY":
-                emoji = "🟢"
-            elif signal.action == "SELL":
-                emoji = "🔴"
-            else:
-                emoji = "⏸️"
-                
-            risk_info = ""
-            if signal.risk_profile:
-                rp = signal.risk_profile
-                risk_info = (
-                    f"\n💰 KASA YÖNETİMİ:\n"
-                    f"• Kaldıraç: {rp.get('leverage')}x\n"
-                    f"• Marjin: %{rp.get('position_size_pct')}\n"
-                )
-
-            # Get price safely
-            try:
-                price = await engine._get_current_price(symbol)
-                price_str = f"${price:,.2f}"
-            except:
-                price_str = "N/A"
-
-            # Plain text report (NO MARKDOWN!)
-            report = (
-                f"🧠 AI ANALİZ RAPORU - {signal.symbol}\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"📍 Karar: {emoji} {signal.action}\n"
-                f"🎯 Güven: %{signal.confidence:.0f}\n"
-                f"💰 Fiyat: {price_str}\n"
-                f"{risk_info}\n"
-                f"📝 AI Mantığı:\n{signal.reasoning[:500] if signal.reasoning else 'N/A'}\n\n"
-                f"🤖 Claude: {signal.llm_reasoning[:300] if signal.llm_reasoning else 'N/A'}\n\n"
-                f"⏰ {signal.timestamp.strftime('%H:%M:%S')}"
-            )
+            # Collect additional data for premium report
+            breakout_signal = None
+            liq_data = None
+            council_decision = None
             
-            await message.reply_text(report, reply_markup=get_main_keyboard())
+            try:
+                # Get Breakout Hunter data
+                breakout_hunter = get_breakout_hunter()
+                breakout_signal = await breakout_hunter.analyze(symbol)
+            except Exception as e:
+                logger.warning(f"Breakout hunter error: {e}")
+            
+            try:
+                # Get Liquidation Hunter data
+                liq_hunter = LiquidationHunter()
+                liq_result = await liq_hunter.get_liquidation_heatmap(symbol)
+                liq_data = {
+                    'ls_ratio': liq_result.get('lsr', 1.0),
+                    'funding_rate': liq_result.get('funding', 0),
+                    'liquidation_magnet': liq_result.get('magnet', 0)
+                }
+            except Exception as e:
+                logger.warning(f"Liquidation hunter error: {e}")
+            
+            try:
+                # Get AI Council decision
+                if hasattr(engine, '_last_council_decision'):
+                    council_decision = engine._last_council_decision
+            except Exception as e:
+                logger.warning(f"Council decision error: {e}")
+            
+            # Build Premium Report
+            try:
+                report = build_premium_report(
+                    signal=signal,
+                    breakout_signal=breakout_signal,
+                    council_decision=council_decision,
+                    liq_data=liq_data
+                )
+                report_text = report.to_telegram_message()
+            except Exception as e:
+                logger.error(f"Premium report build error: {e}")
+                # Fallback to simple report
+                report_text = (
+                    f"🧠 AI ANALİZ RAPORU - {signal.symbol}\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"📍 Karar: {signal.action}\n"
+                    f"🎯 Güven: %{signal.confidence:.0f}\n"
+                    f"📝 {signal.reasoning[:300] if signal.reasoning else 'N/A'}"
+                )
+            
+            await message.reply_text(report_text, reply_markup=get_main_keyboard())
         else:
             await message.reply_text(f"❌ {symbol} için veri alınamadı veya sinyal üretilemedi.")
             
