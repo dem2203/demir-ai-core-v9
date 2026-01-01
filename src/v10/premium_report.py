@@ -192,7 +192,7 @@ def build_premium_report(signal, breakout_signal=None, council_decision=None, li
     
     # Breakout Hunter data
     if breakout_signal:
-        report.breakout_active = breakout_signal.is_squeezing
+        report.breakout_active = breakout_signal.is_squeeze
         report.breakout_direction = breakout_signal.direction
         report.breakout_probability = int(breakout_signal.probability * 100)
         report.breakout_imminent = breakout_signal.is_imminent

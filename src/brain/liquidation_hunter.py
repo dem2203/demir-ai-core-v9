@@ -39,7 +39,33 @@ class LiquidationHunter:
 
     async def analyze(self, symbol: str = "BTCUSDT") -> Dict:
         """Standard interface for Brain Modules"""
-        return await self.get_full_liquidation_analysis(symbol)
+        return await self.calculate_liquidation_levels(symbol)
+
+    async def get_liquidation_heatmap(self, symbol: str) -> Dict:
+        """
+        Get liquidation heatmap data (wrapper for compatibility)
+        Returns:
+            {
+                'lsr': float,
+                'funding': float,
+                'magnet': float
+            }
+        """
+        # Calculate levels first
+        data = await self.calculate_liquidation_levels(symbol)
+        real_data = data.get('real_data', {})
+        
+        # Extract metrics
+        lsr = real_data.get('long_short_ratio', 1.0)
+        funding = real_data.get('funding_rate', 0.0)
+        magnet = data.get('magnet_price', 0.0)
+        
+        return {
+            'lsr': lsr,
+            'funding': funding,
+            'magnet': magnet,
+            'heatmap_clusters': [] # Placeholder
+        }
     
     async def calculate_liquidation_levels(self, symbol: str = "BTCUSDT") -> Dict:
         """
