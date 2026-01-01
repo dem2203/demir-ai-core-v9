@@ -194,17 +194,20 @@ def build_premium_report(signal, breakout_signal=None, council_decision=None, li
     if breakout_signal:
         report.breakout_active = breakout_signal.is_squeeze
         report.breakout_direction = breakout_signal.direction
-        report.breakout_probability = int(breakout_signal.probability * 100)
+        report.breakout_probability = int(breakout_signal.breakout_probability)
         report.breakout_imminent = breakout_signal.is_imminent
-        report.orderbook_bias = breakout_signal.orderbook_bias
-        report.whale_activity = breakout_signal.whale_activity
-    
+
     # Leading Signal data
     if signal.leading_signal:
         ls = signal.leading_signal
         report.trend = ls.trend
         report.rsi = ls.rsi_1h if hasattr(ls, 'rsi_1h') else 50
         report.bollinger_squeeze = "squeeze" in signal.reasoning.lower() if signal.reasoning else False
+        
+        # Whale & Orderbook from Leading Indicators
+        report.orderbook_bias = getattr(ls, 'orderbook_score', 0)
+        whale_score = getattr(ls, 'whale_score', 0)
+        report.whale_activity = "Bullish" if whale_score > 0 else "Bearish" if whale_score < 0 else "Neutral"
     
     # AI Council data
     if council_decision:
