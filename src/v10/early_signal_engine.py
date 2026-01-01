@@ -41,6 +41,7 @@ from src.brain.pivot_points import get_pivot_points
 from src.brain.volatility_predictor import VolatilityPredictor
 from src.brain.news_scraper import CryptoNewsScraper
 from src.brain.regime_classifier import RegimeClassifier
+from src.brain.feature_engineering import FeatureEngineer # For RSI/MACD calculation
 
 # AI MODELS - Real AI Decision Making
 from src.v10.lstm_predictor import get_lstm_predictor, PricePrediction
@@ -78,6 +79,7 @@ class EarlySignal:
     score_breakdown: Dict = None   # Tech, Macro, Onchain scores
     risk_profile: Dict = None      # 💰 Smart Risk Manager output
     institutional_data: Dict = None # 🏦 PHASE 14: Raw Institutional Data
+    technical_indicators: Dict = None # 📊 Added for Premium Report (RSI, MACD, etc.)
     timestamp: datetime = field(default_factory=datetime.now)
     
     def __post_init__(self):
@@ -397,9 +399,33 @@ class EarlySignalEngine:
             momentum_context=momentum_context,
             fractal_match=fractal_match, # NEW
             inst_snapshot=inst_snapshot, # NEW
+            inst_snapshot=inst_snapshot, # NEW
             sudden_triggers=sudden_triggers, # NEW
             breakout_signal=breakout_signal  # 🚀 BREAKOUT HUNTER
         )
+        
+        # --- NEW: Calculate & Attach Technical Indicators for Report ---
+        try:
+            snapshot = self.leading_indicators.latest_snapshot
+            if hasattr(snapshot, 'klines') and len(snapshot.klines) > 50:
+                 import pandas as pd
+                 # Binance kline format: [open_time, open, high, low, close, volume, ...]
+                 df_tech = pd.DataFrame(snapshot.klines, columns=['open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'q_vol', 'num_trades', 'taker_buy_vol', 'taker_buy_quote_vol', 'ignore'])
+                 df_tech['close'] = df_tech['close'].astype(float)
+                 df_tech['high'] = df_tech['high'].astype(float)
+                 df_tech['low'] = df_tech['low'].astype(float)
+                 
+                 # Calc Indicators
+                 rsi = FeatureEngineer.calculate_rsi(df_tech)
+                 macd, macd_signal = FeatureEngineer.calculate_macd(df_tech)
+                 
+                 signal.technical_indicators = {
+                     'rsi': float(rsi.iloc[-1]),
+                     'macd': float(macd.iloc[-1]),
+                     'macd_signal': float(macd_signal.iloc[-1])
+                 }
+        except Exception as e:
+            logger.warning(f"Technical indicators calc error: {e}")
         
         # 6. Training için veri topla
         self.feature_collector.collect_training_sample(leading_signal, current_price)

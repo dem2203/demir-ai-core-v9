@@ -206,7 +206,7 @@ def build_premium_report(signal, breakout_signal=None, council_decision=None, li
         else:
              report.trend = str(ls.direction)
              
-        report.rsi = ls.rsi_1h if hasattr(ls, 'rsi_1h') else 50
+        # Bollinger Squeeze is still derived from reasoning for now
         report.bollinger_squeeze = "squeeze" in signal.reasoning.lower() if signal.reasoning else False
         
         # Whale & Orderbook from Leading Indicators
@@ -216,7 +216,18 @@ def build_premium_report(signal, breakout_signal=None, council_decision=None, li
     
     # AI Council data
     if council_decision:
-        votes = council_decision.individual_votes if hasattr(council_decision, 'individual_votes') else {}
+        votes = {}
+        # Fix: Parse individual_analyses list from CouncilDecision
+        if hasattr(council_decision, 'individual_analyses') and council_decision.individual_analyses:
+            for anal in council_decision.individual_analyses:
+                votes[anal.model_name] = {
+                    'vote': anal.direction,
+                    'confidence': anal.confidence,
+                    'reason': anal.reasoning
+                }
+        # Fallback to old dict format
+        elif hasattr(council_decision, 'individual_votes'):
+            votes = council_decision.individual_votes
         
         if 'Claude' in votes:
             v = votes['Claude']
@@ -229,12 +240,31 @@ def build_premium_report(signal, breakout_signal=None, council_decision=None, li
             report.gpt4_vote = v.get('vote', 'HOLD')
             report.gpt4_conf = int(v.get('confidence', 50))
             report.gpt4_reason = v.get('reason', '')[:50]
-        
+            
         if 'DeepSeek' in votes:
             v = votes['DeepSeek']
             report.deepseek_vote = v.get('vote', 'HOLD')
             report.deepseek_conf = int(v.get('confidence', 50))
             report.deepseek_reason = v.get('reason', '')[:50]
+            
+    # Technical Indicators (Enhanced)
+    # Priority: Calculated Tech Indicators (New) > Leading Signal Proxy (Old)
+    if hasattr(signal, 'technical_indicators') and signal.technical_indicators:
+        ti = signal.technical_indicators
+        report.rsi = ti.get('rsi', 50)
+        
+        # MACD Interpretation
+        macd_val = ti.get('macd', 0)
+        sig_val = ti.get('macd_signal', 0)
+        if macd_val > sig_val:
+            report.macd_signal = "BULLISH CROSS"
+        elif macd_val < sig_val:
+             report.macd_signal = "BEARISH CROSS"
+        else:
+             report.macd_signal = "NEUTRAL"
+    elif signal.leading_signal:
+         ls = signal.leading_signal
+         report.rsi = ls.rsi_1h if hasattr(ls, 'rsi_1h') else 50
     
     # Liquidation data
     if liq_data:
