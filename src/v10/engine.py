@@ -422,9 +422,10 @@ TAVSİYE:
                 )
                 
                 # === QUALITY FILTERS ===
-                # 1. Minimum confidence
-                if early_signal.confidence < 60:
-                    logger.debug(f"Skipped {symbol}: Low confidence {early_signal.confidence:.0f}%")
+                # 1. Minimum confidence (düşürüldü: breakout'lar için daha agresif)
+                min_confidence = 45 if ('BREAKOUT' in early_signal.reasoning or 'Squeeze' in early_signal.reasoning) else 55
+                if early_signal.confidence < min_confidence:
+                    logger.debug(f"Skipped {symbol}: Low confidence {early_signal.confidence:.0f}% < {min_confidence}%")
                     return
                 
                 # 2. Minimum R/R ratio (INCREASED from 1.0 to 1.5)

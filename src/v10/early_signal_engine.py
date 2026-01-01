@@ -54,6 +54,7 @@ from src.brain.risk_manager import get_risk_manager
 from src.brain.fractal_analyzer import get_fractal_analyzer
 from src.brain.institutional_aggregator import InstitutionalAggregator, LiveDataSnapshot # PHASE 14
 from src.brain.ai_council import get_ai_council, CouncilDecision  # AI COUNCIL - 4 AI VOTING
+from src.brain.breakout_hunter import get_breakout_hunter, BreakoutSignal  # BREAKOUT HUNTER - Ani yükselişler
 
 logger = logging.getLogger("EARLY_SIGNAL_ENGINE")
 
@@ -321,7 +322,8 @@ class EarlySignalEngine:
             asyncio.to_thread(self.news_scraper.get_market_sentiment),
             self._analyze_regime(symbol),
             get_macro_context(),
-            get_momentum_context(symbol)  # NEW: Momentum for breakout detection
+            get_momentum_context(symbol),  # Momentum for breakout detection
+            get_breakout_hunter().analyze(symbol)  # 🚀 BREAKOUT HUNTER - Ani yükselişler
         ]
         
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -336,6 +338,7 @@ class EarlySignalEngine:
         regime_data = results[6] if len(results) > 6 and not isinstance(results[6], Exception) else {"regime": "UNKNOWN"}
         macro_context = results[7] if len(results) > 7 and not isinstance(results[7], Exception) else None
         momentum_context = results[8] if len(results) > 8 and not isinstance(results[8], Exception) else None
+        breakout_signal = results[9] if len(results) > 9 and not isinstance(results[9], Exception) else None
         
         if not leading_signal:
              return None
@@ -394,7 +397,8 @@ class EarlySignalEngine:
             momentum_context=momentum_context,
             fractal_match=fractal_match, # NEW
             inst_snapshot=inst_snapshot, # NEW
-            sudden_triggers=sudden_triggers # NEW
+            sudden_triggers=sudden_triggers, # NEW
+            breakout_signal=breakout_signal  # 🚀 BREAKOUT HUNTER
         )
         
         # 6. Training için veri topla
@@ -584,7 +588,8 @@ class EarlySignalEngine:
         momentum_context = None,  # NEW: MomentumContext for breakout detection
         fractal_match = None,      # NEW: Fractal memory
         inst_snapshot: LiveDataSnapshot = None, # NEW
-        sudden_triggers = None # NEW
+        sudden_triggers = None, # NEW
+        breakout_signal: BreakoutSignal = None  # 🚀 BREAKOUT HUNTER
     ) -> EarlySignal:
         """
         HYBRID AI BRAIN DECISION
@@ -615,6 +620,28 @@ class EarlySignalEngine:
                 ai_score += 20
             elif leading.direction in [SignalDirection.STRONG_BEARISH, SignalDirection.BEARISH]:
                 ai_score -= 20
+        
+        # --- 1.5 BREAKOUT HUNTER (Weight: 35%) --- 🚀 YENİ!
+        breakout_weight = 35
+        if breakout_signal and breakout_signal.is_squeeze:
+            if breakout_signal.is_imminent:
+                # BREAKOUT ÇOK YAKIN - Agresif sinyal
+                if breakout_signal.direction == "BULLISH":
+                    ai_score += breakout_weight
+                    reasons.append(f"🚨 BREAKOUT IMMINENT: UP ({breakout_signal.breakout_probability:.0f}%)")
+                elif breakout_signal.direction == "BEARISH":
+                    ai_score -= breakout_weight
+                    reasons.append(f"🚨 BREAKOUT IMMINENT: DOWN ({breakout_signal.breakout_probability:.0f}%)")
+                logger.warning(f"🚀 {symbol}: IMMINENT BREAKOUT {breakout_signal.direction} - Prob: {breakout_signal.breakout_probability:.0f}%")
+            else:
+                # Sıkışma var ama patlama henüz yakın değil
+                breakout_contribution = breakout_weight * 0.3  # %30 katkı
+                if breakout_signal.direction == "BULLISH":
+                    ai_score += breakout_contribution
+                    reasons.append(f"🔥 Squeeze: {breakout_signal.squeeze_duration} bars ({breakout_signal.direction})")
+                elif breakout_signal.direction == "BEARISH":
+                    ai_score -= breakout_contribution
+                    reasons.append(f"🔥 Squeeze: {breakout_signal.squeeze_duration} bars ({breakout_signal.direction})")
         
         # --- 2. ORDER BOOK PRESSURE (Weight: 25%) ---
         ob_weight = 25
