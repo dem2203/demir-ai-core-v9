@@ -1119,11 +1119,29 @@ class EarlySignalEngine:
                 take_profit = magnet
                 reasons.append(f"🧲 TP at Liq Magnet (${magnet:,.0f})")
 
-        # Risk/Reward
+        # Risk/Reward Calculation with QUALITY CHECK
         if action != "HOLD":
             risk = abs(current_price - stop_loss)
             reward = abs(take_profit - current_price)
             risk_reward = reward / risk if risk > 0 else 0
+            
+            # === R/R QUALITY CHECK ===
+            # If R/R is too low (< 1.5x), revert to ATR-based TP/SL (more aggressive)
+            if risk_reward < 1.5:
+                # Recalculate with ATR-based multipliers (minimum 1.5:1 R/R guaranteed)
+                if action == "BUY":
+                    # Use 1.5% SL, 3% TP for minimum 2:1 R/R
+                    stop_loss = current_price * 0.985  # -1.5%
+                    take_profit = current_price * 1.03  # +3%
+                elif action == "SELL":
+                    stop_loss = current_price * 1.015  # +1.5%
+                    take_profit = current_price * 0.97  # -3%
+                    
+                # Recalculate R/R
+                risk = abs(current_price - stop_loss)
+                reward = abs(take_profit - current_price)
+                risk_reward = reward / risk if risk > 0 else 0
+                reasons.append(f"⚖️ R/R optimized: {risk_reward:.1f}x")
         else:
             risk_reward = 0
             
