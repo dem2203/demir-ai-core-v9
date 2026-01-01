@@ -831,6 +831,9 @@ class EarlySignalEngine:
                     # Store LLM reasoning for display
                     llm_reasoning = llm_analysis.reasoning
                     
+                    # Store for VETO mechanism (NEW)
+                    self._last_llm_analysis = llm_analysis
+                    
                     logger.info(f"🧠 LLM Brain: {llm_analysis.direction} ({llm_analysis.confidence}%)")
         except Exception as e:
             logger.warning(f"LLM Brain error: {e}")
@@ -880,10 +883,70 @@ class EarlySignalEngine:
                 elif trigger.severity == "CRITICAL":
                     reasons.append(f"⚠️ CRTICAL ALERT: {trigger.name} ({trigger.value})")
         
+        # === VETO MECHANISMS (NEW - 2026-01-01) ===
+        # These can override ai_score and force HOLD
+        veto_active = False
+        veto_reason = ""
+        
+        # --- VETO 1: LLM BRAIN VETO ---
+        # If Claude says HOLD/BEKLE with confidence > 50%, VETO the signal
+        if self.llm_brain and hasattr(self, '_last_llm_analysis'):
+            llm_analysis = self._last_llm_analysis
+            if llm_analysis and llm_analysis.direction in ["HOLD", "BEKLE", "WAIT"]:
+                if llm_analysis.confidence >= 50:
+                    veto_active = True
+                    veto_reason = f"🤖 Claude VETO: {llm_analysis.direction} ({llm_analysis.confidence}%) - {llm_analysis.reasoning[:100]}"
+                    logger.warning(f"[VETO] LLM Brain blocked signal: {veto_reason}")
+        
+        # Store LLM analysis for veto check
+        if 'llm_analysis' in dir() and llm_analysis:
+            self._last_llm_analysis = llm_analysis
+        
+        # --- VETO 2: REGIME FILTER ---
+        # Don't go LONG in TRENDING_BEAR, don't go SHORT in TRENDING_BULL
+        if not veto_active:
+            if regime == "TRENDING_BEAR" and ai_score > 20:  # Would be BUY
+                # Option 1: Reduce score by 50%
+                original_score = ai_score
+                ai_score = ai_score * 0.5
+                reasons.append(f"⚠️ REGIME FILTER: Bear market, LONG risk reduced ({original_score:.0f}→{ai_score:.0f})")
+                
+                # Option 2: If score is barely positive, VETO completely
+                if ai_score < 25:
+                    veto_active = True
+                    veto_reason = f"🐻 Regime VETO: TRENDING_BEAR - LONG signals blocked (score {ai_score:.0f})"
+                    logger.warning(f"[VETO] Regime blocked LONG in bear market")
+                    
+            elif regime == "TRENDING_BULL" and ai_score < -20:  # Would be SELL
+                original_score = ai_score
+                ai_score = ai_score * 0.5
+                reasons.append(f"⚠️ REGIME FILTER: Bull market, SHORT risk reduced")
+                
+                if ai_score > -25:
+                    veto_active = True
+                    veto_reason = f"🐂 Regime VETO: TRENDING_BULL - SHORT signals blocked"
+                    logger.warning(f"[VETO] Regime blocked SHORT in bull market")
+        
+        # --- VETO 3: ORDERBOOK CONTRADICTION ---
+        # Don't go LONG when orderbook is heavily bearish (>50% sell)
+        if not veto_active:
+            if orderbook_score < -50 and ai_score > 20:  # Heavy selling but BUY signal
+                veto_active = True
+                veto_reason = f"📕 Orderbook VETO: {orderbook_score:.0f}% sell pressure - LONG blocked"
+                logger.warning(f"[VETO] Orderbook contradiction: {orderbook_score} but trying to BUY")
+            elif orderbook_score > 50 and ai_score < -20:  # Heavy buying but SELL signal
+                veto_active = True
+                veto_reason = f"📗 Orderbook VETO: +{orderbook_score:.0f}% buy pressure - SHORT blocked"
+                logger.warning(f"[VETO] Orderbook contradiction: {orderbook_score} but trying to SELL")
+        
         # === FINAL DECISION ===
         # Threshold: Need significant score to generate signal
-        # LOWERED from 30 to 20 for more signal opportunities
-        if ai_score > 20:
+        if veto_active:
+            action = "HOLD"
+            confidence = 30
+            reasons.append(veto_reason)
+            logger.info(f"🚫 Signal VETOED for {symbol}: {veto_reason}")
+        elif ai_score > 20:
             action = "BUY"
             confidence = min(95, 50 + ai_score)  # 50-95% range
         elif ai_score < -20:
@@ -893,7 +956,7 @@ class EarlySignalEngine:
             action = "HOLD"
             confidence = 30
         
-        logger.info(f"🤖 AI Brain {symbol}: Score={ai_score:.0f} → {action} ({confidence:.0f}%)")
+        logger.info(f"🤖 AI Brain {symbol}: Score={ai_score:.0f} → {action} ({confidence:.0f}%){'[VETOED]' if veto_active else ''}")
         
         # === DYNAMIC SL/TP (ATR-Based) ===
         # Volatility determines SL/TP distance

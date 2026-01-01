@@ -427,9 +427,9 @@ TAVSİYE:
                     logger.debug(f"Skipped {symbol}: Low confidence {early_signal.confidence:.0f}%")
                     return
                 
-                # 2. Minimum R/R ratio (CRITICAL FIX)
-                if early_signal.risk_reward < 1.0:
-                    logger.warning(f"Skipped {symbol}: R/R too low ({early_signal.risk_reward:.1f}x < 1.0x)")
+                # 2. Minimum R/R ratio (INCREASED from 1.0 to 1.5)
+                if early_signal.risk_reward < 1.5:
+                    logger.warning(f"Skipped {symbol}: R/R too low ({early_signal.risk_reward:.1f}x < 1.5x)")
                     return
                 
                 # 3. No HOLD signals
