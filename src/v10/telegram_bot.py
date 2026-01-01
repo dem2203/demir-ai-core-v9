@@ -11,6 +11,7 @@ Komutlar:
 """
 import logging
 import os
+import re
 import asyncio
 from dotenv import load_dotenv
 from telegram import Update
@@ -28,6 +29,14 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+def escape_markdown(text: str) -> str:
+    """Escape special characters for Telegram Markdown"""
+    if not text:
+        return ""
+    # Escape these characters: _ * [ ] ( ) ~ ` > # + - = | { } . !
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', str(text))
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/start komutu"""
@@ -91,12 +100,19 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🎯 Güven: *%{signal.confidence:.0f}*\n"
                 f"💰 Fiyat: ${await engine._get_current_price(symbol):,.2f}\n"
                 f"{risk_info}\n"
-                f"📝 *AI Mantığı:*\n{signal.reasoning}\n\n"
-                f"🤖 *Claude:* {signal.llm_reasoning}\n\n"
+                f"📝 *AI Mantığı:*\n{escape_markdown(signal.reasoning)}\n\n"
+                f"🤖 *Claude:* {escape_markdown(signal.llm_reasoning)}\n\n"
                 f"⏰ {signal.timestamp.strftime('%H:%M:%S')}"
             )
             
-            await update.message.reply_text(report, parse_mode=ParseMode.MARKDOWN)
+            # Try markdown first, fallback to plain text if parse error
+            try:
+                await update.message.reply_text(report, parse_mode=ParseMode.MARKDOWN)
+            except Exception as md_err:
+                logger.warning(f"Markdown parse error, falling back to plain text: {md_err}")
+                # Send as plain text
+                plain_report = report.replace("*", "")
+                await update.message.reply_text(plain_report)
         else:
             await update.message.reply_text(f"❌ {symbol} için veri alınamadı veya sinyal üretilemedi.")
             
