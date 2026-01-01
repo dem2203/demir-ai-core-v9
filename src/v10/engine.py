@@ -432,8 +432,28 @@ TAVSİYE:
                     logger.warning(f"Skipped {symbol}: R/R too low ({early_signal.risk_reward:.1f}x < 1.5x)")
                     return
                 
-                # 3. No HOLD signals
+                # 3. No HOLD signals - but track as shadow trade for learning
                 if early_signal.action == 'HOLD':
+                    # === SHADOW PAPER TRADE FOR LEARNING ===
+                    # Even though vetoed, record what WOULD have happened
+                    # This helps learn if AI Council is making good decisions
+                    try:
+                        original_signal = early_signal.ml_prediction or {}
+                        original_action = original_signal.get('original_action', 'UNKNOWN')
+                        if original_action in ['BUY', 'SELL']:
+                            shadow_signal = {
+                                "symbol": symbol,
+                                "side": original_action,
+                                "entry_price": snapshot.price,
+                                "sl_price": snapshot.price * 0.98 if original_action == 'BUY' else snapshot.price * 1.02,
+                                "tp_price": snapshot.price * 1.02 if original_action == 'BUY' else snapshot.price * 0.98,
+                                "is_shadow": True,  # Mark as shadow trade
+                                "veto_reason": early_signal.reasoning
+                            }
+                            # Log but don't execute - just record for analysis
+                            logger.info(f"🔮 SHADOW TRADE: {symbol} {original_action} @ ${snapshot.price:,.0f} (VETOED by AI Council)")
+                    except Exception as shadow_err:
+                        logger.debug(f"Shadow trade log error: {shadow_err}")
                     return
                 
                 # 4. Signal cooldown - prevent conflicting signals

@@ -417,7 +417,7 @@ class GeminiAnalyzer(AIAnalyzer):
     def __init__(self):
         super().__init__()
         self.api_key = os.getenv("GOOGLE_API_KEY")
-        self.enabled = bool(self.api_key)
+        self.enabled = False  # TEMPORARILY DISABLED - Quota exceeded, use 3 AI models
         self.model = "gemini-2.0-flash-exp"
         
         if self.enabled:
@@ -677,12 +677,18 @@ class AICouncil:
         if unanimous:
             avg_confidence = min(100, avg_confidence + 10)
         
-        # VETO kontrolü - Çoğunluk HOLD derse
+        # VETO kontrolü - Tüm AI'lar HOLD derse (daha az agresif)
+        # Eski: Çoğunluk HOLD = VETO (çok agresif, paper trade engelliyor)
+        # Yeni: Oybirliğiyle HOLD = VETO (daha fazla trade, daha fazla öğrenme)
         veto_active = False
         veto_reason = ""
-        if vote_count["HOLD"] >= len(analyses) // 2 + 1:
+        total_models = len(analyses)
+        if vote_count["HOLD"] == total_models and total_models > 0:
             veto_active = True
-            veto_reason = f"AI Council: {vote_count['HOLD']}/{len(analyses)} HOLD oyu"
+            veto_reason = f"AI Council: {vote_count['HOLD']}/{total_models} HOLD oyu (oybirliği)"
+        elif vote_count["HOLD"] >= total_models - 1 and total_models >= 3:
+            # 3 AI'dan 2'si HOLD derse uyarı ver ama VETO yapma
+            logger.warning(f"⚠️ High HOLD votes ({vote_count['HOLD']}/{total_models}) - proceeding with caution")
         
         # Combined reasoning
         key_reasons = []
