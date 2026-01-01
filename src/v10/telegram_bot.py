@@ -165,9 +165,10 @@ async def run_analysis(update: Update, symbol: str):
                 report_text = report.to_telegram_message()
             except Exception as e:
                 logger.error(f"Premium report build error: {e}")
-                # Fallback to simple report
+                # Fallback to simple report with DEBUG INFO
                 report_text = (
                     f"🧠 AI ANALİZ RAPORU - {signal.symbol}\n"
+                    f"⚠️ SİSTEM HATASI: {str(e)}\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"📍 Karar: {signal.action}\n"
                     f"🎯 Güven: %{signal.confidence:.0f}\n"
