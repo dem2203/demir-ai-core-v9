@@ -53,6 +53,7 @@ from src.brain.momentum_detector import get_momentum_context, MomentumContext
 from src.brain.risk_manager import get_risk_manager
 from src.brain.fractal_analyzer import get_fractal_analyzer
 from src.brain.institutional_aggregator import InstitutionalAggregator, LiveDataSnapshot # PHASE 14
+from src.brain.ai_council import get_ai_council, CouncilDecision  # AI COUNCIL - 4 AI VOTING
 
 logger = logging.getLogger("EARLY_SIGNAL_ENGINE")
 
@@ -777,66 +778,92 @@ class EarlySignalEngine:
             except Exception as e:
                 logger.debug(f"Fractal scoring error: {e}")
         
-        # --- 11. LLM BRAIN ANALYSIS (Weight: 15%) --- NEW!
-        llm_weight = 15
+        # --- 11. AI COUNCIL VOTING (Weight: 30%) --- UPGRADED FROM LLM BRAIN!
+        # 4 AI models vote together: Claude, GPT-4, Gemini, DeepSeek
+        council_weight = 30  # Increased from 15% to 30%
+        council_decision: Optional[CouncilDecision] = None
+        
         try:
-            if self.llm_brain and self.llm_brain.is_enabled:
-                # Build technical data for LLM
-                technical_data = {
+            ai_council = get_ai_council()
+            
+            if ai_council.enabled:
+                # Build comprehensive market data for all AIs
+                council_market_data = {
+                    # Technical
                     'lstm_direction': ml_pred.direction if ml_pred else 'N/A',
                     'lstm_change': ml_pred.predicted_change_pct if ml_pred else 0,
                     'lstm_confidence': ml_pred.confidence if ml_pred else 0,
                     'rsi': leading.indicators[0].value if leading.indicators else 50,
-                    'orderbook_score': leading.orderbook_score,
+                    'trend': pattern_data.get('structure', {}).get('trend', 'UNKNOWN'),
+                    'volatility_state': vol_state,
                     'wyckoff_phase': pattern_data.get('wyckoff', {}).get('phase', 'N/A'),
-                    'volatility_state': vol_state
+                    
+                    # Order Flow
+                    'orderbook_score': leading.orderbook_score,
+                    'whale_score': leading.whale_score,
+                    
+                    # Macro
+                    'fear_greed': macro_ctx.fear_greed_index if macro_ctx else 50,
+                    'btc_dominance': macro_ctx.btc_dominance if macro_ctx else 50,
+                    'regime': regime,
+                    'news_sentiment': macro_ctx.news_sentiment if macro_ctx else 'NEUTRAL',
+                    'options_sentiment': macro_ctx.options_sentiment if macro_ctx else 'NEUTRAL',
+                    
+                    # Liquidation
+                    'funding_rate': liq_data.get('funding_rate', 0),
+                    'ls_ratio': liq_data.get('ls_ratio', 1.0),
+                    'oi_change': liq_data.get('oi_change_24h', 0),
+                    
+                    # Pivots
+                    'daily_r1': pivot_data.get('daily_pivots', [{}])[0].get('price', 0) if pivot_data else 0,
+                    'daily_s1': pivot_data.get('daily_pivots', [{}])[-1].get('price', 0) if pivot_data else 0,
                 }
                 
-                macro_data = macro_ctx.to_dict() if macro_ctx else {}
-                momentum_data = momentum_context.to_dict() if momentum_context else {}
-                
-                onchain_data = {
-                    'whale_flow': leading.whale_score,
-                    'funding_rate': leading.funding_score,
-                    'exchange_flow': 'N/A'
-                }
-                
-                sentiment_data = {
-                    'news_sentiment': sentiment,
-                    'social_sentiment': 'N/A'
-                }
-                
-                # Call LLM Brain
-                llm_analysis = await self.llm_brain.analyze(
+                # Call AI Council - All 4 AIs analyze in parallel
+                council_decision = await ai_council.analyze(
                     symbol=symbol,
                     current_price=current_price,
-                    technical_data=technical_data,
-                    macro_data=macro_data,
-                    onchain_data=onchain_data,
-                    sentiment_data=sentiment_data,
-                    momentum_data=momentum_data  # NEW: Momentum context
+                    market_data=council_market_data
                 )
                 
-                if llm_analysis:
-                    # Add LLM contribution to score
-                    if llm_analysis.direction == "BUY":
-                        ai_score += llm_weight * (llm_analysis.confidence / 100)
-                        reasons.append(f"🤖 Claude: BUY ({llm_analysis.confidence}%)")
-                    elif llm_analysis.direction == "SELL":
-                        ai_score -= llm_weight * (llm_analysis.confidence / 100)
-                        reasons.append(f"🤖 Claude: SELL ({llm_analysis.confidence}%)")
+                if council_decision:
+                    # Apply council decision to score
+                    if council_decision.final_direction == "BUY":
+                        ai_score += council_weight * (council_decision.final_confidence / 100)
+                        vote_str = f"BUY:{council_decision.vote_count.get('BUY', 0)} SELL:{council_decision.vote_count.get('SELL', 0)} HOLD:{council_decision.vote_count.get('HOLD', 0)}"
+                        reasons.append(f"🗳️ AI Council: BUY ({council_decision.final_confidence}%) [{vote_str}]")
+                    elif council_decision.final_direction == "SELL":
+                        ai_score -= council_weight * (council_decision.final_confidence / 100)
+                        vote_str = f"BUY:{council_decision.vote_count.get('BUY', 0)} SELL:{council_decision.vote_count.get('SELL', 0)} HOLD:{council_decision.vote_count.get('HOLD', 0)}"
+                        reasons.append(f"🗳️ AI Council: SELL ({council_decision.final_confidence}%) [{vote_str}]")
                     else:
-                        reasons.append(f"🤖 Claude: HOLD")
+                        reasons.append(f"🗳️ AI Council: HOLD ({council_decision.vote_count})")
                     
-                    # Store LLM reasoning for display
-                    llm_reasoning = llm_analysis.reasoning
+                    # Store for VETO mechanism
+                    self._last_council_decision = council_decision
                     
-                    # Store for VETO mechanism (NEW)
-                    self._last_llm_analysis = llm_analysis
+                    # Log individual AI decisions
+                    for analysis in council_decision.individual_analyses:
+                        logger.info(f"  🤖 {analysis.model_name}: {analysis.direction} ({analysis.confidence}%)")
                     
-                    logger.info(f"🧠 LLM Brain: {llm_analysis.direction} ({llm_analysis.confidence}%)")
+                    # Store combined reasoning
+                    llm_reasoning = council_decision.combined_reasoning
+                    
+                    # Unanimous bonus
+                    if council_decision.unanimous:
+                        if council_decision.final_direction == "BUY":
+                            ai_score += 10  # Bonus for unanimous
+                        elif council_decision.final_direction == "SELL":
+                            ai_score -= 10
+                        reasons.append("✅ AI Council: UNANIMOUS!")
+                    
+                    logger.info(
+                        f"🗳️ AI Council {symbol}: {council_decision.final_direction} "
+                        f"({council_decision.final_confidence}%) | "
+                        f"Votes: {council_decision.vote_count}"
+                    )
         except Exception as e:
-            logger.warning(f"LLM Brain error: {e}")
+            logger.warning(f"AI Council error: {e}")
         
         # --- ADD INDIVIDUAL INDICATOR SCORES TO REASONING ---
         if leading.whale_score != 0:
@@ -888,19 +915,24 @@ class EarlySignalEngine:
         veto_active = False
         veto_reason = ""
         
-        # --- VETO 1: LLM BRAIN VETO ---
-        # If Claude says HOLD/BEKLE with confidence > 50%, VETO the signal
-        if self.llm_brain and hasattr(self, '_last_llm_analysis'):
-            llm_analysis = self._last_llm_analysis
-            if llm_analysis and llm_analysis.direction in ["HOLD", "BEKLE", "WAIT"]:
-                if llm_analysis.confidence >= 50:
-                    veto_active = True
-                    veto_reason = f"🤖 Claude VETO: {llm_analysis.direction} ({llm_analysis.confidence}%) - {llm_analysis.reasoning[:100]}"
-                    logger.warning(f"[VETO] LLM Brain blocked signal: {veto_reason}")
-        
-        # Store LLM analysis for veto check
-        if 'llm_analysis' in dir() and llm_analysis:
-            self._last_llm_analysis = llm_analysis
+        # --- VETO 1: AI COUNCIL VETO ---
+        # If AI Council majority says HOLD, VETO the signal
+        if hasattr(self, '_last_council_decision') and self._last_council_decision:
+            council = self._last_council_decision
+            hold_votes = council.vote_count.get("HOLD", 0)
+            total_votes = sum(council.vote_count.values())
+            
+            # If majority says HOLD (more than half)
+            if total_votes > 0 and hold_votes >= total_votes / 2:
+                veto_active = True
+                veto_reason = f"🗳️ AI Council VETO: {hold_votes}/{total_votes} HOLD oyu"
+                logger.warning(f"[VETO] AI Council blocked signal: {veto_reason}")
+            
+            # Council's own VETO (from its internal logic)
+            if council.veto_active:
+                veto_active = True
+                veto_reason = council.veto_reason
+                logger.warning(f"[VETO] AI Council internal veto: {veto_reason}")
         
         # --- VETO 2: REGIME FILTER ---
         # Don't go LONG in TRENDING_BEAR, don't go SHORT in TRENDING_BULL
