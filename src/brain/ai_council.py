@@ -111,57 +111,113 @@ class AIAnalyzer(ABC):
         pass
     
     def _build_prompt(self, symbol: str, current_price: float, market_data: Dict) -> str:
-        """Tüm AI'lar için ortak prompt"""
-        return f"""Sen profesyonel bir kripto trader'sın. Aşağıdaki verileri analiz et ve trading kararı ver.
+        """Tüm AI'lar için ENRICHED prompt - çok daha detaylı"""
+        
+        # Extract enriched context if available
+        enriched = market_data.get('enriched_context', '')
+        data_quality = market_data.get('data_quality_score', 100)
+        data_warnings = market_data.get('data_warnings', [])
+        
+        # Vision analysis results if available
+        vision_analysis = market_data.get('vision_analysis', '')
+        
+        return f"""Sen dünya çapında tanınan bir kripto hedge fund yöneticisisin. 
+Milyarlarca dolarlık portföy yönetiyorsun. Aşağıdaki kapsamlı verileri analiz et.
 
-## MARKET VERİLERİ
+## 📊 MARKET VERİLERİ
 
 **Sembol:** {symbol}
 **Güncel Fiyat:** ${current_price:,.2f}
+**Veri Kalitesi:** {data_quality:.0f}/100 {'' if data_quality > 80 else '⚠️ Düşük kalite!'}
+{chr(10).join(['⚠️ ' + w for w in data_warnings[:3]]) if data_warnings else ''}
 
-### Teknik Göstergeler
-- RSI (1h): {market_data.get('rsi', 'N/A')}
-- LSTM Tahmin: {market_data.get('lstm_direction', 'N/A')} ({market_data.get('lstm_change', 0):.2f}%)
-- Trend: {market_data.get('trend', 'N/A')}
-- Volatilite: {market_data.get('volatility_state', 'NORMAL')}
+### 📈 Teknik Göstergeler (Zenginleştirilmiş)
+- **RSI (1h):** {market_data.get('rsi', 'N/A')}
+  - Percentile (30d): {market_data.get('rsi_percentile', 'N/A')}%
+  - Trend: {market_data.get('rsi_trend', 'N/A')}
+  - {market_data.get('rsi_context', '')}
 
-### Order Book
-- İmbalance: {market_data.get('orderbook_score', 0):+.0f}%
-- Whale Aktivite: {market_data.get('whale_score', 0):+.0f}
+- **LSTM Tahmin:** {market_data.get('lstm_direction', 'N/A')} ({market_data.get('lstm_change', 0):+.2f}%)
+  - Güven: {market_data.get('lstm_confidence', 'N/A')}%
 
-### Makro Veriler
-- Fear & Greed: {market_data.get('fear_greed', 50)}
-- BTC Dominance: {market_data.get('btc_dominance', 0):.1f}%
-- Market Regime: {market_data.get('regime', 'UNKNOWN')}
-- Haber Sentimenti: {market_data.get('news_sentiment', 'NEUTRAL')}
-- Opsiyon Sentimenti: {market_data.get('options_sentiment', 'NEUTRAL')}
+- **Trend:** {market_data.get('trend', 'N/A')}
+- **Volatilite:** {market_data.get('volatility_state', 'NORMAL')}
+- **Wyckoff Fazı:** {market_data.get('wyckoff_phase', 'N/A')}
 
-### Likidasyon Verileri
-- Funding Rate: {market_data.get('funding_rate', 0):.4f}%
-- Long/Short Ratio: {market_data.get('ls_ratio', 1.0):.2f}
-- OI Değişim: {market_data.get('oi_change', 0):.1f}%
+### 📗 Order Flow & Whale Activity
+- **Orderbook İmbalance:** {market_data.get('orderbook_score', 0):+.0f}%
+  - Context: {market_data.get('orderbook_context', 'N/A')}
+  
+- **Whale Aktivite:** {market_data.get('whale_score', 0):+.0f}
+  - Son 24 saat: {market_data.get('whale_flow_24h', 'N/A')}
+  - Context: {market_data.get('whale_context', 'N/A')}
 
-### Pivot Noktaları
-- Daily R1: ${market_data.get('daily_r1', 0):,.0f}
-- Daily S1: ${market_data.get('daily_s1', 0):,.0f}
+### 🌍 Makro Veriler (Zenginleştirilmiş)
+- **Fear & Greed Index:** {market_data.get('fear_greed', 50)}
+  - Percentile (30d): {market_data.get('fear_greed_percentile', 50)}%
+  - Historical context: {market_data.get('fear_greed_context', 'N/A')}
 
-## GÖREV
+- **BTC Dominance:** {market_data.get('btc_dominance', 0):.1f}%
+  - 24h değişim: {market_data.get('btc_dominance_change', 0):+.2f}%
+  
+- **Market Regime:** {market_data.get('regime', 'UNKNOWN')}
+  - Süre: {market_data.get('regime_duration', 'N/A')} saat
 
-Yukarıdaki verileri analiz et ve şu formatta JSON döndür:
+- **Haber Sentimenti:** {market_data.get('news_sentiment', 'NEUTRAL')}
+- **Opsiyon Sentimenti:** {market_data.get('options_sentiment', 'NEUTRAL')}
+
+### 💧 Likidasyon & Funding
+- **Funding Rate:** {market_data.get('funding_rate', 0):.4f}%
+  - Context: {market_data.get('funding_context', 'N/A')}
+  
+- **Long/Short Ratio:** {market_data.get('ls_ratio', 1.0):.2f}
+  - Context: {market_data.get('ls_context', 'N/A')}
+  
+- **OI Değişim (24h):** {market_data.get('oi_change', 0):+.1f}%
+
+### 📍 Kritik Seviyeler
+- **Daily R1 (Direnç):** ${market_data.get('daily_r1', 0):,.0f}
+- **Daily S1 (Destek):** ${market_data.get('daily_s1', 0):,.0f}
+- **Distance to R1:** {market_data.get('distance_to_r1', 0):+.2f}%
+- **Distance to S1:** {market_data.get('distance_to_s1', 0):+.2f}%
+
+### 📰 Son Haberler
+{market_data.get('recent_news_summary', 'Önemli haber yok')}
+
+### 🐋 Son Whale Hareketleri
+{market_data.get('whale_movements_summary', 'Büyük hareket yok')}
+
+{f'''### 👁️ GRAFİK ANALİZİ (Vision AI)
+{vision_analysis}
+''' if vision_analysis else ''}
+
+{f'''### 📊 ZENGİNLEŞTİRİLMİŞ BAĞLAM
+{enriched}
+''' if enriched else ''}
+
+## 🎯 GÖREV
+
+Yukarıdaki TÜM verileri dikkatle analiz et. Sadece basit indikatörlere değil, 
+BAĞLAMA (context), TARİHSEL pozisyona (percentile) ve TREND'lere dikkat et.
+
+Şu formatta JSON döndür:
 
 ```json
 {{
     "direction": "BUY" | "SELL" | "HOLD",
     "confidence": 0-100,
-    "reasoning": "Kısa açıklama (max 200 karakter)",
-    "key_factors": ["Faktör 1", "Faktör 2", "Faktör 3"],
+    "reasoning": "Detaylı açıklama (max 300 karakter) - hangi faktörler kritik?",
+    "key_factors": ["En önemli 3-5 faktör"],
     "risk_level": "LOW" | "MEDIUM" | "HIGH",
+    "risk_factors": ["Dikkat edilmesi gereken riskler"],
     "price_target": hedef_fiyat_veya_null,
-    "stop_loss": stop_fiyat_veya_null
+    "stop_loss": stop_fiyat_veya_null,
+    "timeframe": "1h" | "4h" | "1d"
 }}
 ```
 
-SADECE JSON döndür, başka bir şey yazma."""
+⚠️ SADECE JSON döndür, başka bir şey yazma.
+⚠️ Bear market'ta LONG, Bull market'ta SHORT sinyali verirken ÇOK DİKKATLİ OL."""
     
     def _parse_response(self, response_text: str, model_name: str) -> AIAnalysis:
         """AI yanıtını parse et"""
