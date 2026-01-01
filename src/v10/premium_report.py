@@ -200,7 +200,12 @@ def build_premium_report(signal, breakout_signal=None, council_decision=None, li
     # Leading Signal data
     if signal.leading_signal:
         ls = signal.leading_signal
-        report.trend = ls.trend
+        # Fix: LeadingSignal has 'direction' (SignalDirection enum) not 'trend'
+        if hasattr(ls.direction, 'value'):
+            report.trend = ls.direction.value
+        else:
+             report.trend = str(ls.direction)
+             
         report.rsi = ls.rsi_1h if hasattr(ls, 'rsi_1h') else 50
         report.bollinger_squeeze = "squeeze" in signal.reasoning.lower() if signal.reasoning else False
         
