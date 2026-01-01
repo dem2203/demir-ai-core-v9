@@ -210,7 +210,7 @@ def build_premium_report(signal, breakout_signal=None, council_decision=None, li
         report.bollinger_squeeze = "squeeze" in signal.reasoning.lower() if signal.reasoning else False
         
         # Whale & Orderbook from Leading Indicators
-        report.orderbook_bias = getattr(ls, 'orderbook_score', 0)
+        report.orderbook_bias = int(getattr(ls, 'orderbook_score', 0))
         whale_score = getattr(ls, 'whale_score', 0)
         report.whale_activity = "Bullish" if whale_score > 0 else "Bearish" if whale_score < 0 else "Neutral"
     
