@@ -51,11 +51,13 @@ class TelegramCommands:
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
 📋 *GENEL:*
+  /start → Botu başlat
   /info → Bu mesajı göster
   /durum → Bot durumu ve uptime
   /brain → 🧠 Thinking Brain durumu
   
 📊 *ANALİZ:*
+  /analiz BTCUSDT → 🧠 AI Teknik Analiz
   /piyasa → BTC/ETH anlık durum
   /son → Son 5 sinyal özeti
   
