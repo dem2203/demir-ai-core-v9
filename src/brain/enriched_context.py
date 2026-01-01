@@ -53,15 +53,55 @@ class EnrichedMarketContext:
     current_price: float
     timestamp: datetime
     
-    # Enriched indicators
+    # === MOMENTUM INDICATORS ===
     rsi: Optional[IndicatorContext] = None
+    macd: Optional[IndicatorContext] = None
+    stochastic: Optional[IndicatorContext] = None
+    adx: Optional[IndicatorContext] = None
+    
+    # === VOLATILITY INDICATORS ===
+    atr: Optional[IndicatorContext] = None
+    bollinger_width: Optional[IndicatorContext] = None
+    bollinger_position: Optional[IndicatorContext] = None
+    
+    # === TREND INDICATORS ===
+    ema_cross: Optional[IndicatorContext] = None
+    price_vs_ema200: Optional[IndicatorContext] = None
+    
+    # === VOLUME INDICATORS ===
+    volume: Optional[IndicatorContext] = None
+    obv_trend: Optional[IndicatorContext] = None
+    cvd: Optional[IndicatorContext] = None
+    
+    # === SENTIMENT ===
     fear_greed: Optional[IndicatorContext] = None
+    news_sentiment: Optional[IndicatorContext] = None
+    
+    # === DERIVATIVES ===
     funding_rate: Optional[IndicatorContext] = None
     ls_ratio: Optional[IndicatorContext] = None
-    btc_dominance: Optional[IndicatorContext] = None
+    open_interest: Optional[IndicatorContext] = None
+    oi_change_24h: Optional[IndicatorContext] = None
+    
+    # === ORDER FLOW ===
     orderbook_imbalance: Optional[IndicatorContext] = None
     whale_activity: Optional[IndicatorContext] = None
-    oi_change: Optional[IndicatorContext] = None
+    
+    # === ON-CHAIN ===
+    exchange_reserve: Optional[IndicatorContext] = None
+    mvrv: Optional[IndicatorContext] = None
+    nupl: Optional[IndicatorContext] = None
+    
+    # === DOMINANCE ===
+    btc_dominance: Optional[IndicatorContext] = None
+    usdt_dominance: Optional[IndicatorContext] = None
+    
+    # === OPTIONS ===
+    put_call_ratio: Optional[IndicatorContext] = None
+    max_pain: Optional[IndicatorContext] = None
+    
+    # === LIQUIDATION ===
+    liq_heatmap_distance: Optional[IndicatorContext] = None
     
     # Market structure
     market_regime: str = "UNKNOWN"
@@ -208,48 +248,255 @@ class EnrichedContextBuilder:
         trend: str,
         is_extreme: bool
     ) -> str:
-        """İnsan okunabilir bağlam metni oluştur"""
+        """İnsan okunabilir bağlam metni oluştur - TÜM GÖSTERGELER"""
         
+        # === MOMENTUM INDICATORS ===
         if name == "RSI":
             if value < 30:
-                return f"OVERSOLD - Son 30 günün en düşük %{100-percentile:.0f}'lik diliminde. Potansiyel dip."
+                return f"OVERSOLD - Potansiyel dip bölgesi. Son 30 günün %{100-percentile:.0f}'lik alt dilimi."
             elif value > 70:
-                return f"OVERBOUGHT - Son 30 günün en yüksek %{percentile:.0f}'lik diliminde. Dikkat!"
+                return f"OVERBOUGHT - Potansiyel tepe bölgesi. Son 30 günün %{percentile:.0f}'lik üst dilimi."
+            elif value < 40:
+                return f"Zayıflık bölgesi. Alıcılar güç kazanırsa momentum dönebilir."
+            elif value > 60:
+                return f"Güç bölgesi. Trend devam edebilir ama dikkatli ol."
             else:
-                return f"Nötr bölgede. Son 30 günün %{percentile:.0f}'lik diliminde."
+                return f"Nötr bölge (40-60). Net yön bekle."
         
+        elif name == "MACD":
+            if value > 0:
+                if trend == "RISING":
+                    return f"BULLISH momentum güçleniyor. MACD histogramı pozitif ve yükseliyor."
+                else:
+                    return f"Pozitif ama momentum yavaşlıyor. Potansiyel zayıflama."
+            else:
+                if trend == "FALLING":
+                    return f"BEARISH momentum güçleniyor. MACD histogramı negatif ve düşüyor."
+                else:
+                    return f"Negatif ama momentum iyileşiyor. Potansiyel dönüş sinyali."
+        
+        elif name == "Stochastic":
+            if value < 20:
+                return f"OVERSOLD - K ve D çizgisi dip bölgede. Golden cross bekle."
+            elif value > 80:
+                return f"OVERBOUGHT - K ve D çizgisi tepe bölgede. Death cross riski."
+            else:
+                return f"Orta bölge. K-D cross yönüne dikkat et."
+        
+        elif name == "ADX":
+            if value < 20:
+                return f"ZAYIF TREND - Ranging piyasa. Trend stratejileri işlemez."
+            elif value > 25 and value < 50:
+                return f"GÜÇLÜ TREND - Trend takip stratejileri uygula."
+            elif value > 50:
+                return f"ÇOK GÜÇLÜ TREND - Dikkat, trend yorulma riski."
+            else:
+                return f"Trend gücü orta seviye."
+        
+        # === VOLATILITY INDICATORS ===
+        elif name == "ATR":
+            if percentile > 80:
+                return f"YÜKSEK VOLATİLİTE - Stop mesafesini artır. Risk yönetimi kritik."
+            elif percentile < 20:
+                return f"DÜŞÜK VOLATİLİTE - Squeeze olabilir. Patlama bekle!"
+            else:
+                return f"Normal volatilite. Son 30 günün %{percentile:.0f}'lik diliminde."
+        
+        elif name == "Bollinger Width":
+            if value < 0.02:  # %2 altı
+                return f"SQUEEZE - Bollinger sıkışması! Büyük hareket yakın."
+            elif value > 0.08:  # %8 üstü
+                return f"EXPANSION - Trend hareketi devam ediyor."
+            else:
+                return f"Normal genişlik."
+        
+        elif name == "Bollinger Position":
+            if value > 1:
+                return f"FİYAT ÜSST BANT ÜZERİNDE - Aşırı alım, geri çekilme bekle."
+            elif value < 0:
+                return f"FİYAT ALT BANT ALTINDA - Aşırı satım, sıçrama bekle."
+            elif value > 0.8:
+                return f"Üst banda yakın. Direnç bölgesi."
+            elif value < 0.2:
+                return f"Alt banda yakın. Destek bölgesi."
+            else:
+                return f"Orta bant civarında. Yön bekle."
+        
+        # === TREND INDICATORS ===
+        elif name == "EMA Cross":
+            if value > 0:
+                return f"GOLDEN CROSS - EMA21 > EMA50. Bullish trend aktif."
+            elif value < 0:
+                return f"DEATH CROSS - EMA21 < EMA50. Bearish trend aktif."
+            else:
+                return f"EMA'lar yakın. Trend belirsiz."
+        
+        elif name == "Price vs EMA200":
+            if value > 5:
+                return f"Fiyat EMA200 üzerinde (+{value:.1f}%). Makro trend bullish."
+            elif value < -5:
+                return f"Fiyat EMA200 altında ({value:.1f}%). Makro trend bearish."
+            else:
+                return f"EMA200 civarında. Kritik karar noktası!"
+        
+        # === VOLUME INDICATORS ===
+        elif name == "Volume":
+            if percentile > 80:
+                return f"YÜKSEK HACİM - Önemli hareket. Trend güçleniyor."
+            elif percentile < 20:
+                return f"DÜŞÜK HACİM - Düşük ilgi. Fake-out riski yüksek."
+            else:
+                return f"Normal hacim. Son 30 günün %{percentile:.0f}'lik diliminde."
+        
+        elif name == "OBV Trend":
+            if value > 0:
+                return f"OBV YÜKSELYOR - Akıllı para alımda."
+            else:
+                return f"OBV DÜŞÜYOR - Akıllı para satışta."
+        
+        # === MARKET SENTIMENT ===
         elif name == "Fear & Greed":
-            if value < 25:
-                return f"EXTREME FEAR - Historik olarak bu seviyelerde genellikle dip oluşur."
-            elif value > 75:
-                return f"EXTREME GREED - Historik olarak bu seviyelerde genellikle tepe oluşur."
+            if value < 20:
+                return f"EXTREME FEAR - Historik dip sinyali! Contrarian long fırsatı."
+            elif value < 35:
+                return f"FEAR - Temkinli alım bölgesi."
+            elif value > 80:
+                return f"EXTREME GREED - Historik tepe sinyali! Contrarian short fırsatı."
+            elif value > 65:
+                return f"GREED - Temkinli satış bölgesi."
             else:
-                return f"Normal aralıkta. Son 30 günün %{percentile:.0f}'lik diliminde."
+                return f"Nötr sentiment. Trend takip et."
         
+        # === DERIVATIVES DATA ===
         elif name == "Funding Rate":
             if value > 0.1:
-                return f"Çok YÜKSEK funding - Aşırı long pozisyon. Short squeeze riski düşük, long liquidation riski yüksek."
+                return f"ÇOK YÜKSEK (+{value:.3f}%) - Long'lar short'lara ödeme yapıyor. Long liquidation riski!"
+            elif value > 0.05:
+                return f"YÜKSEK (+{value:.3f}%) - Long ağırlıklı piyasa."
             elif value < -0.05:
-                return f"NEGATİF funding - Aşırı short pozisyon. Short squeeze potansiyeli!"
+                return f"NEGATİF ({value:.3f}%) - Short ağırlıklı. Short squeeze potansiyeli!"
             else:
-                return f"Normal funding. Piyasa dengeli."
+                return f"Nötr funding. Piyasa dengeli."
         
         elif name == "L/S Ratio":
-            if value > 2:
-                return f"EXTREME LONG kalabalık ({value:.1f}x). Contrarian kısa vadeli short fırsatı?"
+            if value > 2.5:
+                return f"EXTREME LONG ({value:.2f}x) - Herkes long. Contrarian short sinyali?"
+            elif value > 1.5:
+                return f"Long ağırlıklı ({value:.2f}x). Dikkatli ol."
             elif value < 0.5:
-                return f"EXTREME SHORT kalabalık ({value:.1f}x). Contrarian long fırsatı?"
+                return f"EXTREME SHORT ({value:.2f}x) - Herkes short. Contrarian long sinyali?"
+            elif value < 0.7:
+                return f"Short ağırlıklı ({value:.2f}x). Squeeze riski."
             else:
-                return f"Dengeli Long/Short oranı."
+                return f"Dengeli L/S oranı ({value:.2f}x)."
         
+        elif name == "Open Interest":
+            if trend == "RISING" and percentile > 70:
+                return f"OI YÜKSELYOR - Yeni pozisyonlar açılıyor. Trend güçleniyor."
+            elif trend == "FALLING" and percentile < 30:
+                return f"OI DÜŞÜYOR - Pozisyonlar kapatılıyor. Trend zayıflıyor."
+            else:
+                return f"OI stabil. Son 30 günün %{percentile:.0f}'lik diliminde."
+        
+        elif name == "OI Change 24h":
+            if value > 10:
+                return f"BÜYÜK OI ARTIŞI (+{value:.1f}%) - Yeni money girişi."
+            elif value < -10:
+                return f"BÜYÜK OI DÜŞÜŞÜ ({value:.1f}%) - Pozisyonlar kapanıyor."
+            else:
+                return f"Normal OI değişimi ({value:+.1f}%)."
+        
+        # === ORDER FLOW ===
         elif name == "Orderbook":
-            if value > 50:
-                return f"Güçlü ALIM baskısı (+{value:.0f}%). Buyers kontrolde."
-            elif value < -50:
-                return f"Güçlü SATIŞ baskısı ({value:.0f}%). Sellers kontrolde."
+            if value > 70:
+                return f"GÜÇLÜ ALIM DUVARI (+{value:.0f}%) - Büyük alıcılar hazır."
+            elif value > 30:
+                return f"Alım ağırlıklı (+{value:.0f}%)."
+            elif value < -70:
+                return f"GÜÇLÜ SATIŞ DUVARI ({value:.0f}%) - Büyük satıcılar hazır."
+            elif value < -30:
+                return f"Satış ağırlıklı ({value:.0f}%)."
             else:
-                return f"Dengeli orderbook."
+                return f"Dengeli orderbook ({value:+.0f}%)."
         
+        elif name == "Whale Activity":
+            if value > 50:
+                return f"WHALE ALIMI (+{value:.0f}) - Büyük oyuncular accumulation yapıyor."
+            elif value < -50:
+                return f"WHALE SATIŞI ({value:.0f}) - Büyük oyuncular distribution yapıyor."
+            else:
+                return f"Normal whale aktivitesi ({value:+.0f})."
+        
+        elif name == "CVD":  # Cumulative Volume Delta
+            if value > 0 and trend == "RISING":
+                return f"CVD POZİTİF ve YÜKSELYOR - Agresif alım. Bullish."
+            elif value < 0 and trend == "FALLING":
+                return f"CVD NEGATİF ve DÜŞÜYOR - Agresif satım. Bearish."
+            else:
+                return f"CVD karışık sinyal."
+        
+        # === ON-CHAIN DATA ===
+        elif name == "Exchange Reserve":
+            if trend == "FALLING":
+                return f"EXCHANGE RESERVE DÜŞÜYOR - Hodling. Bullish."
+            elif trend == "RISING":
+                return f"EXCHANGE RESERVE ARTIYOR - Satış hazırlığı? Bearish."
+            else:
+                return f"Exchange reserve stabil."
+        
+        elif name == "MVRV":
+            if value > 3.5:
+                return f"MVRV ÇOK YÜKSEK ({value:.2f}) - Historik tepe bölgesi!"
+            elif value < 1:
+                return f"MVRV DÜŞÜK ({value:.2f}) - Historik dip bölgesi!"
+            else:
+                return f"MVRV normal aralıkta ({value:.2f})."
+        
+        elif name == "NUPL":
+            if value > 0.75:
+                return f"NUPL EUPHORIA ({value:.2f}) - Tepe yakın olabilir."
+            elif value < 0:
+                return f"NUPL CAPITULATION ({value:.2f}) - Dip yakın olabilir."
+            else:
+                return f"NUPL normal ({value:.2f})."
+        
+        # === DOMINANCE ===
+        elif name == "BTC Dominance":
+            if trend == "RISING":
+                return f"BTC DOM ARTIYOR ({value:.1f}%) - Altcoin'ler zayıf performans gösterecek."
+            elif trend == "FALLING":
+                return f"BTC DOM DÜŞÜYOR ({value:.1f}%) - Altseason potansiyeli!"
+            else:
+                return f"BTC dominance stabil ({value:.1f}%)."
+        
+        elif name == "USDT Dominance":
+            if trend == "RISING":
+                return f"USDT DOM ARTIYOR ({value:.1f}%) - Risk-off. Bearish."
+            elif trend == "FALLING":
+                return f"USDT DOM DÜŞÜYOR ({value:.1f}%) - Risk-on. Bullish."
+            else:
+                return f"USDT dominance stabil ({value:.1f}%)."
+        
+        # === OPTIONS DATA ===
+        elif name == "Put/Call Ratio":
+            if value > 1.2:
+                return f"PUT AĞIRLIKLI ({value:.2f}) - Hedge artıyor. Bearish beklenti."
+            elif value < 0.7:
+                return f"CALL AĞIRLIKLI ({value:.2f}) - Spekülatif long. Bullish beklenti."
+            else:
+                return f"Dengeli options flow ({value:.2f})."
+        
+        elif name == "Max Pain":
+            return f"Max Pain: ${value:,.0f} - Vade sonuna doğru bu seviyeye çekim olabilir."
+        
+        # === LIQUIDATION DATA ===
+        elif name == "Liq Heatmap Distance":
+            if value > 0:
+                return f"Üst likidasyon bölgesi +${value:,.0f} uzakta. Short squeeze magnet."
+            else:
+                return f"Alt likidasyon bölgesi ${abs(value):,.0f} uzakta. Long liquidation riski."
+        
+        # === DEFAULT ===
         else:
             return f"Son 30 günün %{percentile:.0f}'lik diliminde. Trend: {trend}"
     
