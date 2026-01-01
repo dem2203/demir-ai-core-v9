@@ -11,12 +11,10 @@ Komutlar:
 """
 import logging
 import os
-import re
 import asyncio
 from dotenv import load_dotenv
-from telegram import Update
-from telegram.constants import ParseMode
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler
 
 # Load env variables
 load_dotenv()
@@ -30,51 +28,97 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def escape_markdown(text: str) -> str:
-    """Escape special characters for Telegram Markdown"""
-    if not text:
-        return ""
-    # Escape these characters: _ * [ ] ( ) ~ ` > # + - = | { } . !
-    escape_chars = r'_*[]()~`>#+-=|{}.!'
-    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', str(text))
 
+# =============================================================================
+# KEYBOARD BUTTONS
+# =============================================================================
+def get_main_keyboard():
+    """Ana menü butonları"""
+    keyboard = [
+        [
+            InlineKeyboardButton("📊 Piyasa", callback_data="piyasa"),
+            InlineKeyboardButton("📈 Analiz BTC", callback_data="analiz_btc"),
+            InlineKeyboardButton("📈 Analiz ETH", callback_data="analiz_eth"),
+        ],
+        [
+            InlineKeyboardButton("📋 Durum", callback_data="durum"),
+            InlineKeyboardButton("🧠 Brain", callback_data="brain"),
+            InlineKeyboardButton("📉 Son Sinyaller", callback_data="son"),
+        ],
+        [
+            InlineKeyboardButton("📊 İstatistik", callback_data="istatistik"),
+            InlineKeyboardButton("⚠️ Risk", callback_data="risk"),
+            InlineKeyboardButton("ℹ️ Yardım", callback_data="info"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+# =============================================================================
+# COMMAND HANDLERS
+# =============================================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/start komutu"""
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=(
-            "🤖 *DEMIR AI v10 Online*\n\n"
-            "Komutlarım:\n"
-            "🔍 `/analiz BTCUSDT` - Anlık Analiz\n"
-            "📊 `/durum` - Sistem Durumu"
-        ),
-        parse_mode=ParseMode.MARKDOWN
+    """/start komutu - Ana menü"""
+    await update.message.reply_text(
+        "🤖 DEMIR AI v10 Online\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "Aşağıdaki butonlardan birini seçin:",
+        reply_markup=get_main_keyboard()
     )
+
+
+async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/info komutu"""
+    await update.message.reply_text(
+        "🤖 DEMIR AI - KOMUTLAR\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "📋 GENEL:\n"
+        "  /start → Ana menü (butonlu)\n"
+        "  /info → Bu mesajı göster\n"
+        "  /durum → Bot durumu ve uptime\n"
+        "  /brain → 🧠 Thinking Brain durumu\n\n"
+        "📊 ANALİZ:\n"
+        "  /analiz BTCUSDT → 🧠 AI Teknik Analiz\n"
+        "  /piyasa → BTC/ETH anlık durum\n"
+        "  /son → Son 5 sinyal özeti\n\n"
+        "📈 İSTATİSTİK:\n"
+        "  /istatistik → Win rate, sinyal sayısı\n"
+        "  /risk → Açık pozisyonlar\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "💡 Premium sinyaller 15 dakikada bir otomatik gönderilir.",
+        reply_markup=get_main_keyboard()
+    )
+
 
 async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/analiz command handler"""
     if not context.args:
-        await update.message.reply_text("⚠️ Lütfen bir sembol girin. Örnek: `/analiz ETHUSDT`")
+        await update.message.reply_text("⚠️ Lütfen bir sembol girin. Örnek: /analiz ETHUSDT")
         return
 
     symbol = context.args[0].upper()
     if "USDT" not in symbol:
         symbol += "USDT"
 
-    status_msg = await update.message.reply_text(f"🔍 *{symbol}* analiz ediliyor... Lütfen bekleyin.", parse_mode=ParseMode.MARKDOWN)
+    await run_analysis(update, symbol)
+
+
+async def run_analysis(update: Update, symbol: str):
+    """Analiz çalıştır - hem komut hem buton için"""
+    # Determine where to send the reply
+    if update.callback_query:
+        message = update.callback_query.message
+        status_msg = await message.reply_text(f"🔍 {symbol} analiz ediliyor... Lütfen bekleyin.")
+    else:
+        message = update.message
+        status_msg = await message.reply_text(f"🔍 {symbol} analiz ediliyor... Lütfen bekleyin.")
 
     try:
-        # Import Engine here to avoid global lock/init issues
         from src.v10.early_signal_engine import EarlySignalEngine
         
-        # Initialize Engine (in Quick Mode if possible, but full analysis needed)
-        # Note: Engine init calls APIs, might bridge to existing modules
         engine = EarlySignalEngine()
-        
-        # Run Analysis
         signal = await engine.analyze(symbol)
         
-        # Prepare Report
         if signal:
             # Emoji selection
             if signal.action == "BUY":
@@ -88,72 +132,142 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if signal.risk_profile:
                 rp = signal.risk_profile
                 risk_info = (
-                    f"\n💰 *KASA YÖNETİMİ:*\n"
+                    f"\n💰 KASA YÖNETİMİ:\n"
                     f"• Kaldıraç: {rp.get('leverage')}x\n"
                     f"• Marjin: %{rp.get('position_size_pct')}\n"
                 )
 
+            # Get price safely
+            try:
+                price = await engine._get_current_price(symbol)
+                price_str = f"${price:,.2f}"
+            except:
+                price_str = "N/A"
+
+            # Plain text report (NO MARKDOWN!)
             report = (
-                f"🧠 *AI ANALİZ RAPORU - {signal.symbol}*\n"
+                f"🧠 AI ANALİZ RAPORU - {signal.symbol}\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"📍 Karar: {emoji} *{signal.action}*\n"
-                f"🎯 Güven: *%{signal.confidence:.0f}*\n"
-                f"💰 Fiyat: ${await engine._get_current_price(symbol):,.2f}\n"
+                f"📍 Karar: {emoji} {signal.action}\n"
+                f"🎯 Güven: %{signal.confidence:.0f}\n"
+                f"💰 Fiyat: {price_str}\n"
                 f"{risk_info}\n"
-                f"📝 *AI Mantığı:*\n{escape_markdown(signal.reasoning)}\n\n"
-                f"🤖 *Claude:* {escape_markdown(signal.llm_reasoning)}\n\n"
+                f"📝 AI Mantığı:\n{signal.reasoning[:500] if signal.reasoning else 'N/A'}\n\n"
+                f"🤖 Claude: {signal.llm_reasoning[:300] if signal.llm_reasoning else 'N/A'}\n\n"
                 f"⏰ {signal.timestamp.strftime('%H:%M:%S')}"
             )
             
-            # Try markdown first, fallback to plain text if parse error
-            try:
-                await update.message.reply_text(report, parse_mode=ParseMode.MARKDOWN)
-            except Exception as md_err:
-                logger.warning(f"Markdown parse error, falling back to plain text: {md_err}")
-                # Send as plain text
-                plain_report = report.replace("*", "")
-                await update.message.reply_text(plain_report)
+            await message.reply_text(report, reply_markup=get_main_keyboard())
         else:
-            await update.message.reply_text(f"❌ {symbol} için veri alınamadı veya sinyal üretilemedi.")
+            await message.reply_text(f"❌ {symbol} için veri alınamadı veya sinyal üretilemedi.")
             
         await engine.close()
         
     except Exception as e:
         logger.error(f"Analysis error: {e}")
-        await update.message.reply_text(f"❌ Analiz hatası oluştu: {str(e)[:100]}")
+        await message.reply_text(f"❌ Analiz hatası: {str(e)[:200]}")
     finally:
-        # Delete "analyzing..." message
         try:
-            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=status_msg.message_id)
+            await status_msg.delete()
         except:
             pass
 
+
+# =============================================================================
+# BUTTON CALLBACK HANDLER
+# =============================================================================
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Buton tıklamalarını işle"""
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    
+    if data == "piyasa":
+        from src.v10.telegram_commands import handle_command
+        response = await handle_command("/piyasa")
+        await query.message.reply_text(response, reply_markup=get_main_keyboard())
+        
+    elif data == "analiz_btc":
+        await run_analysis(update, "BTCUSDT")
+        
+    elif data == "analiz_eth":
+        await run_analysis(update, "ETHUSDT")
+        
+    elif data == "durum":
+        from src.v10.telegram_commands import handle_command
+        response = await handle_command("/durum")
+        await query.message.reply_text(response, reply_markup=get_main_keyboard())
+        
+    elif data == "brain":
+        from src.v10.telegram_commands import handle_command
+        response = await handle_command("/brain")
+        await query.message.reply_text(response, reply_markup=get_main_keyboard())
+        
+    elif data == "son":
+        from src.v10.telegram_commands import handle_command
+        response = await handle_command("/son")
+        await query.message.reply_text(response, reply_markup=get_main_keyboard())
+        
+    elif data == "istatistik":
+        from src.v10.telegram_commands import handle_command
+        response = await handle_command("/istatistik")
+        await query.message.reply_text(response, reply_markup=get_main_keyboard())
+        
+    elif data == "risk":
+        from src.v10.telegram_commands import handle_command
+        response = await handle_command("/risk")
+        await query.message.reply_text(response, reply_markup=get_main_keyboard())
+        
+    elif data == "info":
+        await query.message.reply_text(
+            "🤖 DEMIR AI - KOMUTLAR\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Yukarıdaki butonları kullanabilir veya\n"
+            "manuel komutlar yazabilirsiniz:\n\n"
+            "/analiz BTCUSDT\n"
+            "/analiz ETHUSDT\n"
+            "/piyasa\n"
+            "/durum\n",
+            reply_markup=get_main_keyboard()
+        )
+
+
+# =============================================================================
+# GENERIC COMMAND HANDLER
+# =============================================================================
 async def cmd_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Generic command handler - routes to telegram_commands"""
     try:
         from src.v10.telegram_commands import handle_command
         command = update.message.text
         response = await handle_command(command)
-        await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
+        # Remove markdown formatting
+        response = response.replace("*", "").replace("_", "")
+        await update.message.reply_text(response, reply_markup=get_main_keyboard())
     except Exception as e:
         logger.error(f"Command error: {e}")
         await update.message.reply_text(f"❌ Komut hatası: {str(e)[:100]}")
 
+
+# =============================================================================
+# APPLICATION BUILDER
+# =============================================================================
 def get_application():
-    """Bot uygulamasını oluştur ve döndür - TÜM KOMUTLAR"""
+    """Bot uygulamasını oluştur ve döndür - TÜM KOMUTLAR + BUTONLAR"""
     if not TOKEN:
         logger.error("TELEGRAM_TOKEN env variable not found!")
         return None
         
     application = ApplicationBuilder().token(TOKEN).build()
     
-    # === TÜM KOMUTLAR ===
+    # === KOMUTLAR ===
     application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('info', info_cmd))
+    application.add_handler(CommandHandler('help', info_cmd))
     application.add_handler(CommandHandler('analiz', analyze))
     
     # telegram_commands.py'den gelen komutlar
-    application.add_handler(CommandHandler('info', cmd_handler))
-    application.add_handler(CommandHandler('help', cmd_handler))
     application.add_handler(CommandHandler('durum', cmd_handler))
     application.add_handler(CommandHandler('status', cmd_handler))
     application.add_handler(CommandHandler('piyasa', cmd_handler))
@@ -167,8 +281,12 @@ def get_application():
     application.add_handler(CommandHandler('brain', cmd_handler))
     application.add_handler(CommandHandler('thinking', cmd_handler))
     
-    logger.info("✅ Telegram Bot: 16 komut yüklendi")
+    # === BUTON CALLBACK ===
+    application.add_handler(CallbackQueryHandler(button_callback))
+    
+    logger.info("✅ Telegram Bot: 16 komut + Inline Butonlar yüklendi")
     return application
+
 
 if __name__ == '__main__':
     app = get_application()
