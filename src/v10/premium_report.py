@@ -248,10 +248,10 @@ def build_premium_report(signal, breakout_signal=None, council_decision=None, li
         # Fix: PricePrediction is an object, not a dict
         if hasattr(ml, 'direction'):
             report.lstm_direction = ml.direction
-            report.lstm_change = ml.predicted_change
+            report.lstm_change = ml.predicted_change_pct
         elif isinstance(ml, dict):
             report.lstm_direction = ml.get('direction', '')
-            report.lstm_change = ml.get('predicted_change', 0)
+            report.lstm_change = ml.get('predicted_change_pct', 0)
             
         report.lstm_target = report.price * (1 + report.lstm_change / 100)
     
