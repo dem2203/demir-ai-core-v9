@@ -68,24 +68,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/info komutu"""
+    """/info komutu - PRO VERSION"""
     await update.message.reply_text(
-        "🤖 DEMIR AI - KOMUTLAR\n"
+        "🤖 DEMIR AI PRO - KOMUTLAR\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "📋 GENEL:\n"
         "  /start → Ana menü (butonlu)\n"
         "  /info → Bu mesajı göster\n"
-        "  /durum → Bot durumu ve uptime\n"
+        "  /durum → Bot + Risk Engine durumu\n"
         "  /brain → 🧠 Thinking Brain durumu\n\n"
         "📊 ANALİZ:\n"
-        "  /analiz BTCUSDT → 🧠 AI Teknik Analiz\n"
+        "  /analiz BTCUSDT → 🧠 AI PRO Analiz\n"
         "  /piyasa → BTC/ETH anlık durum\n"
         "  /son → Son 5 sinyal özeti\n\n"
-        "📈 İSTATİSTİK:\n"
-        "  /istatistik → Win rate, sinyal sayısı\n"
-        "  /risk → Açık pozisyonlar\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "💡 Premium sinyaller 15 dakikada bir otomatik gönderilir.",
+        "📈 PERFORMANS:\n"
+        "  /istatistik → Win rate, rolling metrics\n"
+        "  /performans → Detaylı rapor\n"
+        "  /risk → Risk Engine durumu\n\n"
+        "🛡️ PRO ÖZELLİKLER:\n"
+        "  • 4 AI Council (Weighted Voting)\n"
+        "  • Kelly Position Sizing\n"
+        "  • Auto-Shutdown (%40 limit)\n"
+        "  • LSTM Prediction (%83 accuracy)\n\n"
+        "━━━━━━━━ DEMIR AI v10 PRO ━━━━━━━━",
         reply_markup=get_main_keyboard()
     )
 

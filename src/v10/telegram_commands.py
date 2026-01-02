@@ -46,34 +46,44 @@ class TelegramCommands:
     # /info - Tüm komutları listele
     # ==========================================================================
     async def cmd_info(self) -> str:
-        """Tüm komutları listele"""
-        return """🤖 *DEMIR AI - KOMUTLAR*
+        """Tüm komutları listele - PRO VERSION"""
+        return """🤖 *DEMIR AI PRO - KOMUTLAR*
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
 📋 *GENEL:*
   /start → Botu başlat
   /info → Bu mesajı göster
-  /durum → Bot durumu ve uptime
+  /durum → Bot + Risk Engine durumu
   /brain → 🧠 Thinking Brain durumu
   
 📊 *ANALİZ:*
-  /analiz BTCUSDT → 🧠 AI Teknik Analiz
+  /analiz BTCUSDT → 🧠 AI PRO Analiz
+    • 4 AI Council (Claude, GPT-4, DeepSeek, Gemini)
+    • Kelly Position Sizing
+    • LSTM Tahmin
   /piyasa → BTC/ETH anlık durum
   /son → Son 5 sinyal özeti
   
-📈 *İSTATİSTİK:*
-  /istatistik → Win rate, sinyal sayısı
-  /risk → Açık pozisyonlar
+📈 *PERFORMANS:*
+  /istatistik → Win rate, toplam P&L
+  /performans → Detaylı performans raporu
+  /risk → Risk Engine durumu
 
-━━━━━━━━━━━━━━━━━━━━━━━━
-💡 _Premium sinyaller 15 dakikada bir otomatik gönderilir._
+🛡️ *PRO ÖZELLİKLER:*
+  • Kelly Criterion Position Sizing
+  • Auto-Shutdown (Win Rate < %40)
+  • AI Council (4 AI Weighted Voting)
+  • LSTM Prediction (%83 accuracy)
+
+━━━━━━━━ DEMIR AI v10 PRO ━━━━━━━━
+💡 _Premium sinyaller 15 dakikada bir gönderilir._
 """
     
     # ==========================================================================
     # /durum - Bot durumu
     # ==========================================================================
     async def cmd_durum(self) -> str:
-        """Bot durumunu göster"""
+        """Bot durumunu göster - PRO VERSION"""
         uptime = datetime.now() - self._start_time
         hours = uptime.seconds // 3600
         minutes = (uptime.seconds % 3600) // 60
@@ -94,7 +104,28 @@ class TelegramCommands:
         except:
             api_status = "❌"
         
-        return f"""🤖 *DEMIR AI - DURUM*
+        # Risk Engine durumu
+        risk_status = "✅ Aktif"
+        risk_trading = "✅ İzin Var"
+        try:
+            from src.brain.risk_engine import get_risk_engine
+            risk_engine = get_risk_engine()
+            if not risk_engine.is_trading_enabled:
+                risk_trading = f"🛑 Durduruldu: {risk_engine.disable_reason}"
+        except:
+            risk_status = "⚠️ Yüklenemedi"
+        
+        # Performance Tracker durumu
+        perf_stats = "N/A"
+        try:
+            from src.v10.performance_tracker import get_performance_tracker
+            tracker = get_performance_tracker()
+            stats = tracker.get_stats()
+            perf_stats = f"{stats.get('win_rate', 0):.1f}% ({stats.get('completed', 0)} trade)"
+        except:
+            pass
+        
+        return f"""🤖 *DEMIR AI PRO - DURUM*
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
 🟢 *Bot Durumu:* AKTİF 
@@ -103,16 +134,23 @@ class TelegramCommands:
 📡 *Bağlantılar:*
   Binance API: {api_status}
   Telegram: ✅
-  Claude AI: ✅
+  AI Council: ✅ (4 AI aktif)
 
-📊 *Bugün:*
+🛡️ *Risk Engine:*
+  Durum: {risk_status}
+  Trading: {risk_trading}
+
+📊 *Performance:*
+  Win Rate: {perf_stats}
+  
+📈 *Bugün:*
   Sinyal: {self._stats['total_signals']}
   LONG: {self._stats['long_signals']}
   SHORT: {self._stats['short_signals']}
 
 🕐 *Son Sinyal:* {last_signal_time}
 
-━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━ DEMIR AI v10 PRO ━━━━━━━━
 """
     
     # ==========================================================================
@@ -191,38 +229,54 @@ class TelegramCommands:
     # /istatistik - Win rate ve sinyal sayısı
     # ==========================================================================
     async def cmd_istatistik(self) -> str:
-        """İstatistikleri göster"""
+        """İstatistikleri göster - PRO VERSION"""
         try:
-            # Paper trading manager'dan istatistik al
-            from src.brain.paper_trading_manager import get_paper_trading_manager
-            ptm = get_paper_trading_manager()
+            # Performance Tracker'dan istatistik al
+            from src.v10.performance_tracker import get_performance_tracker
+            tracker = get_performance_tracker()
+            stats = tracker.get_stats()
+            shutdown = tracker.get_shutdown_status()
             
-            stats = ptm.get_stats()
-            total = stats.get('total_trades', 0)
-            wins = stats.get('wins', 0)
-            losses = stats.get('losses', 0)
-            win_rate = (wins / total * 100) if total > 0 else 0
-            total_pnl = stats.get('total_pnl', 0)
+            # Risk Engine'den portföy bilgisi al
+            portfolio_info = ""
+            try:
+                from src.brain.risk_engine import get_risk_engine
+                risk_engine = get_risk_engine()
+                portfolio_info = f"""
+🛡️ *RİSK ENGINE:*
+  💰 Portföy: ${risk_engine.portfolio_equity:,.0f}
+  📊 Win Rate: {risk_engine.win_rate:.1f}%
+  📈 Peak: ${risk_engine.peak_equity:,.0f}
+  📉 Günlük: ${risk_engine.daily_pnl:+,.0f}
+"""
+            except:
+                pass
             
-            return f"""📈 *İSTATİSTİKLER*
+            # Auto-shutdown durumu
+            auto_status = "✅ Normal"
+            if shutdown['trading_disabled']:
+                auto_status = f"🛑 DUR: {shutdown['disable_reason']}"
+            elif shutdown['rolling_win_rate'] < 45:
+                auto_status = f"⚠️ Dikkat: {shutdown['rolling_win_rate']:.1f}%"
+            
+            return f"""📈 *İSTATİSTİKLER - PRO*
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
-📊 *GENEL:*
-  Toplam Trade: {total}
-  Kazanan: {wins} ✅
-  Kaybeden: {losses} ❌
-  Win Rate: %{win_rate:.1f}
-
-💰 *PERFORMANS:*
-  Toplam PnL: {total_pnl:+.2f}%
-  Bugün: {stats.get('today_pnl', 0):+.2f}%
+📊 *PERFORMANS:*
+  Toplam Trade: {stats.get('completed', 0)}
+  Win Rate: %{stats.get('win_rate', 0):.1f}
+  Ort. PnL: {stats.get('avg_pnl', 0):+.2f}%
   
+📉 *ROLLING (Son {shutdown['rolling_trades']} Trade):*
+  Win Rate: %{shutdown['rolling_win_rate']:.1f}
+  Auto-Shutdown: {auto_status}
+{portfolio_info}
 📋 *SİNYAL DAĞILIMI:*
   LONG: {self._stats['long_signals']}
   SHORT: {self._stats['short_signals']}
   BEKLE: {self._stats['bekle_signals']}
 
-━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━ DEMIR AI v10 PRO ━━━━━━━━
 """
         except Exception as e:
             logger.error(f"İstatistik error: {e}")
@@ -234,7 +288,7 @@ class TelegramCommands:
   SHORT: {self._stats['short_signals']}
   BEKLE: {self._stats['bekle_signals']}
 
-━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━ DEMIR AI v10 PRO ━━━━━━━━
 """
     
     # ==========================================================================
