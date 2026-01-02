@@ -88,6 +88,18 @@ class V10Engine:
         self.notifier.send_startup_message()
         logger.info("[RUN] V10 Engine started with Early Signal + RL Brain...")
         
+        # === START REAL-TIME PREDICTIVE ENGINE (Background) ===
+        try:
+            from src.brain.instant_alerts import get_instant_alert_system
+            instant_system = get_instant_alert_system(self.notifier)
+            symbols = ["BTCUSDT", "ETHUSDT"]
+            
+            # Run as background task (non-blocking)
+            asyncio.create_task(instant_system.start(symbols))
+            logger.info("⚡ Real-Time Predictive Engine started in background")
+        except Exception as e:
+            logger.warning(f"Real-time engine startup failed: {e}")
+        
         while self._running:
             try:
                 await self._scan_cycle()
