@@ -52,6 +52,43 @@ class BacktestTrade:
 
 
 @dataclass
+class MonteCarloResult:
+    """Monte Carlo simulation results"""
+    simulations: int = 1000
+    median_pnl: float = 0.0
+    percentile_5: float = 0.0   # 5th percentile (worst case)
+    percentile_25: float = 0.0
+    percentile_75: float = 0.0
+    percentile_95: float = 0.0  # 95th percentile (best case)
+    probability_profit: float = 0.0  # % of simulations profitable
+    probability_drawdown_20: float = 0.0  # % hitting 20% drawdown
+    var_95: float = 0.0  # Value at Risk (95%)
+    expected_max_drawdown: float = 0.0
+    
+    def summary(self) -> str:
+        return f"""
+🎲 MONTE CARLO SIMULATION ({self.simulations} runs)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 P&L DISTRIBUTION:
+  • 5th Percentile: ${self.percentile_5:+,.0f} (worst case)
+  • 25th Percentile: ${self.percentile_25:+,.0f}
+  • Median: ${self.median_pnl:+,.0f}
+  • 75th Percentile: ${self.percentile_75:+,.0f}
+  • 95th Percentile: ${self.percentile_95:+,.0f} (best case)
+
+📈 PROBABILITIES:
+  • Profit Probability: {self.probability_profit:.1f}%
+  • 20% Drawdown Risk: {self.probability_drawdown_20:.1f}%
+
+⚠️ RISK METRICS:
+  • VaR (95%): ${self.var_95:,.0f}
+  • Expected Max DD: {self.expected_max_drawdown:.1f}%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+
+
+@dataclass
 class BacktestMetrics:
     """Professional trading metrics"""
     total_trades: int = 0
@@ -84,9 +121,19 @@ class BacktestMetrics:
     start_equity: float = 0.0
     end_equity: float = 0.0
     
+    # Monte Carlo results
+    monte_carlo: Optional[MonteCarloResult] = None
+    
+    # Data period
+    data_days: int = 0
+    data_years: float = 0.0
+    
     def summary(self) -> str:
+        years_str = f" ({self.data_years:.1f} years)" if self.data_years > 0 else ""
+        mc_section = self.monte_carlo.summary() if self.monte_carlo else ""
+        
         return f"""
-📊 BACKTEST RESULTS
+📊 BACKTEST RESULTS{years_str}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 💰 PERFORMANCE
@@ -111,7 +158,7 @@ class BacktestMetrics:
   • Win Streak: {self.longest_win_streak}
   • Lose Streak: {self.longest_lose_streak}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-"""
+{mc_section}"""
     
     def is_profitable(self) -> bool:
         return self.total_pnl_usd > 0
@@ -484,6 +531,114 @@ class BacktestEngine:
             print(f"{name:<20} ${m.total_pnl_usd:>+9,.0f} {m.win_rate:>9.1f}% {m.sharpe_ratio:>9.2f}")
         
         return results
+    
+    def run_monte_carlo(
+        self,
+        trades: List[BacktestTrade] = None,
+        initial_equity: float = 10000,
+        simulations: int = 1000
+    ) -> MonteCarloResult:
+        """
+        Run Monte Carlo simulation on trade results.
+        
+        Randomly reorders trades to test statistical significance
+        and calculate confidence intervals.
+        """
+        import random
+        
+        trades = trades or self.trades
+        if not trades or len(trades) < 10:
+            logger.warning("Not enough trades for Monte Carlo simulation")
+            return MonteCarloResult()
+        
+        # Extract trade returns
+        trade_returns = [t.pnl_pct for t in trades]
+        
+        # Run simulations
+        final_equities = []
+        max_drawdowns = []
+        
+        for _ in range(simulations):
+            # Shuffle trade order
+            shuffled = trade_returns.copy()
+            random.shuffle(shuffled)
+            
+            # Simulate equity curve
+            equity = initial_equity
+            peak = equity
+            max_dd = 0
+            
+            for ret in shuffled:
+                equity *= (1 + ret / 100)
+                peak = max(peak, equity)
+                dd = (peak - equity) / peak * 100
+                max_dd = max(max_dd, dd)
+            
+            final_equities.append(equity - initial_equity)  # P&L
+            max_drawdowns.append(max_dd)
+        
+        # Calculate statistics
+        final_equities.sort()
+        profit_count = sum(1 for e in final_equities if e > 0)
+        dd_20_count = sum(1 for d in max_drawdowns if d >= 20)
+        
+        result = MonteCarloResult(
+            simulations=simulations,
+            median_pnl=np.median(final_equities),
+            percentile_5=np.percentile(final_equities, 5),
+            percentile_25=np.percentile(final_equities, 25),
+            percentile_75=np.percentile(final_equities, 75),
+            percentile_95=np.percentile(final_equities, 95),
+            probability_profit=profit_count / simulations * 100,
+            probability_drawdown_20=dd_20_count / simulations * 100,
+            var_95=abs(np.percentile(final_equities, 5)),  # Value at Risk
+            expected_max_drawdown=np.mean(max_drawdowns)
+        )
+        
+        logger.info(f"🎲 Monte Carlo complete: {simulations} simulations | Profit Prob: {result.probability_profit:.1f}%")
+        return result
+    
+    async def run_5year_backtest(
+        self,
+        symbol: str,
+        signal_generator: Callable,
+        initial_equity: float = 10000,
+        run_monte_carlo: bool = True
+    ) -> BacktestMetrics:
+        """
+        Run comprehensive 5-year backtest with Monte Carlo simulation.
+        
+        Uses 4-hour candles to manage data size while maintaining
+        sufficient resolution for reliable backtesting.
+        """
+        # 5 years = 1825 days
+        days = 1825
+        
+        logger.info(f"📊 Starting 5-YEAR backtest for {symbol}...")
+        
+        # Use 4h interval for 5 years (reduces API calls)
+        metrics = await self.run_backtest(
+            symbol=symbol,
+            signal_generator=signal_generator,
+            days=days,
+            initial_equity=initial_equity,
+            interval="4h"
+        )
+        
+        # Add data period info
+        metrics.data_days = days
+        metrics.data_years = days / 365
+        
+        # Run Monte Carlo simulation
+        if run_monte_carlo and self.trades:
+            metrics.monte_carlo = self.run_monte_carlo(
+                self.trades,
+                initial_equity,
+                simulations=1000
+            )
+        
+        logger.info(f"✅ 5-YEAR backtest complete: {metrics.total_trades} trades over {metrics.data_years:.1f} years")
+        return metrics
 
 
 # Simple signal generators for testing
