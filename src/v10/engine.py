@@ -592,27 +592,27 @@ TAVSİYE:
 ━━━━━━━━━━━━━━━━━━━━
 
 📍 YÖN: {action_tr}
-🎯 GÜVEN: {final_confidence:.0f}%
-📊 R/R: {early_signal.risk_reward:.1f}x
+🎯 GÜVEN: {final_confidence:.0f}% (Sinyalin ne kadar güvenilir olduğu)
+📊 R/R: {early_signal.risk_reward:.1f}x (Risk/Kazanç oranı - 2x = 1 birim risk ile 2 birim kazanç hedefi)
 
-💰 GİRİŞ: ${early_signal.entry_zone[0]:,.2f}
-🛡️ STOP LOSS: ${early_signal.stop_loss:,.2f}
-🎯 HEDEF: ${early_signal.take_profit:,.2f}
+💰 GİRİŞ: ${early_signal.entry_zone[0]:,.2f} (Bu fiyattan pozisyon aç)
+🛡️ STOP LOSS: ${early_signal.stop_loss:,.2f} (Zarar bu fiyata ulaşırsa kapat)
+🎯 HEDEF: ${early_signal.take_profit:,.2f} (Kâr bu fiyata ulaşırsa kapat)
 
-📊 RİSK: ${risk_amount:,.0f} | KAZANÇ: ${reward_amount:,.0f}
+📊 RİSK: ${risk_amount:,.0f} (Max kayıp) | KAZANÇ: ${reward_amount:,.0f} (Hedef kâr)
 
-💰 KELLY RİSK:
-  📐 Pozisyon: %{kelly_pct:.1f}
+💰 KELLY BOYUTLANDIRMA:
+  📐 Pozisyon: %{kelly_pct:.1f} (Sermayenin ne kadarını riske at - düşük = güvenli)
   🛡️ {risk_status}
 
-🧠 AI BRAIN:
+🧠 AI BRAIN (Yapay zeka analizi):
 {early_signal.reasoning}
 {ai_council_section}
-🔄 SELF-LEARNING:
-  Win Rate: {adjustment_info.get('regime_win_rate', 0)*100:.0f}%
+🔄 SELF-LEARNING (Öğrenen AI):
+  Win Rate: {adjustment_info.get('regime_win_rate', 0)*100:.0f}% (Kazanan işlem oranı)
   {regime_hint}
 
-✅ DOĞRULAMA:
+✅ DOĞRULAMA (Teknik onay):
 {verification}
 ━━ DEMIR AI v10 PRO ━━"""
                 
@@ -674,17 +674,18 @@ TAVSİYE:
                         # RSI
                         rsi = self._calc_rsi(closes)
                         if rsi:
-                            status = "Dusuk" if rsi < 40 else "Yuksek" if rsi > 60 else "Notr"
+                            status = "Düşük - alım fırsatı" if rsi < 40 else "Yüksek - satım riski" if rsi > 60 else "Nötr"
                             lines.append(f"RSI: {rsi:.0f} ({status})")
                             if rsi > 70:
-                                warnings.append("RSI overbought")
+                                warnings.append("RSI aşırı alım (düşüş riski)")
                             elif rsi < 30:
-                                warnings.append("RSI oversold")
+                                warnings.append("RSI aşırı satım (yükseliş fırsatı)")
                         
                         # EMA Trend
                         ema21 = sum(closes[-21:]) / 21
-                        trend = "Yukari" if current > ema21 else "Asagi"
-                        lines.append(f"Trend: {trend} (vs EMA21)")
+                        trend = "Yukarı ↑" if current > ema21 else "Aşağı ↓"
+                        trend_hint = "fiyat ortalamanın üstünde" if current > ema21 else "fiyat ortalamanın altında"
+                        lines.append(f"Trend: {trend} ({trend_hint})")
                 
                 # 2. Order Book
                 url = f"https://fapi.binance.com/fapi/v1/depth"
@@ -695,12 +696,12 @@ TAVSİYE:
                         bid = sum(float(b[1]) for b in ob['bids'])
                         ask = sum(float(a[1]) for a in ob['asks'])
                         imb = (bid - ask) / (bid + ask) * 100
-                        status = "Alim agir" if imb > 10 else "Satim agir" if imb < -10 else "Dengeli"
+                        status = "Alıcılar güçlü ↑" if imb > 10 else "Satıcılar güçlü ↓" if imb < -10 else "Dengeli"
                         lines.append(f"Order Book: {imb:+.0f}% ({status})")
                         if imb < -20:
-                            warnings.append("Guclu satis baskisi")
+                            warnings.append("Güçlü satış baskısı!")
                         elif imb > 20:
-                            warnings.append("Guclu alim")
+                            warnings.append("Güçlü alım desteği")
                 
                 # 3. Funding
                 url = "https://fapi.binance.com/fapi/v1/fundingRate"
@@ -710,7 +711,8 @@ TAVSİYE:
                         data = await resp.json()
                         if data:
                             fr = float(data[-1]['fundingRate']) * 100
-                            lines.append(f"Funding: {fr:.4f}%")
+                            fr_hint = "Long'lar ödüyor" if fr > 0 else "Short'lar ödüyor" if fr < 0 else "Nötr"
+                            lines.append(f"Funding: {fr:.4f}% ({fr_hint})")
             
             result = "\n".join(f"  {l}" for l in lines)
             if warnings:
