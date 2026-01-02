@@ -132,13 +132,14 @@ class PremiumReport:
   💵 Marjin: %{self.margin_pct:.1f}
 """
         
-        # Calculate TP percentage
-        if self.action == "BUY":
+        # Calculate TP/SL percentage - Always show relative to entry
+        # TP above entry = positive, SL below entry = negative (intuitive for user)
+        if self.price > 0:
             tp_pct = (self.take_profit - self.price) / self.price * 100
             sl_pct = (self.stop_loss - self.price) / self.price * 100
         else:
-            tp_pct = (self.price - self.take_profit) / self.price * 100
-            sl_pct = (self.price - self.stop_loss) / self.price * 100
+            tp_pct = 0
+            sl_pct = 0
         
         message = f"""🧠 DEMIR AI PRO ANALİZ - {self.symbol}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -150,7 +151,7 @@ class PremiumReport:
   🎟️ Entry: ${self.entry_min:,.0f} - ${self.entry_max:,.0f}
   🎯 TP: ${self.take_profit:,.0f} ({tp_pct:+.1f}%)
   🛑 SL: ${self.stop_loss:,.0f} ({sl_pct:+.1f}%)
-  ⚖️ R/R: {self.risk_reward:.1f}x
+  ⚖️ R/R: {f"{self.risk_reward:.1f}x" if self.risk_reward > 0 else "N/A"}
 {breakout_section}
 📊 TEKNİK:
   📈 Trend: {self.trend}
@@ -262,9 +263,12 @@ def build_premium_report(signal, breakout_signal=None, council_decision=None, li
              report.macd_signal = "BEARISH CROSS"
         else:
              report.macd_signal = "NEUTRAL"
-    elif signal.leading_signal:
-         ls = signal.leading_signal
-         report.rsi = ls.rsi_1h if hasattr(ls, 'rsi_1h') else 50
+    else:
+         # Fallback: Set default MACD and RSI if no technical data available
+         report.macd_signal = "N/A"
+         if signal.leading_signal:
+             ls = signal.leading_signal
+             report.rsi = ls.rsi_1h if hasattr(ls, 'rsi_1h') else 50
     
     # Liquidation data
     if liq_data:

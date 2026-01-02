@@ -405,24 +405,32 @@ class EarlySignalEngine:
         
         # --- NEW: Calculate & Attach Technical Indicators for Report ---
         try:
-            snapshot = self.leading_indicators.latest_snapshot
-            if hasattr(snapshot, 'klines') and len(snapshot.klines) > 50:
-                 import pandas as pd
-                 # Binance kline format: [open_time, open, high, low, close, volume, ...]
-                 df_tech = pd.DataFrame(snapshot.klines, columns=['open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'q_vol', 'num_trades', 'taker_buy_vol', 'taker_buy_quote_vol', 'ignore'])
-                 df_tech['close'] = df_tech['close'].astype(float)
-                 df_tech['high'] = df_tech['high'].astype(float)
-                 df_tech['low'] = df_tech['low'].astype(float)
-                 
-                 # Calc Indicators
-                 rsi = FeatureEngineer.calculate_rsi(df_tech)
-                 macd, macd_signal = FeatureEngineer.calculate_macd(df_tech)
-                 
-                 signal.technical_indicators = {
-                     'rsi': float(rsi.iloc[-1]),
-                     'macd': float(macd.iloc[-1]),
-                     'macd_signal': float(macd_signal.iloc[-1])
-                 }
+            import pandas as pd
+            import aiohttp
+            
+            # Fetch klines directly from Binance (1h, last 50 candles)
+            async with aiohttp.ClientSession() as session:
+                url = f"https://fapi.binance.com/fapi/v1/klines?symbol={symbol}&interval=1h&limit=50"
+                async with session.get(url) as resp:
+                    if resp.status == 200:
+                        klines = await resp.json()
+                        if len(klines) > 20:
+                            # Create DataFrame
+                            df_tech = pd.DataFrame(klines, columns=['open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'q_vol', 'num_trades', 'taker_buy_vol', 'taker_buy_quote_vol', 'ignore'])
+                            df_tech['close'] = df_tech['close'].astype(float)
+                            df_tech['high'] = df_tech['high'].astype(float)
+                            df_tech['low'] = df_tech['low'].astype(float)
+                            
+                            # Calc Indicators using FeatureEngineer
+                            rsi = FeatureEngineer.calculate_rsi(df_tech)
+                            macd, macd_sig = FeatureEngineer.calculate_macd(df_tech)
+                            
+                            signal.technical_indicators = {
+                                'rsi': float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else 50,
+                                'macd': float(macd.iloc[-1]) if not pd.isna(macd.iloc[-1]) else 0,
+                                'macd_signal': float(macd_sig.iloc[-1]) if not pd.isna(macd_sig.iloc[-1]) else 0
+                            }
+                            logger.info(f"📊 Tech Indicators: RSI={signal.technical_indicators['rsi']:.1f}, MACD={'BULL' if signal.technical_indicators['macd'] > signal.technical_indicators['macd_signal'] else 'BEAR'}")
         except Exception as e:
             logger.warning(f"Technical indicators calc error: {e}")
         
