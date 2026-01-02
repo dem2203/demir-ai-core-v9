@@ -77,6 +77,10 @@ class PerformanceReport:
 class PerformanceTracker:
     """
     Sinyal performansını izle ve raporla.
+    
+    AUTO-SHUTDOWN:
+    - Rolling 10 trade bazında win rate < 40% = trading disabled
+    - Risk Engine'e sinyal gönderir
     """
     
     FUTURES_BASE = "https://fapi.binance.com"
@@ -88,6 +92,11 @@ class PerformanceTracker:
     # Check outcomes after these durations
     CHECK_INTERVALS = [1, 4, 12, 24]  # hours
     
+    # AUTO-SHUTDOWN THRESHOLDS
+    MIN_WIN_RATE = 40.0  # Disable trading if win rate drops below 40%
+    MIN_TRADES_FOR_EVAL = 10  # Need at least 10 trades before evaluating
+    ROLLING_WINDOW = 20  # Evaluate last 20 trades
+    
     def __init__(self):
         self._session: Optional[aiohttp.ClientSession] = None
         self._signals: List[RecordedSignal] = []
@@ -96,8 +105,15 @@ class PerformanceTracker:
         self._storage_path = "src/v10/performance"
         os.makedirs(self._storage_path, exist_ok=True)
         
+        # Auto-shutdown state
+        self._trading_disabled = False
+        self._disable_reason = ""
+        
         # Load existing signals
         self._load_signals()
+        
+        # Check auto-shutdown on init
+        self._check_auto_shutdown()
         
         logger.info(f"📊 Performance Tracker initialized. {len(self._signals)} signals loaded.")
     
@@ -428,14 +444,86 @@ class PerformanceTracker:
                 logger.error(f"Failed to load signals: {e}")
                 self._signals = []
     
+    def _check_auto_shutdown(self) -> bool:
+        """
+        Check if trading should be auto-disabled based on recent performance.
+        Returns True if trading should be disabled.
+        """
+        completed = [s for s in self._signals if s.outcome not in ["PENDING", "UNKNOWN"]]
+        
+        # Need minimum trades to evaluate
+        if len(completed) < self.MIN_TRADES_FOR_EVAL:
+            return False
+        
+        # Get last N completed trades (rolling window)
+        recent = sorted(completed, key=lambda x: x.timestamp, reverse=True)[:self.ROLLING_WINDOW]
+        
+        wins = [s for s in recent if s.outcome in ["TP1_HIT", "TP2_HIT", "TP3_HIT"]]
+        win_rate = len(wins) / len(recent) * 100 if recent else 50
+        
+        # Check threshold
+        if win_rate < self.MIN_WIN_RATE:
+            self._trading_disabled = True
+            self._disable_reason = f"Win rate {win_rate:.1f}% < {self.MIN_WIN_RATE}% (last {len(recent)} trades)"
+            
+            # Notify Risk Engine
+            try:
+                from src.brain.risk_engine import get_risk_engine
+                risk_engine = get_risk_engine()
+                risk_engine._disable_trading(f"Auto-shutdown: {self._disable_reason}")
+            except Exception as e:
+                logger.warning(f"Could not notify Risk Engine: {e}")
+            
+            logger.warning(f"🚨 AUTO-SHUTDOWN: {self._disable_reason}")
+            return True
+        else:
+            # Re-enable if performance improved
+            if self._trading_disabled and win_rate >= self.MIN_WIN_RATE + 5:  # +5% hysteresis
+                self._trading_disabled = False
+                self._disable_reason = ""
+                
+                try:
+                    from src.brain.risk_engine import get_risk_engine
+                    risk_engine = get_risk_engine()
+                    risk_engine.enable_trading()
+                except Exception as e:
+                    logger.warning(f"Could not notify Risk Engine: {e}")
+                
+                logger.info(f"✅ AUTO-SHUTDOWN cleared: Win rate recovered to {win_rate:.1f}%")
+        
+        return False
+    
+    def is_trading_allowed(self) -> bool:
+        """Check if trading is currently allowed based on performance."""
+        self._check_auto_shutdown()
+        return not self._trading_disabled
+    
+    def get_shutdown_status(self) -> Dict:
+        """Get current auto-shutdown status."""
+        completed = [s for s in self._signals if s.outcome not in ["PENDING", "UNKNOWN"]]
+        recent = sorted(completed, key=lambda x: x.timestamp, reverse=True)[:self.ROLLING_WINDOW]
+        wins = [s for s in recent if s.outcome in ["TP1_HIT", "TP2_HIT", "TP3_HIT"]]
+        
+        return {
+            'trading_disabled': self._trading_disabled,
+            'disable_reason': self._disable_reason,
+            'rolling_trades': len(recent),
+            'rolling_wins': len(wins),
+            'rolling_win_rate': len(wins) / len(recent) * 100 if recent else 0,
+            'threshold': self.MIN_WIN_RATE
+        }
+
     def get_stats(self) -> Dict:
         """Quick stats for monitoring."""
         report = self.get_report()
+        shutdown = self.get_shutdown_status()
         return {
             'total': report.total_signals,
             'completed': report.completed_signals,
             'win_rate': report.win_rate,
-            'avg_pnl': report.avg_pnl
+            'avg_pnl': report.avg_pnl,
+            'trading_allowed': not shutdown['trading_disabled'],
+            'rolling_win_rate': shutdown['rolling_win_rate']
         }
 
 
