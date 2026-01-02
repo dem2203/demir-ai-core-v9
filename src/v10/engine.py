@@ -438,21 +438,34 @@ TAVSİYE:
                 # Regime-aligned, Kelly-sized, veto-capable
                 quality_filter = get_signal_quality_filter()
                 
-                # Extract metrics from signal
+                # Extract REAL metrics from signal
                 rsi_val = 50.0
                 orderbook_val = 0.0
                 whale_val = 0.0
                 funding_val = 0.0
                 
-                try:
-                    # Parse from reasoning or risk_profile
-                    if hasattr(early_signal, 'risk_profile') and early_signal.risk_profile:
-                        rp = early_signal.risk_profile
-                        orderbook_val = rp.get('orderbook_imbalance', 0)
-                        whale_val = rp.get('whale_activity', 0)
-                        funding_val = rp.get('funding_rate', 0)
-                except:
-                    pass
+                # 1. Get RSI from technical_indicators
+                if hasattr(early_signal, 'technical_indicators') and early_signal.technical_indicators:
+                    ti = early_signal.technical_indicators
+                    rsi_val = ti.get('rsi', 50.0)
+                    logger.debug(f"[QUALITY] RSI from tech_indicators: {rsi_val}")
+                
+                # 2. Get orderbook/whale from leading_signal
+                if hasattr(early_signal, 'leading_signal') and early_signal.leading_signal:
+                    ls = early_signal.leading_signal
+                    orderbook_val = getattr(ls, 'orderbook_score', 0) or 0
+                    whale_val = getattr(ls, 'whale_score', 0) or 0
+                    logger.debug(f"[QUALITY] Orderbook: {orderbook_val}, Whale: {whale_val}")
+                
+                # 3. Get funding from liq_data in risk_profile
+                if hasattr(early_signal, 'risk_profile') and early_signal.risk_profile:
+                    rp = early_signal.risk_profile
+                    funding_val = rp.get('funding_rate', 0) or 0
+                    # Also try to get orderbook if not set
+                    if orderbook_val == 0:
+                        orderbook_val = rp.get('orderbook_imbalance', 0) or 0
+                    if whale_val == 0:
+                        whale_val = rp.get('whale_activity', 0) or 0
                 
                 # Get sentiment from reasoning
                 sentiment = "NEUTRAL"
