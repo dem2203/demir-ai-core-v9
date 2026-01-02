@@ -486,6 +486,9 @@ TAVSİYE:
                     funding_rate=funding_val
                 )
                 
+                # DEBUG: Log what regime was checked
+                logger.info(f"[QUALITY] {symbol}: action={early_signal.action}, regime={self._current_regime}, sentiment={sentiment}")
+                
                 if not quality_result.passed:
                     logger.warning(f"[QUALITY] Signal blocked: {quality_result.reason}")
                     if quality_result.veto_active:
