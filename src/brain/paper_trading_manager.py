@@ -138,10 +138,28 @@ class PaperTradingManager:
         return trade_id
     
     def format_trade_open_message(self, signal) -> str:
-        """Trade açılış bildirimi formatla"""
+        """Trade açılış bildirimi formatla - PRO VERSION"""
         emoji = "🟢" if signal.direction == "LONG" else "🔴"
         
-        return f"""📈 *PAPER TRADE AÇILDI*
+        # Get Kelly size from Risk Engine
+        kelly_pct = 2.0
+        try:
+            from src.brain.risk_engine import get_risk_engine
+            risk_engine = get_risk_engine()
+            risk_profile = risk_engine.evaluate_trade(
+                symbol=signal.symbol,
+                direction="BUY" if signal.direction == "LONG" else "SELL",
+                confidence=signal.confidence,
+                entry_price=signal.entry_price,
+                stop_loss=signal.stop_loss,
+                take_profit=signal.take_profit_1,
+                current_volatility=0.02
+            )
+            kelly_pct = risk_profile.position_size_pct
+        except:
+            pass
+        
+        return f"""📈 *PAPER TRADE AÇILDI - PRO*
 ━━━━━━━━━━━━━━━━━━━━
 
 {emoji} *{signal.symbol}* → *{signal.direction}*
@@ -153,8 +171,12 @@ class PaperTradingManager:
   TP2: ${signal.take_profit_2:,.2f}
   SL: ${signal.stop_loss:,.2f}
 
+💰 *Kelly Risk:*
+  📐 Pozisyon: %{kelly_pct:.1f}
+
 📊 Paper trading ile takip ediliyor...
-⏰ {datetime.now().strftime('%H:%M:%S')}"""
+⏰ {datetime.now().strftime('%H:%M:%S')}
+━━ DEMIR AI v10 PRO ━━"""
     
     async def check_trades(self) -> List[Dict]:
         """
@@ -288,7 +310,7 @@ class PaperTradingManager:
         }
     
     def format_trade_close_message(self, result: Dict) -> str:
-        """Trade kapanış bildirimi formatla"""
+        """Trade kapanış bildirimi formatla - PRO VERSION"""
         trade = result['trade']
         
         if trade.status in ["TP1_HIT", "TP2_HIT"]:
@@ -304,7 +326,7 @@ class PaperTradingManager:
             result_text = "SÜRESİ DOLDU"
             color = "🟡"
         
-        msg = f"""{emoji} *PAPER TRADE KAPANDI*
+        msg = f"""{emoji} *PAPER TRADE KAPANDI - PRO*
 ━━━━━━━━━━━━━━━━━━━━
 
 {color} *{trade.symbol}* → {result_text}
@@ -329,7 +351,8 @@ class PaperTradingManager:
 
 """
         
-        msg += f"⏰ {datetime.now().strftime('%H:%M:%S')}"
+        msg += f"""⏰ {datetime.now().strftime('%H:%M:%S')}
+━━ DEMIR AI v10 PRO ━━"""
         return msg
     
     def _update_daily_stats(self):

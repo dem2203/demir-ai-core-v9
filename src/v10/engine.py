@@ -530,7 +530,30 @@ TAVSİYE:
                 risk_amount = abs(early_signal.entry_zone[0] - early_signal.stop_loss)
                 reward_amount = abs(early_signal.take_profit - early_signal.entry_zone[0])
                 
-                # Build enhanced message with clear direction
+                # Build enhanced message with clear direction - PRO VERSION
+                
+                # Get Kelly position size from Risk Engine
+                kelly_pct = 2.0  # Default
+                risk_approved = True
+                try:
+                    from src.brain.risk_engine import get_risk_engine
+                    risk_engine = get_risk_engine()
+                    risk_profile = risk_engine.evaluate_trade(
+                        symbol=symbol,
+                        direction=early_signal.action,
+                        confidence=final_confidence,
+                        entry_price=early_signal.entry_zone[0],
+                        stop_loss=early_signal.stop_loss,
+                        take_profit=early_signal.take_profit,
+                        current_volatility=0.02
+                    )
+                    kelly_pct = risk_profile.position_size_pct
+                    risk_approved = risk_profile.approved
+                except:
+                    pass
+                
+                risk_status = "✅ Risk Engine OK" if risk_approved else "⚠️ Risk Warning"
+                
                 msg = f"""{tag} | {symbol}
 ━━━━━━━━━━━━━━━━━━━━
 
@@ -544,6 +567,10 @@ TAVSİYE:
 
 📊 RİSK: ${risk_amount:,.0f} | KAZANÇ: ${reward_amount:,.0f}
 
+💰 KELLY RİSK:
+  📐 Pozisyon: %{kelly_pct:.1f}
+  🛡️ {risk_status}
+
 🧠 AI BRAIN:
 {early_signal.reasoning}
 
@@ -553,7 +580,7 @@ TAVSİYE:
 
 ✅ DOĞRULAMA:
 {verification}
-━━ DEMIR AI v10 ━━"""
+━━ DEMIR AI v10 PRO ━━"""
                 
                 self.notifier._send_message(msg)
                 self._last_signal_time[symbol] = datetime.now()
