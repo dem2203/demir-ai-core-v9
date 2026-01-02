@@ -195,19 +195,31 @@ class SignalQualityFilter:
         
         RULE: Trade WITH the trend, not against it.
         """
-        # Strong trend regimes
-        if regime == "TRENDING_BULL":
+        # Normalize regime string
+        regime_upper = regime.upper() if regime else "UNKNOWN"
+        
+        # BULLISH regimes - all variations
+        bullish_regimes = ["TRENDING_BULL", "BULLISH", "STRONG_BULLISH", "UPTREND", "BULL"]
+        
+        # BEARISH regimes - all variations
+        bearish_regimes = ["TRENDING_BEAR", "BEARISH", "STRONG_BEARISH", "DOWNTREND", "BEAR"]
+        
+        # Check bullish regime
+        if any(br in regime_upper for br in bullish_regimes):
             if action == "SELL":
+                logger.info(f"🛡️ VETO: {action} blocked - regime is {regime_upper}")
                 return False, "Cannot SHORT in BULLISH trend - trade with the trend"
             return True, "Aligned with bullish trend"
         
-        if regime == "TRENDING_BEAR":
+        # Check bearish regime
+        if any(br in regime_upper for br in bearish_regimes):
             if action == "BUY":
+                logger.info(f"🛡️ VETO: {action} blocked - regime is {regime_upper}")
                 return False, "Cannot LONG in BEARISH trend - trade with the trend"
             return True, "Aligned with bearish trend"
         
         # Volatile/Ranging - allow both but check sentiment
-        if regime in ["VOLATILE", "RANGING"]:
+        if regime_upper in ["VOLATILE", "RANGING"]:
             # In sideways markets, sentiment matters more
             if action == "BUY" and sentiment == "BEARISH":
                 return False, "Cannot LONG when sentiment is BEARISH"
@@ -215,8 +227,9 @@ class SignalQualityFilter:
                 return False, "Cannot SHORT when sentiment is BULLISH"
             return True, f"Range trade OK - sentiment: {sentiment}"
         
-        # Unknown regime - be conservative
-        return True, "Unknown regime - proceed with caution"
+        # Unknown regime - be conservative, don't veto but log
+        logger.warning(f"⚠️ Unknown regime: {regime_upper} - proceeding with caution")
+        return True, f"Unknown regime ({regime_upper}) - proceed with caution"
     
     def _check_cooldown(self, symbol: str) -> Tuple[bool, str]:
         """Check if cooldown period has passed"""

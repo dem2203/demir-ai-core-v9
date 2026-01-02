@@ -570,6 +570,24 @@ TAVSİYE:
                 
                 risk_status = "✅ Risk Engine OK" if risk_approved else "⚠️ Risk Warning"
                 
+                # Get AI Council votes from early_signal_engine
+                ai_council_section = ""
+                try:
+                    if self.early_signal_engine and hasattr(self.early_signal_engine, '_last_council_decision'):
+                        council = self.early_signal_engine._last_council_decision
+                        if council and hasattr(council, 'individual_analyses') and council.individual_analyses:
+                            votes = []
+                            for anal in council.individual_analyses:
+                                model = getattr(anal, 'model_name', 'Unknown')
+                                direction = getattr(anal, 'direction', 'HOLD')
+                                conf = getattr(anal, 'confidence', 0)
+                                emoji = "🟢" if direction in ["LONG", "BUY"] else "🔴" if direction in ["SHORT", "SELL"] else "⚪"
+                                votes.append(f"  {emoji} {model}: {direction} ({conf}%)")
+                            if votes:
+                                ai_council_section = "\n🤖 AI COUNCIL:\n" + "\n".join(votes)
+                except Exception as e:
+                    logger.debug(f"AI Council parse error: {e}")
+                
                 msg = f"""{tag} | {symbol}
 ━━━━━━━━━━━━━━━━━━━━
 
@@ -589,7 +607,7 @@ TAVSİYE:
 
 🧠 AI BRAIN:
 {early_signal.reasoning}
-
+{ai_council_section}
 🔄 SELF-LEARNING:
   Win Rate: {adjustment_info.get('regime_win_rate', 0)*100:.0f}%
   {regime_hint}
