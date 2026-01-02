@@ -353,22 +353,10 @@ class RealTimePredictiveEngine:
         self._volume_history[symbol].append(current_vol)
         
         # === 2. ORDER IMBALANCE DETECTION ===
-        if abs(state.imbalance) >= self.IMBALANCE_THRESHOLD:
-            direction = "BULLISH" if state.imbalance > 0 else "BEARISH"
-            strength = int(abs(state.imbalance) * 100)
-            
-            alerts.append(PredictiveAlert(
-                timestamp=datetime.now(),
-                symbol=symbol,
-                alert_type="ORDER_IMBALANCE",
-                direction=direction,
-                strength=strength,
-                message=f"⚖️ {abs(state.imbalance)*100:.0f}% orderbook {direction.lower()} imbalance",
-                price_at_detection=state.current_price,
-                expected_move_pct=0.5 if direction == "BULLISH" else -0.5,
-                confidence=65,
-                urgency="SOON"
-            ))
+        # DISABLED: Causes too much spam and contradictory signals
+        # Imbalance changes every second, not useful for signals
+        # if abs(state.imbalance) >= self.IMBALANCE_THRESHOLD:
+        #     pass  # Disabled
         
         # === 3. CVD DIVERGENCE (Price vs Volume) ===
         if len(self._cvd_history[symbol]) >= 60:  # 1 min of data
@@ -428,7 +416,11 @@ class RealTimePredictiveEngine:
     
     async def _emit_alert(self, alert: PredictiveAlert):
         """Emit alert to all callbacks"""
-        logger.info(f"🚨 ALERT: {alert.symbol} {alert.alert_type} - {alert.message}")
+        # Only log LARGE_ORDER at info level, rest at debug
+        if alert.alert_type == "LARGE_ORDER":
+            logger.info(f"🐋 WHALE: {alert.symbol} - {alert.message}")
+        else:
+            logger.debug(f"Alert: {alert.symbol} {alert.alert_type}")
         
         for callback in self.alert_callbacks:
             try:
