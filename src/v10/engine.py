@@ -28,6 +28,7 @@ from src.execution.feedback_loop import FeedbackLoop
 from src.v10.early_signal_trainer import get_trainer
 from src.brain.rl_agent.auto_retrain import AutoRetrainPipeline  # Smart Pipeline
 from src.brain.correlation_analyzer import get_correlation_analyzer  # Multi-Coin Correlation
+from src.v10.signal_quality_filter import get_signal_quality_filter  # Quality Gate
 
 logger = logging.getLogger("V10_ENGINE")
 
@@ -421,57 +422,59 @@ TAVSİYE:
                     f"Conf: {early_signal.confidence:.0f}% | {direction}"
                 )
                 
-                # === QUALITY FILTERS ===
-                # 1. Minimum confidence (düşürüldü: breakout'lar için daha agresif)
-                min_confidence = 45 if ('BREAKOUT' in early_signal.reasoning or 'Squeeze' in early_signal.reasoning) else 55
-                if early_signal.confidence < min_confidence:
-                    logger.debug(f"Skipped {symbol}: Low confidence {early_signal.confidence:.0f}% < {min_confidence}%")
+                # === PROFESSIONAL QUALITY FILTER ===
+                # Regime-aligned, Kelly-sized, veto-capable
+                quality_filter = get_signal_quality_filter()
+                
+                # Extract metrics from signal
+                rsi_val = 50.0
+                orderbook_val = 0.0
+                whale_val = 0.0
+                funding_val = 0.0
+                
+                try:
+                    # Parse from reasoning or risk_profile
+                    if hasattr(early_signal, 'risk_profile') and early_signal.risk_profile:
+                        rp = early_signal.risk_profile
+                        orderbook_val = rp.get('orderbook_imbalance', 0)
+                        whale_val = rp.get('whale_activity', 0)
+                        funding_val = rp.get('funding_rate', 0)
+                except:
+                    pass
+                
+                # Get sentiment from reasoning
+                sentiment = "NEUTRAL"
+                if "BULLISH" in early_signal.reasoning:
+                    sentiment = "BULLISH"
+                elif "BEARISH" in early_signal.reasoning:
+                    sentiment = "BEARISH"
+                
+                quality_result = quality_filter.check_signal(
+                    symbol=symbol,
+                    action=early_signal.action,
+                    confidence=int(early_signal.confidence),
+                    regime=self._current_regime,
+                    sentiment=sentiment,
+                    rsi=rsi_val,
+                    orderbook_imbalance=orderbook_val,
+                    whale_flow=whale_val,
+                    funding_rate=funding_val
+                )
+                
+                if not quality_result.passed:
+                    logger.warning(f"[QUALITY] Signal blocked: {quality_result.reason}")
+                    if quality_result.veto_active:
+                        self.notifier._send_message(f"🛡️ *SİNYAL VETO*\n{symbol}: {quality_result.reason}")
                     return
                 
-                # 2. Minimum R/R ratio (ADJUSTED: lower for breakout signals)
-                is_breakout_signal = 'BREAKOUT' in early_signal.reasoning or 'Squeeze' in early_signal.reasoning
-                min_rr = 1.0 if is_breakout_signal else 1.5
-                if early_signal.risk_reward < min_rr:
-                    logger.warning(f"Skipped {symbol}: R/R too low ({early_signal.risk_reward:.1f}x < {min_rr}x)")
-                    return
+                # Use adjusted confidence and Kelly from filter
+                early_signal.confidence = quality_result.adjusted_confidence
+                kelly_position_pct = quality_result.kelly_position_pct
                 
                 # 3. No HOLD signals - but track as shadow trade for learning
                 if early_signal.action == 'HOLD':
-                    # === SHADOW PAPER TRADE FOR LEARNING ===
-                    # Even though vetoed, record what WOULD have happened
-                    # This helps learn if AI Council is making good decisions
-                    try:
-                        original_signal = early_signal.ml_prediction or {}
-                        original_action = original_signal.get('original_action', 'UNKNOWN')
-                        if original_action in ['BUY', 'SELL']:
-                            shadow_signal = {
-                                "symbol": symbol,
-                                "side": original_action,
-                                "entry_price": snapshot.price,
-                                "sl_price": snapshot.price * 0.98 if original_action == 'BUY' else snapshot.price * 1.02,
-                                "tp_price": snapshot.price * 1.02 if original_action == 'BUY' else snapshot.price * 0.98,
-                                "is_shadow": True,  # Mark as shadow trade
-                                "veto_reason": early_signal.reasoning
-                            }
-                            # Log but don't execute - just record for analysis
-                            logger.info(f"🔮 SHADOW TRADE: {symbol} {original_action} @ ${snapshot.price:,.0f} (VETOED by AI Council)")
-                    except Exception as shadow_err:
-                        logger.debug(f"Shadow trade log error: {shadow_err}")
+                    logger.debug(f"Skipped {symbol}: HOLD signal")
                     return
-                
-                # 4. Signal cooldown - prevent conflicting signals
-                cooldown_key = f"{symbol}_{early_signal.action}"
-                if hasattr(self, '_signal_cooldowns'):
-                    last_signal_time = self._signal_cooldowns.get(cooldown_key)
-                    if last_signal_time:
-                        minutes_since = (datetime.now() - last_signal_time).total_seconds() / 60
-                        if minutes_since < 60:  # 60 dakika cooldown (artırıldı)
-                            logger.debug(f"Skipped {symbol}: Cooldown active ({minutes_since:.0f}m < 60m)")
-                            return
-                else:
-                    self._signal_cooldowns = {}
-                
-                self._signal_cooldowns[cooldown_key] = datetime.now()
 
                 # === 5. CORRELATION RISK CHECK (NEW) ===
                 try:
@@ -532,25 +535,10 @@ TAVSİYE:
                 
                 # Build enhanced message with clear direction - PRO VERSION
                 
-                # Get Kelly position size from Risk Engine
-                kelly_pct = 2.0  # Default
-                risk_approved = True
-                try:
-                    from src.brain.risk_engine import get_risk_engine
-                    risk_engine = get_risk_engine()
-                    risk_profile = risk_engine.evaluate_trade(
-                        symbol=symbol,
-                        direction=early_signal.action,
-                        confidence=final_confidence,
-                        entry_price=early_signal.entry_zone[0],
-                        stop_loss=early_signal.stop_loss,
-                        take_profit=early_signal.take_profit,
-                        current_volatility=0.02
-                    )
-                    kelly_pct = risk_profile.position_size_pct
-                    risk_approved = risk_profile.approved
-                except:
-                    pass
+                # Get Kelly position size - USE VALUE FROM QUALITY FILTER
+                # kelly_position_pct is already set by SignalQualityFilter above
+                kelly_pct = kelly_position_pct  # From quality filter (dynamic)
+                risk_approved = not quality_result.veto_active
                 
                 risk_status = "✅ Risk Engine OK" if risk_approved else "⚠️ Risk Warning"
                 
