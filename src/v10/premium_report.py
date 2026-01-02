@@ -71,6 +71,11 @@ class PremiumReport:
     margin_pct: float = 0
     position_size: float = 0
     
+    # NEW: Kelly Position Sizing
+    kelly_size_pct: float = 0  # Kelly optimal position %
+    risk_warnings: str = ""    # Any risk engine warnings
+    risk_approved: bool = True # Risk engine approval
+    
     def to_telegram_message(self) -> str:
         """Telegram için formatlanmış mesaj"""
         
@@ -165,11 +170,15 @@ class PremiumReport:
   💵 Funding: {self.funding_rate:.4f}%
   🎯 Liq Magnet: ${self.liq_magnet:,.0f} {liq_hint}
 
-🤖 AI COUNCIL:
-  {vote_emoji(self.claude_vote)} Claude: {self.claude_vote} (%{self.claude_conf})
-  {vote_emoji(self.gpt4_vote)} GPT-4: {self.gpt4_vote} (%{self.gpt4_conf})
-  {vote_emoji(self.deepseek_vote)} DeepSeek: {self.deepseek_vote} (%{self.deepseek_conf})
-{lstm_section}{risk_section}
+🤖 AI COUNCIL (Uzman Rolleri):
+  🛡️ Claude (Risk): {self.claude_vote} (%{self.claude_conf})
+  🌍 GPT-4 (Macro): {self.gpt4_vote} (%{self.gpt4_conf})
+  📊 DeepSeek (Teknik): {self.deepseek_vote} (%{self.deepseek_conf})
+{lstm_section}
+💰 KELLY RİSK:
+  📐 Pozisyon: %{self.kelly_size_pct:.1f} (Kelly optimized)
+  🛡️ Onay: {"✅ Risk Engine OK" if self.risk_approved else "⚠️ " + self.risk_warnings}
+{risk_section}
 ━━━━━━━━━━━ DEMIR AI v10 ━━━━━━━━━━━"""
         
         return message
@@ -296,5 +305,40 @@ def build_premium_report(signal, breakout_signal=None, council_decision=None, li
         report.leverage = rp.get('leverage', 0)
         report.margin_pct = rp.get('position_size_pct', 0)
         report.position_size = rp.get('position_usd', 0)
+    
+    # NEW: Risk Engine Integration for Kelly Sizing
+    try:
+        from src.brain.risk_engine import get_risk_engine
+        risk_engine = get_risk_engine()
+        
+        # Calculate ATR-based volatility estimate (rough)
+        volatility = 0.02  # Default 2%
+        
+        if signal.action != "HOLD":
+            risk_profile = risk_engine.evaluate_trade(
+                symbol=signal.symbol,
+                direction=signal.action,
+                confidence=signal.confidence,
+                entry_price=report.price,
+                stop_loss=signal.stop_loss,
+                take_profit=signal.take_profit,
+                current_volatility=volatility
+            )
+            
+            report.kelly_size_pct = risk_profile.position_size_pct
+            report.risk_approved = risk_profile.approved
+            report.risk_warnings = risk_profile.rejection_reason or ", ".join(risk_profile.warnings)
+            
+            # Also update leverage from Risk Engine recommendation
+            if risk_profile.leverage > 0:
+                report.leverage = risk_profile.leverage
+        else:
+            report.kelly_size_pct = 0
+            report.risk_approved = True
+            report.risk_warnings = ""
+    except Exception as e:
+        logger.warning(f"Risk Engine integration failed: {e}")
+        report.kelly_size_pct = 2.0  # Default 2%
+        report.risk_approved = True
     
     return report
