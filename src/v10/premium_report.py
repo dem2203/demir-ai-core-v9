@@ -48,16 +48,16 @@ class PremiumReport:
     liq_magnet: float = 0
     liq_direction: str = ""
     
-    # AI Council Votes
-    claude_vote: str = ""
+    # AI Council Votes (N/A when not available)
+    claude_vote: str = "N/A"
     claude_conf: int = 0
     claude_reason: str = ""
     
-    gpt4_vote: str = ""
+    gpt4_vote: str = "N/A"
     gpt4_conf: int = 0
     gpt4_reason: str = ""
     
-    deepseek_vote: str = ""
+    deepseek_vote: str = "N/A"
     deepseek_conf: int = 0
     deepseek_reason: str = ""
     
@@ -71,8 +71,8 @@ class PremiumReport:
     margin_pct: float = 0
     position_size: float = 0
     
-    # NEW: Kelly Position Sizing
-    kelly_size_pct: float = 0  # Kelly optimal position %
+    # NEW: Kelly Position Sizing (Dynamic from SignalQualityFilter)
+    kelly_size_pct: float = 2.0  # Kelly optimal position % (default conservative)
     risk_warnings: str = ""    # Any risk engine warnings
     risk_approved: bool = True # Risk engine approval
     
@@ -171,9 +171,9 @@ class PremiumReport:
   🎯 Liq Magnet: ${self.liq_magnet:,.0f} {liq_hint}
 
 🤖 AI COUNCIL (Uzman Rolleri):
-  🛡️ Claude (Risk): {self.claude_vote} (%{self.claude_conf})
-  🌍 GPT-4 (Macro): {self.gpt4_vote} (%{self.gpt4_conf})
-  📊 DeepSeek (Teknik): {self.deepseek_vote} (%{self.deepseek_conf})
+  🛡️ Claude (Risk): {self.claude_vote if self.claude_conf > 0 else 'N/A'} {f'(%{self.claude_conf})' if self.claude_conf > 0 else ''}
+  🌍 GPT-4 (Macro): {self.gpt4_vote if self.gpt4_conf > 0 else 'N/A'} {f'(%{self.gpt4_conf})' if self.gpt4_conf > 0 else ''}
+  📊 DeepSeek (Teknik): {self.deepseek_vote if self.deepseek_conf > 0 else 'N/A'} {f'(%{self.deepseek_conf})' if self.deepseek_conf > 0 else ''}
 {lstm_section}
 💰 KELLY RİSK:
   📐 Pozisyon: %{self.kelly_size_pct:.1f} (Kelly optimized)
@@ -230,32 +230,42 @@ def build_premium_report(signal, breakout_signal=None, council_decision=None, li
         # Fix: Parse individual_analyses list from CouncilDecision
         if hasattr(council_decision, 'individual_analyses') and council_decision.individual_analyses:
             for anal in council_decision.individual_analyses:
-                votes[anal.model_name] = {
-                    'vote': anal.direction,
-                    'confidence': anal.confidence,
-                    'reason': anal.reasoning
+                # Case-insensitive model name matching
+                model_key = anal.model_name if hasattr(anal, 'model_name') else str(anal)
+                votes[model_key] = {
+                    'vote': getattr(anal, 'direction', 'HOLD'),
+                    'confidence': getattr(anal, 'confidence', 50),
+                    'reason': getattr(anal, 'reasoning', '')[:50] if hasattr(anal, 'reasoning') else ''
                 }
         # Fallback to old dict format
         elif hasattr(council_decision, 'individual_votes'):
             votes = council_decision.individual_votes
         
-        if 'Claude' in votes:
-            v = votes['Claude']
-            report.claude_vote = v.get('vote', 'HOLD')
-            report.claude_conf = int(v.get('confidence', 50))
-            report.claude_reason = v.get('reason', '')[:50]
+        # Case-insensitive key search
+        def find_vote(name_variants):
+            for name in name_variants:
+                for key in votes:
+                    if name.lower() in key.lower():
+                        return votes[key]
+            return None
         
-        if 'GPT-4' in votes:
-            v = votes['GPT-4']
-            report.gpt4_vote = v.get('vote', 'HOLD')
-            report.gpt4_conf = int(v.get('confidence', 50))
-            report.gpt4_reason = v.get('reason', '')[:50]
+        claude_data = find_vote(['Claude', 'claude', 'anthropic'])
+        if claude_data:
+            report.claude_vote = claude_data.get('vote', 'HOLD')
+            report.claude_conf = int(claude_data.get('confidence', 50))
+            report.claude_reason = str(claude_data.get('reason', ''))[:50]
+        
+        gpt_data = find_vote(['GPT-4', 'gpt4', 'gpt-4', 'openai', 'GPT'])
+        if gpt_data:
+            report.gpt4_vote = gpt_data.get('vote', 'HOLD')
+            report.gpt4_conf = int(gpt_data.get('confidence', 50))
+            report.gpt4_reason = str(gpt_data.get('reason', ''))[:50]
             
-        if 'DeepSeek' in votes:
-            v = votes['DeepSeek']
-            report.deepseek_vote = v.get('vote', 'HOLD')
-            report.deepseek_conf = int(v.get('confidence', 50))
-            report.deepseek_reason = v.get('reason', '')[:50]
+        deepseek_data = find_vote(['DeepSeek', 'deepseek', 'Gemini', 'gemini', 'Google'])
+        if deepseek_data:
+            report.deepseek_vote = deepseek_data.get('vote', 'HOLD')
+            report.deepseek_conf = int(deepseek_data.get('confidence', 50))
+            report.deepseek_reason = str(deepseek_data.get('reason', ''))[:50]
             
     # Technical Indicators (Enhanced)
     # Priority: Calculated Tech Indicators (New) > Leading Signal Proxy (Old)
