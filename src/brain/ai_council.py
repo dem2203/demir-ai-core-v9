@@ -770,6 +770,9 @@ class AICouncil:
             else:
                 avg_confidence = 50
         
+        # Calculate max_votes for unanimity check
+        max_votes = max(vote_count.values()) if vote_count else 0
+        
         # Oybirliği bonusu
         unanimous = max_votes == len(analyses) and len(analyses) > 1
         if unanimous:
