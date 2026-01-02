@@ -399,7 +399,6 @@ class EarlySignalEngine:
             momentum_context=momentum_context,
             fractal_match=fractal_match, # NEW
             inst_snapshot=inst_snapshot, # NEW
-            inst_snapshot=inst_snapshot, # NEW
             sudden_triggers=sudden_triggers, # NEW
             breakout_signal=breakout_signal  # 🚀 BREAKOUT HUNTER
         )
