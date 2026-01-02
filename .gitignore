@@ -2,3 +2,17 @@ venv/
 __pycache__/
 .env
 .DS_Store
+
+# Large data files (cached at runtime)
+data/backtest/
+data/risk_engine/
+*.parquet
+
+# Model files (trained at runtime)
+models/*.keras
+models/*.h5
+*.keras
+*.h5
+
+# Performance tracking
+src/v10/performance/
