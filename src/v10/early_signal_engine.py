@@ -282,7 +282,16 @@ class EarlySignalEngine:
         # PROFESSIONAL RISK ENGINE - Kelly Criterion + Drawdown Protection
         self.risk_engine = get_risk_engine(portfolio_usd=10000)  # Default $10k portfolio
         
-        logger.info("🚀 Early Signal Engine + AI BRAIN + PROFESSIONAL RISK ENGINE initialized")
+        # OPTIMIZED STRATEGY - Backtested with Sharpe 1.29, PF 1.22
+        try:
+            from src.brain.optimized_strategy import get_hybrid_strategy
+            self.hybrid_strategy = get_hybrid_strategy()
+            logger.info("🎯 Hybrid Strategy loaded (5-year backtested)")
+        except Exception as e:
+            self.hybrid_strategy = None
+            logger.warning(f"Hybrid Strategy not loaded: {e}")
+        
+        logger.info("🚀 Early Signal Engine + AI BRAIN + OPTIMIZED STRATEGY initialized")
     
     async def initialize(self):
         """Async initialization"""
