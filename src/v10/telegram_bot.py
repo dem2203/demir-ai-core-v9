@@ -153,9 +153,12 @@ async def run_analysis(update: Update, symbol: str):
                 logger.warning(f"Liquidation hunter error: {e}")
             
             try:
-                # Get AI Council decision
-                if hasattr(engine, '_last_council_decision'):
+                # Get AI Council decision from the SAME engine that analyzed
+                if hasattr(engine, '_last_council_decision') and engine._last_council_decision:
                     council_decision = engine._last_council_decision
+                    logger.info(f"✅ AI Council decision found: {council_decision.final_direction}")
+                else:
+                    logger.debug("No AI Council decision available for this signal")
             except Exception as e:
                 logger.warning(f"Council decision error: {e}")
             
