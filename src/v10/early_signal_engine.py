@@ -56,6 +56,7 @@ from src.brain.fractal_analyzer import get_fractal_analyzer
 from src.brain.institutional_aggregator import InstitutionalAggregator, LiveDataSnapshot # PHASE 14
 from src.brain.ai_council import get_ai_council, CouncilDecision  # AI COUNCIL - 4 AI VOTING
 from src.brain.breakout_hunter import get_breakout_hunter, BreakoutSignal  # BREAKOUT HUNTER - Ani yükselişler
+from src.brain.risk_engine import get_risk_engine, RiskProfile  # PROFESSIONAL RISK ENGINE
 
 logger = logging.getLogger("EARLY_SIGNAL_ENGINE")
 
@@ -278,7 +279,10 @@ class EarlySignalEngine:
         self.ml_model = None  # Legacy - replaced by lstm_predictor
         self._last_signals: Dict[str, EarlySignal] = {}
         
-        logger.info("🚀 Early Signal Engine + AI BRAIN + ENSEMBLE VOTING initialized")
+        # PROFESSIONAL RISK ENGINE - Kelly Criterion + Drawdown Protection
+        self.risk_engine = get_risk_engine(portfolio_usd=10000)  # Default $10k portfolio
+        
+        logger.info("🚀 Early Signal Engine + AI BRAIN + PROFESSIONAL RISK ENGINE initialized")
     
     async def initialize(self):
         """Async initialization"""

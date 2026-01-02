@@ -27,6 +27,56 @@ logger = logging.getLogger("AI_COUNCIL")
 # DATA CLASSES
 # ============================================================
 
+# === AI SPECIALIZATION ROLES ===
+AI_ROLES = {
+    "Claude": {
+        "role": "Risk Analyst",
+        "weight": 1.5,  # Higher weight for risk assessment
+        "has_veto": True,  # Can veto high-risk trades
+        "focus": "risk, drawdown, position sizing, capital protection",
+        "prompt_addon": """SEN BİR RİSK ANALİSTİSİN. Ana görevin:
+1. Bu trade'in risklerini değerlendir
+2. Potansiyel kayıp senaryolarını analiz et
+3. Position sizing öner
+4. VETO gerekiyorsa açıkça belirt
+
+Eğer risk çok yüksekse, direction'ı HOLD yap ve risk_factors'da VETO sebebini yaz."""
+    },
+    "GPT-4": {
+        "role": "Macro Strategist",
+        "weight": 1.2,
+        "has_veto": False,
+        "focus": "macro trends, market regime, big picture analysis",
+        "prompt_addon": """SEN BİR MAKRO STRATEJİSTSİN. Ana görevin:
+1. Genel piyasa trendini değerlendir
+2. Alt coin/BTC korelasyonunu analiz et
+3. Risk-on/Risk-off durumunu belirle
+4. Uzun vadeli trend yönünü öner"""
+    },
+    "DeepSeek": {
+        "role": "Technical Analyst",
+        "weight": 1.0,
+        "has_veto": False,
+        "focus": "entry/exit timing, price patterns, indicators",
+        "prompt_addon": """SEN BİR TEKNİK ANALİSTSİN. Ana görevin:
+1. Optimal giriş zamanlamasını belirle
+2. Destek/direnç seviyelerini analiz et
+3. Pattern tamamlanma durumunu değerlendir
+4. Kesin TP ve SL seviyeleri öner"""
+    },
+    "Gemini": {
+        "role": "Sentiment Analyst",
+        "weight": 0.8,
+        "has_veto": False,
+        "focus": "news sentiment, social sentiment, fear/greed",
+        "prompt_addon": """SEN BİR SENTİMENT ANALİSTİSİN. Ana görevin:
+1. Haber ve sosyal medya sentimentini değerlendir
+2. Fear & Greed durumunu analiz et
+3. Crowd positioning'i değerlendir
+4. Contrarian sinyalleri tespit et"""
+    }
+}
+
 @dataclass
 class AIAnalysis:
     """Tek bir AI'ın analiz sonucu"""
@@ -644,33 +694,72 @@ class AICouncil:
         return self._vote(valid_analyses)
     
     def _vote(self, analyses: List[AIAnalysis]) -> CouncilDecision:
-        """Oylama yap"""
+        """Weighted voting with specialization"""
+        # === WEIGHTED VOTE COUNTING ===
+        weighted_scores = {"BUY": 0.0, "SELL": 0.0, "HOLD": 0.0}
         vote_count = {"BUY": 0, "SELL": 0, "HOLD": 0}
         
         for analysis in analyses:
             if analysis.direction in vote_count:
+                # Get role weight (default 1.0 if not found)
+                role_info = AI_ROLES.get(analysis.model_name, {"weight": 1.0})
+                weight = role_info.get("weight", 1.0)
+                
+                # Weight by confidence too (0.5 to 1.5 multiplier)
+                confidence_mult = 0.5 + (analysis.confidence / 100)
+                final_weight = weight * confidence_mult
+                
+                weighted_scores[analysis.direction] += final_weight
                 vote_count[analysis.direction] += 1
         
-        # Kazananı bul
-        max_votes = max(vote_count.values())
-        winners = [d for d, v in vote_count.items() if v == max_votes]
+        # === VETO CHECK (Risk Analyst) ===
+        veto_active = False
+        veto_reason = ""
         
-        if len(winners) == 1:
-            final_direction = winners[0]
+        # Check if Risk Analyst (Claude) wants to veto
+        claude_analysis = next((a for a in analyses if a.model_name == "Claude"), None)
+        if claude_analysis:
+            role_info = AI_ROLES.get("Claude", {})
+            if role_info.get("has_veto") and claude_analysis.risk_level == "HIGH":
+                # Check for explicit veto signals
+                veto_keywords = ["veto", "tehlikeli", "riskli", "danger", "avoid"]
+                reasoning_lower = claude_analysis.reasoning.lower()
+                if any(kw in reasoning_lower for kw in veto_keywords) or claude_analysis.confidence < 30:
+                    veto_active = True
+                    veto_reason = f"🛡️ Risk Analyst VETO: {claude_analysis.reasoning[:100]}"
+                    logger.warning(f"🛡️ VETO ACTIVATED by Risk Analyst (Claude)")
+        
+        # === DETERMINE WINNER ===
+        if veto_active:
+            final_direction = "HOLD"
+            avg_confidence = 30
         else:
-            # Eşitlik - Claude'un kararı geçerli
-            claude_analysis = next((a for a in analyses if a.model_name == "Claude"), None)
-            if claude_analysis:
-                final_direction = claude_analysis.direction
+            # Weighted winner
+            max_score = max(weighted_scores.values())
+            winners = [d for d, s in weighted_scores.items() if s == max_score]
+            
+            if len(winners) == 1:
+                final_direction = winners[0]
             else:
-                final_direction = "HOLD"
-        
-        # Ortalama güven
-        direction_analyses = [a for a in analyses if a.direction == final_direction]
-        if direction_analyses:
-            avg_confidence = sum(a.confidence for a in direction_analyses) // len(direction_analyses)
-        else:
-            avg_confidence = 50
+                # Tie-breaker: Claude's vote
+                if claude_analysis:
+                    final_direction = claude_analysis.direction
+                else:
+                    final_direction = "HOLD"
+            
+            # Calculate average confidence for winning direction
+            direction_analyses = [a for a in analyses if a.direction == final_direction]
+            if direction_analyses:
+                # Weighted average confidence
+                total_weight = 0
+                weighted_conf = 0
+                for a in direction_analyses:
+                    w = AI_ROLES.get(a.model_name, {}).get("weight", 1.0)
+                    weighted_conf += a.confidence * w
+                    total_weight += w
+                avg_confidence = int(weighted_conf / total_weight) if total_weight > 0 else 50
+            else:
+                avg_confidence = 50
         
         # Oybirliği bonusu
         unanimous = max_votes == len(analyses) and len(analyses) > 1
