@@ -631,6 +631,15 @@ class AICouncil:
     
     def _initialize_analyzers(self):
         """Tüm AI analizörleri başlat"""
+        # DEBUG: Log all AI API keys status
+        logger.info("=" * 50)
+        logger.info("🔍 AI COUNCIL API KEY CHECK:")
+        logger.info(f"  ANTHROPIC_API_KEY: {'✅ SET' if os.getenv('ANTHROPIC_API_KEY') else '❌ MISSING'}")
+        logger.info(f"  OPENAI_API_KEY: {'✅ SET' if os.getenv('OPENAI_API_KEY') else '❌ MISSING'}")
+        logger.info(f"  GOOGLE_API_KEY: {'✅ SET' if os.getenv('GOOGLE_API_KEY') else '❌ MISSING'}")
+        logger.info(f"  DEEPSEEK_API_KEY: {'✅ SET' if os.getenv('DEEPSEEK_API_KEY') else '❌ MISSING'}")
+        logger.info("=" * 50)
+        
         self.analyzers = [
             ClaudeAnalyzer(),
             GPTAnalyzer(),
@@ -644,7 +653,7 @@ class AICouncil:
         if active:
             logger.info(f"🟢 Active AI Models: {', '.join(active)}")
         else:
-            logger.warning("⚠️ No AI models available!")
+            logger.warning("⚠️ No AI models available! Check API keys in Railway.")
     
     async def analyze(
         self,
