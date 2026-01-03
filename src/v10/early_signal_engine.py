@@ -983,58 +983,94 @@ class EarlySignalEngine:
                 elif trigger.severity == "CRITICAL":
                     reasons.append(f"⚠️ CRTICAL ALERT: {trigger.name} ({trigger.value})")
         
-        # === VETO MECHANISMS (NEW - 2026-01-01) ===
+        # === VETO MECHANISMS (ENHANCED - 2026-01-03) ===
         # These can override ai_score and force HOLD
         veto_active = False
         veto_reason = ""
         
+        # Get RSI from leading signal for veto checks
+        rsi_value = 50  # Default
+        if leading and leading.indicators:
+            for ind in leading.indicators:
+                if hasattr(ind, 'name') and 'RSI' in str(ind.name).upper():
+                    rsi_value = ind.value if hasattr(ind, 'value') else 50
+                    break
+        
+        # --- VETO 0: RSI EXTREME VETO (NEW - CRITICAL!) ---
+        # RSI < 30 = Oversold = Don't SHORT!
+        # RSI > 70 = Overbought = Don't LONG!
+        if not veto_active:
+            if rsi_value < 30 and ai_score < -20:  # Oversold but trying to SHORT
+                veto_active = True
+                veto_reason = f"📊 RSI VETO: RSI={rsi_value:.0f} (Aşırı satım) - SHORT engellendi, AL sinyali bekle!"
+                logger.warning(f"[VETO] RSI {rsi_value:.0f} oversold, blocking SHORT")
+            elif rsi_value > 70 and ai_score > 20:  # Overbought but trying to LONG
+                veto_active = True
+                veto_reason = f"📊 RSI VETO: RSI={rsi_value:.0f} (Aşırı alım) - LONG engellendi, SAT sinyali bekle!"
+                logger.warning(f"[VETO] RSI {rsi_value:.0f} overbought, blocking LONG")
+        
         # --- VETO 1: AI COUNCIL VETO ---
-        # Use AI Council's internal veto only (fixed to require unanimous HOLD)
-        # REMOVED: Duplicate majority check that was overriding ai_council.py fix
-        if hasattr(self, '_last_council_decision') and self._last_council_decision:
+        # Check if majority of AIs say HOLD - then don't signal!
+        if not veto_active and hasattr(self, '_last_council_decision') and self._last_council_decision:
             council = self._last_council_decision
             
-            # Only use Council's internal VETO (now requires 3/3 HOLD)
+            # Use Council's internal VETO (unanimous HOLD)
             if council.veto_active:
                 veto_active = True
                 veto_reason = council.veto_reason
                 logger.warning(f"[VETO] AI Council internal veto: {veto_reason}")
+            
+            # NEW: Check if AI Council direction contradicts the signal
+            if not veto_active and council.final_direction:
+                council_dir = council.final_direction.upper()
+                
+                # If Council says BUY but we're trying to SELL (or vice versa)
+                if council_dir == "BUY" and ai_score < -20:  # Council says BUY but signal is SHORT
+                    veto_active = True
+                    veto_reason = f"🗳️ AI Council VETO: Council says BUY but signal is SHORT - contradiction blocked"
+                    logger.warning(f"[VETO] AI Council contradicts SHORT signal")
+                elif council_dir == "SELL" and ai_score > 20:  # Council says SELL but signal is LONG
+                    veto_active = True
+                    veto_reason = f"🗳️ AI Council VETO: Council says SELL but signal is LONG - contradiction blocked"
+                    logger.warning(f"[VETO] AI Council contradicts LONG signal")
+                
+                # Check for majority HOLD (2+ out of 3)
+                hold_count = council.vote_count.get('HOLD', 0)
+                total_votes = sum(council.vote_count.values())
+                if hold_count >= 2 and total_votes >= 3:
+                    veto_active = True
+                    veto_reason = f"🗳️ AI Council VETO: {hold_count}/{total_votes} AI bekleme diyor - sinyal engellendi"
+                    logger.warning(f"[VETO] AI Council majority HOLD: {hold_count}/{total_votes}")
         
-        # --- VETO 2: REGIME FILTER ---
-        # Don't go LONG in TRENDING_BEAR, don't go SHORT in TRENDING_BULL
+        # --- VETO 2: REGIME FILTER (FIXED STRING MATCHING) ---
+        # Normalize regime string - accept both "TRENDING BULL" and "TRENDING_BULL"
+        regime_normalized = regime.upper().replace(" ", "_") if regime else "UNKNOWN"
+        
         if not veto_active:
-            if regime == "TRENDING_BEAR" and ai_score > 20:  # Would be BUY
-                # Option 1: Reduce score by 50%
-                original_score = ai_score
-                ai_score = ai_score * 0.5
-                reasons.append(f"⚠️ REGIME FILTER: Bear market, LONG risk reduced ({original_score:.0f}→{ai_score:.0f})")
-                
-                # Option 2: If score is barely positive, VETO completely
-                if ai_score < 25:
+            # Check for bullish regimes
+            if any(x in regime_normalized for x in ["TRENDING_BULL", "BULLISH", "UPTREND", "BULL"]):
+                if ai_score < -20:  # Would be SELL in bullish regime
                     veto_active = True
-                    veto_reason = f"🐻 Regime VETO: TRENDING_BEAR - LONG signals blocked (score {ai_score:.0f})"
-                    logger.warning(f"[VETO] Regime blocked LONG in bear market")
+                    veto_reason = f"🐂 Regime VETO: {regime} = Yükseliş trendi - SHORT engellendi, trend ile işlem yap!"
+                    logger.warning(f"[VETO] Regime blocked SHORT in bull market: {regime}")
                     
-            elif regime == "TRENDING_BULL" and ai_score < -20:  # Would be SELL
-                original_score = ai_score
-                ai_score = ai_score * 0.5
-                reasons.append(f"⚠️ REGIME FILTER: Bull market, SHORT risk reduced")
-                
-                if ai_score > -25:
+            # Check for bearish regimes
+            elif any(x in regime_normalized for x in ["TRENDING_BEAR", "BEARISH", "DOWNTREND", "BEAR"]):
+                if ai_score > 20:  # Would be BUY in bearish regime
                     veto_active = True
-                    veto_reason = f"🐂 Regime VETO: TRENDING_BULL - SHORT signals blocked"
-                    logger.warning(f"[VETO] Regime blocked SHORT in bull market")
+                    veto_reason = f"🐻 Regime VETO: {regime} = Düşüş trendi - LONG engellendi, trend ile işlem yap!"
+                    logger.warning(f"[VETO] Regime blocked LONG in bear market: {regime}")
         
         # --- VETO 3: ORDERBOOK CONTRADICTION ---
         # Don't go LONG when orderbook is heavily bearish (>50% sell)
         if not veto_active:
             if orderbook_score < -50 and ai_score > 20:  # Heavy selling but BUY signal
                 veto_active = True
-                veto_reason = f"📕 Orderbook VETO: {orderbook_score:.0f}% sell pressure - LONG blocked"
+                veto_reason = f"📕 Orderbook VETO: {orderbook_score:.0f}% satış baskısı - LONG engellendi"
                 logger.warning(f"[VETO] Orderbook contradiction: {orderbook_score} but trying to BUY")
             elif orderbook_score > 50 and ai_score < -20:  # Heavy buying but SELL signal
                 veto_active = True
-                veto_reason = f"📗 Orderbook VETO: +{orderbook_score:.0f}% buy pressure - SHORT blocked"
+                veto_reason = f"📗 Orderbook VETO: +{orderbook_score:.0f}% alım baskısı - SHORT engellendi"
                 logger.warning(f"[VETO] Orderbook contradiction: {orderbook_score} but trying to SELL")
         
         # === FINAL DECISION ===
