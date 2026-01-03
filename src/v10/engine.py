@@ -29,6 +29,7 @@ from src.v10.early_signal_trainer import get_trainer
 from src.brain.rl_agent.auto_retrain import AutoRetrainPipeline  # Smart Pipeline
 from src.brain.correlation_analyzer import get_correlation_analyzer  # Multi-Coin Correlation
 from src.v10.signal_quality_filter import get_signal_quality_filter  # Quality Gate
+from src.v10.signal_validator import get_signal_validator  # Signal Accuracy Tracking
 
 logger = logging.getLogger("V10_ENGINE")
 
@@ -71,6 +72,7 @@ class V10Engine:
         self._last_signal_time: Dict[str, datetime] = {}
         self._last_performance_report = datetime.now()
         self._last_daily_report = datetime.now()
+        self._last_validation_check = datetime.now()  # Signal validation check
         self._running = False
         self._cycle_count = 0
         self._signal_count = 0
@@ -125,6 +127,14 @@ class V10Engine:
                     await self._check_auto_retrain()
             except Exception as e:
                 logger.error(f"[AUTO-RETRAIN] Error: {e}")
+            
+            # --- SIGNAL VALIDATION CHECK (Every 4 hours) ---
+            try:
+                if (datetime.now() - self._last_validation_check).total_seconds() > 4 * 3600:
+                    self._last_validation_check = datetime.now()
+                    await self._run_signal_validation()
+            except Exception as e:
+                logger.error(f"[VALIDATION] Error: {e}")
             
             await asyncio.sleep(self.SCAN_INTERVAL)
             
@@ -626,6 +636,22 @@ TAVSİYE:
                 except Exception as e:
                     logger.warning(f"Signal history error: {e}")
                 
+                # === SIGNAL VALIDATION RECORDING (NEW) ===
+                # Kaydet ve sonra 1h/4h sonra doğruluk kontrol edilecek
+                try:
+                    validator = get_signal_validator()
+                    validator.record_signal(
+                        symbol=symbol,
+                        direction=early_signal.action,
+                        entry_price=early_signal.entry_zone[0],
+                        stop_loss=early_signal.stop_loss,
+                        take_profit=early_signal.take_profit,
+                        confidence=int(early_signal.confidence)
+                    )
+                    logger.info(f"📊 Signal recorded for validation: {symbol}")
+                except Exception as e:
+                    logger.warning(f"Signal validation recording error: {e}")
+                
                 logger.info(f"[SIGNAL] Early Signal sent: {symbol}")
                 
                 # PAPER TRADING EXECUTION
@@ -776,6 +802,27 @@ TAVSİYE:
 
         except Exception as e:
             logger.error(f"Auto-retrain error: {e}")
+    
+    async def _run_signal_validation(self):
+        """Sinyal doğrulama kontrolü ve rapor gönder"""
+        try:
+            validator = get_signal_validator()
+            
+            # 1. Bekleyen sinyallerin fiyatlarını kontrol et
+            results = await validator.check_pending_signals()
+            
+            checked_count = len(results.get("1h", [])) + len(results.get("4h", []))
+            if checked_count > 0:
+                logger.info(f"📊 Validated {checked_count} signals")
+            
+            # 2. Telegram'a doğrulama raporu gönder
+            report = validator.format_telegram_report(hours=24)
+            self.notifier._send_message(report)
+            
+            logger.info("📊 Signal validation report sent")
+            
+        except Exception as e:
+            logger.error(f"Signal validation error: {e}")
 
 
 _engine: Optional[V10Engine] = None
