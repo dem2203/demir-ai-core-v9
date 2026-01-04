@@ -21,7 +21,7 @@ import logging
 from datetime import datetime
 
 from src.data_pipeline.collector import get_data_collector
-from src.features.technical import TechFeatureEngineer
+from src.features.technical import TechnicalFeatures
 from src.models.trainer import QuantModelTrainer
 from src.risk.position_sizer import RiskManager
 
@@ -32,7 +32,7 @@ class SignalGenerator:
         self.symbols = symbols
         self.collector = get_data_collector()
         self.risk_manager = RiskManager()
-        self.feature_eng = TechFeatureEngineer()
+        self.feature_eng = TechnicalFeatures()
         
         # Modelleri önbelleğe al
         self.models = {}
@@ -72,7 +72,7 @@ class SignalGenerator:
                 # 2. Feature Calculation
                 # Tüm data üzerinde feature çıkar (en son satır önemli)
                 # İleride performans için sadece son 1000 satırı alabiliriz
-                df_features = self.feature_eng.generate_features(df)
+                df_features = self.feature_eng.calculate_all(df)
                 
                 # 3. Model Hazırlığı
                 # Trainer'daki column listesini kullan (böylece eğitimdeki ile aynı olur)
