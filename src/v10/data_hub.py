@@ -20,7 +20,14 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from dataclasses import dataclass, field
 from enum import Enum
-from src.brain.advanced_scrapers import AdvancedMarketScrapers
+
+# Optional import - module may have been removed
+try:
+    from src.brain.advanced_scrapers import AdvancedMarketScrapers
+    HAS_SCRAPERS = True
+except ImportError:
+    HAS_SCRAPERS = False
+    AdvancedMarketScrapers = None
 
 logger = logging.getLogger("DATA_HUB")
 
@@ -129,8 +136,8 @@ class DataHub:
         self._last_snapshots: Dict[str, MarketSnapshot] = {}
         self._error_count: int = 0
         self._success_count: int = 0
-        self.scraper = AdvancedMarketScrapers()
-        logger.info("📡 Data Hub initialized - FUTURES API MODE + WEB FALLBACK")
+        self.scraper = AdvancedMarketScrapers() if HAS_SCRAPERS else None
+        logger.info("📡 Data Hub initialized - FUTURES API MODE")
     
     async def _get_session(self) -> aiohttp.ClientSession:
         """HTTP session al - timeout'lu + User-Agent header'lı"""
@@ -186,7 +193,7 @@ class DataHub:
                 self._success_count += 1
         
         # CRITICAL FALLBACK: If API failed to get price, try Web Scraping
-        if snapshot.price == 0:
+        if snapshot.price == 0 and self.scraper is not None:
             try:
                 # Run sync scraper in thread to not block engine
                 loop = asyncio.get_event_loop()
