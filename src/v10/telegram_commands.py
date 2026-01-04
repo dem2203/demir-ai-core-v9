@@ -231,142 +231,100 @@ class TelegramCommands:
     async def cmd_istatistik(self) -> str:
         """İstatistikleri göster - PRO VERSION"""
         try:
-            # Performance Tracker'dan istatistik al
-            from src.v10.performance_tracker import get_performance_tracker
-            tracker = get_performance_tracker()
-            stats = tracker.get_stats()
-            shutdown = tracker.get_shutdown_status()
+            # CORRECT: Use brain.signal_performance_tracker
+            from src.brain.signal_performance_tracker import get_tracker
+            tracker = get_tracker()
+            stats = tracker.get_win_rate() # Returns dict with win_rate, total_signals, etc.
             
-            # Risk Engine'den portföy bilgisi al
+            # Risk Engine'den portföy bilgisi al isntead of Paper Trader default
             portfolio_info = ""
             try:
-                from src.brain.risk_engine import get_risk_engine
-                risk_engine = get_risk_engine()
+                from src.execution.paper_trader import get_paper_trader
+                pt = get_paper_trader()
+                balance = pt.get_balance()
                 portfolio_info = f"""
-🛡️ *RİSK ENGINE:*
-  💰 Portföy: ${risk_engine.portfolio_equity:,.0f}
-  📊 Win Rate: {risk_engine.win_rate:.1f}%
-  📈 Peak: ${risk_engine.peak_equity:,.0f}
-  📉 Günlük: ${risk_engine.daily_pnl:+,.0f}
+🛡️ *PAPER TRADER:*
+  💰 Bakiye: ${balance:,.2f}
+  📊 Açık Pozisyon: {len(pt.get_open_positions())}
 """
             except:
                 pass
             
-            # Auto-shutdown durumu
-            auto_status = "✅ Normal"
-            if shutdown['trading_disabled']:
-                auto_status = f"🛑 DUR: {shutdown['disable_reason']}"
-            elif shutdown['rolling_win_rate'] < 45:
-                auto_status = f"⚠️ Dikkat: {shutdown['rolling_win_rate']:.1f}%"
-            
             return f"""📈 *İSTATİSTİKLER - PRO*
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
-📊 *PERFORMANS:*
-  Toplam Trade: {stats.get('completed', 0)}
-  Win Rate: %{stats.get('win_rate', 0):.1f}
-  Ort. PnL: {stats.get('avg_pnl', 0):+.2f}%
-  
-📉 *ROLLING (Son {shutdown['rolling_trades']} Trade):*
-  Win Rate: %{shutdown['rolling_win_rate']:.1f}
-  Auto-Shutdown: {auto_status}
+📊 *SİNYAL PERFORMANSI (7 Gün):*
+  Toplam: {stats.get('total_signals', 0)}
+  ✅ Win: {stats.get('winners', 0)} ({stats.get('win_rate', 0):.1f}%)
+  ❌ Loss: {stats.get('losers', 0)}
+  ⏳ Bekleyen: {stats.get('pending', 0)}
+
 {portfolio_info}
 📋 *SİNYAL DAĞILIMI:*
   LONG: {self._stats['long_signals']}
   SHORT: {self._stats['short_signals']}
   BEKLE: {self._stats['bekle_signals']}
 
-━━━━━━━━ DEMIR AI v10 PRO ━━━━━━━━
+━━━━━━━━ DEMIR AI v11 PRO ━━━━━━━━
 """
         except Exception as e:
             logger.error(f"İstatistik error: {e}")
-            return f"""📈 *İSTATİSTİKLER*
-━━━━━━━━━━━━━━━━━━━━━━━━
+            return "❌ İstatistik alınamadı"
 
-📊 Sinyal Sayısı: {self._stats['total_signals']}
-  LONG: {self._stats['long_signals']}
-  SHORT: {self._stats['short_signals']}
-  BEKLE: {self._stats['bekle_signals']}
+    # ==========================================================================
+    # /performans - Detaylı Rapor (Alias for now)
+    # ==========================================================================
+    async def cmd_performans(self) -> str:
+        """Detaylı performans raporu"""
+        return await self.cmd_istatistik()
 
-━━━━━━━━ DEMIR AI v10 PRO ━━━━━━━━
-"""
-    
     # ==========================================================================
-    # /son - Son 5 sinyal
-    # ==========================================================================
-    async def cmd_son(self) -> str:
-        """Son 5 sinyali göster"""
-        if not self._signal_history:
-            return "📭 Henüz sinyal geçmişi yok"
-        
-        msg = """📋 *SON 5 SİNYAL*
-━━━━━━━━━━━━━━━━━━━━━━━━
-"""
-        
-        recent = self._signal_history[-5:][::-1]  # Son 5, ters sıra
-        
-        for i, sig in enumerate(recent, 1):
-            emoji = "🟢" if sig['direction'] == 'LONG' else "🔴" if sig['direction'] == 'SHORT' else "⏸️"
-            msg += f"""
-{i}. {emoji} *{sig['symbol']}* → {sig['direction']}
-   💰 Entry: ${sig['entry']:,.2f}
-   🎯 Conf: %{sig['confidence']}
-   ⏰ {sig['timestamp']}
-"""
-        
-        msg += "\n━━━━━━━━━━━━━━━━━━━━━━━━"
-        return msg
-    
-    # ==========================================================================
-    # /risk - Açık pozisyonlar
+    # /risk - Açık pozisyonlar (Paper Trader)
     # ==========================================================================
     async def cmd_risk(self) -> str:
         """Açık pozisyonları ve risk durumunu göster"""
         try:
-            from src.brain.paper_trading_manager import get_paper_trading_manager
-            ptm = get_paper_trading_manager()
+            # CORRECT: Use execution.paper_trader
+            from src.execution.paper_trader import get_paper_trader
+            pt = get_paper_trader()
             
-            open_trades = ptm.get_open_trades()
+            open_positions = pt.get_open_positions() # Returns dict {symbol: pos}
             
-            if not open_trades:
+            if not open_positions:
                 return """⚠️ *RİSK DURUMU*
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
-📭 Açık pozisyon yok
+📭 Açık paper trade pozisyonu yok
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 """
             
-            msg = """⚠️ *RİSK DURUMU*
+            msg = """⚠️ *PAPER TRADE POZİSYONLARI*
 ━━━━━━━━━━━━━━━━━━━━━━━━
-
-📊 *AÇIK POZİSYONLAR:*
 """
             
-            total_risk = 0
-            for trade in open_trades:
-                emoji = "🟢" if trade['direction'] == 'LONG' else "🔴"
-                pnl = trade.get('unrealized_pnl', 0)
-                pnl_emoji = "📈" if pnl > 0 else "📉"
-                
+            total_pnl = 0
+            for symbol, pos in open_positions.items():
+                emoji = "🟢" if pos['side'] == 'BUY' else "🔴"
+                # PnL hesaplama (anlık fiyat lazım ama burada basit gösterelim)
+                entry = pos['entry_price']
+                size = pos['size']
                 msg += f"""
-{emoji} *{trade['symbol']}* {trade['direction']}
-  Entry: ${trade['entry']:,.2f}
-  TP: ${trade['tp1']:,.2f}
-  SL: ${trade['sl']:,.2f}
-  {pnl_emoji} PnL: {pnl:+.2f}%
+{emoji} *{symbol}* {pos['side']}
+  Entry: ${entry:,.2f}
+  Size: {size:.4f}
+  SL: ${pos['stop_loss']:,.2f} | TP: ${pos['take_profit']:,.2f}
 """
-                total_risk += abs(trade.get('risk_pct', 0))
             
-            msg += f"""
-━━━━━━━━━━━━━━━━━━━━━━━━
-📊 Toplam Risk: %{total_risk:.1f}
-"""
             return msg
             
         except Exception as e:
             logger.error(f"Risk error: {e}")
+            logger.exception(e)
             return "❌ Risk bilgisi alınamadı"
+
+    async def cmd_pozisyonlar(self) -> str:
+        return await self.cmd_risk()
     
     # ==========================================================================
     # Helper: Sinyal kaydet

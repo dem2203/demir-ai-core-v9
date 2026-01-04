@@ -44,20 +44,44 @@ async def signal_monitor_loop():
     """Dakikalık sinyal tarama döngüsü."""
     from src.execution.signal_generator import SignalGenerator
     from src.execution.notifier import send_signal_alert, send_message
+    from src.brain.signal_performance_tracker import get_tracker
+    from src.execution.paper_trader import get_paper_trader
     
     logger.info("📡 Signal Monitor starting...")
     
     symbols = ["BTCUSDT", "ETHUSDT"]
     generator = SignalGenerator(symbols, use_advanced=True)
+    tracker = get_tracker()
+    paper_trader = get_paper_trader()
     
     # Initialize async components
     await generator.initialize()
+    
+    last_report_date = None
     
     logger.info(f"Monitor edilen semboller: {symbols}")
     
     while True:
         try:
             now = datetime.now()
+            
+            # --- DAILY REPORT CHECK (23:00) ---
+            if now.hour == 23 and now.minute == 0:
+                current_date = now.date()
+                if last_report_date != current_date:
+                    try:
+                        # Raporu hazırla ve gönder
+                        from src.v10.telegram_commands import get_telegram_commands
+                        cmd = get_telegram_commands()
+                        report = await cmd.cmd_istatistik()
+                        
+                        full_report = f"📅 *GÜNLÜK KAPANIŞ RAPORU*\n{report}"
+                        await send_message(full_report)
+                        
+                        last_report_date = current_date
+                        logger.info("✅ Daily report sent")
+                    except Exception as e:
+                        logger.error(f"Daily report error: {e}")
             
             # Sonraki dakikanın 5. saniyesine kadar bekle
             next_minute = now.replace(second=5, microsecond=0)
@@ -68,15 +92,39 @@ async def signal_monitor_loop():
             logger.info(f"⏳ Signal check in {wait_seconds:.0f}s...")
             await asyncio.sleep(wait_seconds)
             
-            # Sinyal kontrolü
+            # --- START LOOP ---
             logger.info(f"⏰ Tick: {datetime.now().strftime('%H:%M:%S')}")
             
+            # 1. Tracker Update (TP/SL kontrolü)
+            try:
+                # Arka planda çalışsın, bloklamasın
+                updated_signals = await asyncio.to_thread(tracker.check_signals)
+                if updated_signals:
+                    logger.info(f"📊 {len(updated_signals)} signals updated in tracker")
+            except Exception as e:
+                logger.error(f"Tracker check error: {e}")
+            
+            # 2. Paper Trader Update (Trailing Stop / DCA)
+            current_prices = {}
+            for sym in symbols:
+                price = await generator._get_realtime_price(sym)
+                if price:
+                    current_prices[sym] = price
+            
+            if current_prices:
+                await paper_trader.update_positions(current_prices)
+                
+            # 3. Sinyal Kontrolü
             signals = await generator.check_for_signals()
             
             if signals:
                 logger.info(f"🔥 {len(signals)} SIGNALS GENERATED!")
                 for signal in signals:
+                    # Telegram Bildirimi
                     send_signal_alert(signal)
+                    
+                    # Paper Trade İşlemi
+                    await paper_trader.execute_trade(signal)
             else:
                 logger.debug("💤 No signals found.")
                 

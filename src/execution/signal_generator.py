@@ -36,6 +36,7 @@ from src.features.technical import TechnicalFeatures
 from src.models.trainer import QuantModelTrainer
 from src.risk.position_sizer import RiskManager
 from src.execution.advanced_signals import get_advanced_enhancer
+from src.brain.signal_performance_tracker import get_tracker
 
 logger = logging.getLogger("SIGNAL_GENERATOR")
 
@@ -58,6 +59,9 @@ class SignalGenerator:
         self.risk_manager = RiskManager()
         self.feature_eng = TechnicalFeatures()
         self.use_advanced = use_advanced
+        
+        # Performance Tracker
+        self.tracker = get_tracker()
         
         # Advanced Enhancer (Whale + Liquidation + Sentiment)
         self.enhancer = get_advanced_enhancer() if use_advanced else None
@@ -260,6 +264,22 @@ class SignalGenerator:
                     
                     # Sinyali kaydet (cooldown için)
                     self._record_signal(symbol, signal_side)
+                    
+                    # 7.1 Performance Tracking (New Phase 8B)
+                    if self.tracker:
+                        try:
+                            self.tracker.record_signal({
+                                'symbol': symbol,
+                                'direction': signal_side,
+                                'entry': current_price,
+                                'sl': sl,
+                                'tp1': tp,
+                                'tp2': tp, # Single TP logic for now
+                                'confidence': confidence * 100
+                            })
+                            logger.info(f"📝 Signal recorded to tracker: {symbol} {signal_side}")
+                        except Exception as e:
+                            logger.error(f"❌ Tracker record error: {e}")
                     
                     signals.append(signal_data)
                     
