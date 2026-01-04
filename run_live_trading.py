@@ -90,13 +90,6 @@ async def signal_monitor_loop():
 
 async def telegram_bot_loop():
     """Telegram bot polling."""
-    from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler
-    from src.v10.telegram_bot import (
-        start, info_cmd, analyze, durum, piyasa, brain_status,
-        son_sinyaller, istatistik, risk_status, callback_handler,
-        get_application
-    )
-    
     logger.info("🤖 Telegram Bot starting...")
     
     TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -105,19 +98,13 @@ async def telegram_bot_loop():
         return
     
     try:
-        app = ApplicationBuilder().token(TOKEN).build()
+        # Use the existing get_application function that sets up all handlers
+        from src.v10.telegram_bot import get_application
         
-        # Command Handlers
-        app.add_handler(CommandHandler("start", start))
-        app.add_handler(CommandHandler("info", info_cmd))
-        app.add_handler(CommandHandler("analiz", analyze))
-        app.add_handler(CommandHandler("durum", durum))
-        app.add_handler(CommandHandler("piyasa", piyasa))
-        app.add_handler(CommandHandler("brain", brain_status))
-        app.add_handler(CommandHandler("son", son_sinyaller))
-        app.add_handler(CommandHandler("istatistik", istatistik))
-        app.add_handler(CommandHandler("risk", risk_status))
-        app.add_handler(CallbackQueryHandler(callback_handler))
+        app = get_application()
+        if not app:
+            logger.error("❌ Failed to create Telegram application!")
+            return
         
         logger.info("✅ Telegram Bot handlers ready")
         
