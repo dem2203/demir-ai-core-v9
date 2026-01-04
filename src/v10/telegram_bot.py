@@ -109,89 +109,54 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def run_analysis(update: Update, symbol: str):
-    """Analiz çalıştır - Premium Report ile"""
+    """Analiz çalıştır - AI Council V2 ile"""
     # Determine where to send the reply
     if update.callback_query:
         message = update.callback_query.message
-        status_msg = await message.reply_text(f"🔍 {symbol} PRO analiz ediliyor... Lütfen bekleyin.")
+        status_msg = await message.reply_text(f"🧠 {symbol} AI COUNCIL analiz ediliyor...\n⏳ 4 AI paralel çalışıyor, lütfen bekleyin...")
     else:
         message = update.message
-        status_msg = await message.reply_text(f"🔍 {symbol} PRO analiz ediliyor... Lütfen bekleyin.")
+        status_msg = await message.reply_text(f"🧠 {symbol} AI COUNCIL analiz ediliyor...\n⏳ 4 AI paralel çalışıyor, lütfen bekleyin...")
 
     try:
-        from src.v10.early_signal_engine import EarlySignalEngine
-        from src.v10.premium_report import build_premium_report
-        from src.brain.breakout_hunter import get_breakout_hunter
-        from src.brain.liquidation_hunter import LiquidationHunter
+        from src.brain.ai_council_v2 import get_ai_council
         
-        engine = EarlySignalEngine()
-        signal = await engine.analyze(symbol)
+        # AI Council'ı al ve analiz yap
+        council = get_ai_council()
+        decision = await council.analyze(symbol)
         
-        if signal:
-            # Collect additional data for premium report
-            breakout_signal = None
-            liq_data = None
-            council_decision = None
+        # Rapor formatla ve gönder
+        report = council.format_report(decision)
+        await message.reply_text(report, reply_markup=get_main_keyboard(), parse_mode="Markdown")
+        
+    except Exception as e:
+        logger.error(f"AI Council analysis error: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Fallback - eski sisteme dön
+        try:
+            await status_msg.edit_text("⚠️ AI Council hata verdi, klasik analiz deneniyor...")
             
-            try:
-                # Get Breakout Hunter data
-                breakout_hunter = get_breakout_hunter()
-                breakout_signal = await breakout_hunter.analyze(symbol)
-            except Exception as e:
-                logger.warning(f"Breakout hunter error: {e}")
+            from src.v10.early_signal_engine import EarlySignalEngine
+            engine = EarlySignalEngine()
+            signal = await engine.analyze(symbol)
             
-            try:
-                # Get Liquidation Hunter data
-                liq_hunter = LiquidationHunter()
-                liq_result = await liq_hunter.get_liquidation_heatmap(symbol)
-                liq_data = {
-                    'ls_ratio': liq_result.get('lsr', 1.0),
-                    'funding_rate': liq_result.get('funding', 0),
-                    'liquidation_magnet': liq_result.get('magnet', 0)
-                }
-            except Exception as e:
-                logger.warning(f"Liquidation hunter error: {e}")
-            
-            try:
-                # Get AI Council decision from the SAME engine that analyzed
-                if hasattr(engine, '_last_council_decision') and engine._last_council_decision:
-                    council_decision = engine._last_council_decision
-                    logger.info(f"✅ AI Council decision found: {council_decision.final_direction}")
-                else:
-                    logger.debug("No AI Council decision available for this signal")
-            except Exception as e:
-                logger.warning(f"Council decision error: {e}")
-            
-            # Build Premium Report
-            try:
-                report = build_premium_report(
-                    signal=signal,
-                    breakout_signal=breakout_signal,
-                    council_decision=council_decision,
-                    liq_data=liq_data
-                )
-                report_text = report.to_telegram_message()
-            except Exception as e:
-                logger.error(f"Premium report build error: {e}")
-                # Fallback to simple report with DEBUG INFO
+            if signal:
                 report_text = (
                     f"🧠 AI ANALİZ RAPORU - {signal.symbol}\n"
-                    f"⚠️ SİSTEM HATASI: {str(e)}\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"📍 Karar: {signal.action}\n"
                     f"🎯 Güven: %{signal.confidence:.0f}\n"
                     f"📝 {signal.reasoning[:300] if signal.reasoning else 'N/A'}"
                 )
+                await message.reply_text(report_text, reply_markup=get_main_keyboard())
+            else:
+                await message.reply_text(f"❌ {symbol} için analiz yapılamadı.")
             
-            await message.reply_text(report_text, reply_markup=get_main_keyboard())
-        else:
-            await message.reply_text(f"❌ {symbol} için veri alınamadı veya sinyal üretilemedi.")
-            
-        await engine.close()
-        
-    except Exception as e:
-        logger.error(f"Analysis error: {e}")
-        await message.reply_text(f"❌ Analiz hatası: {str(e)[:200]}")
+            await engine.close()
+        except Exception as e2:
+            await message.reply_text(f"❌ Analiz hatası: {str(e)[:100]}\nFallback hatası: {str(e2)[:100]}")
     finally:
         try:
             await status_msg.delete()
