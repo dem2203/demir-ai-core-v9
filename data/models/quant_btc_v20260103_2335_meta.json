@@ -1,0 +1,66 @@
+{
+  "model_name": "quant_btc",
+  "version": "v20260103_2335",
+  "timestamp": "2026-01-03T23:35:39.772263",
+  "train_accuracy": 0.8076965177207419,
+  "val_accuracy": 0.5042784667954807,
+  "feature_count": 74,
+  "sample_count": 525303,
+  "best_features": [
+    "obv",
+    "obv_ema",
+    "ema_200",
+    "sma_200",
+    "return_240",
+    "ema_55",
+    "dist_from_ema_200",
+    "atr",
+    "volume_ema_20",
+    "atr_percent",
+    "sma_50",
+    "keltner_upper",
+    "keltner_lower",
+    "bb_lower",
+    "bb_upper",
+    "volatility_ratio",
+    "return_60",
+    "high",
+    "close",
+    "low"
+  ],
+  "walk_forward_results": {
+    "folds": [
+      {
+        "fold": 1,
+        "train_size": 87550,
+        "test_size": 87550,
+        "accuracy": 0.5202855511136494
+      },
+      {
+        "fold": 2,
+        "train_size": 175100,
+        "test_size": 87550,
+        "accuracy": 0.49098800685322674
+      },
+      {
+        "fold": 3,
+        "train_size": 262650,
+        "test_size": 87550,
+        "accuracy": 0.49776127926898917
+      },
+      {
+        "fold": 4,
+        "train_size": 350200,
+        "test_size": 87550,
+        "accuracy": 0.5120959451741862
+      },
+      {
+        "fold": 5,
+        "train_size": 437750,
+        "test_size": 87550,
+        "accuracy": 0.4849114791547687
+      }
+    ],
+    "avg_accuracy": 0.5012084523129641,
+    "std_accuracy": 0.013148422270096027,
+    "is_consistent": 

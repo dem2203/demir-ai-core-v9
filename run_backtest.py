@@ -74,80 +74,71 @@ def generate_features(symbols: list):
 
 
 def train_model(symbols: list):
-    """Model eğit."""
-    from src.models.trainer import get_model_trainer
+    """Her sembol için ayrı model eğit."""
+    from src.models.trainer import QuantModelTrainer
     
     logger.info("="*50)
-    logger.info("🧠 TRAINING MODEL")
+    logger.info("🧠 TRAINING SEPARATE MODELS")
     logger.info("="*50)
     
-    # Tüm verileri birleştir
-    all_data = []
+    results = {}
+    
     for symbol in symbols:
         path = f"data/processed/{symbol}_features.parquet"
         try:
             df = pd.read_parquet(path)
-            df['symbol'] = symbol
-            all_data.append(df)
-            logger.info(f"  Loaded {symbol}: {len(df)} samples")
+            logger.info(f"\n📊 Training model for {symbol}: {len(df)} samples")
         except FileNotFoundError:
             logger.warning(f"  {symbol} not found, run --features first")
-    
-    if not all_data:
-        logger.error("No feature data found!")
-        return None
-    
-    combined = pd.concat(all_data, ignore_index=True)
-    logger.info(f"\n📊 Combined dataset: {len(combined)} samples")
-    
-    # Eğit
-    trainer = get_model_trainer("quant_btc_eth")
-    result = trainer.train(combined, target_col="label_4h")
+            continue
+        
+        # Her sembol için ayrı trainer
+        model_name = f"quant_{symbol.lower().replace('usdt', '')}"
+        trainer = QuantModelTrainer(model_name)
+        
+        result = trainer.train(df, target_col="label_4h")
+        results[symbol] = result
+        
+        logger.info(f"  ✅ {symbol} Model: {result.model_name}_{result.version}")
+        logger.info(f"     Train: {result.train_accuracy:.2%} | Val: {result.val_accuracy:.2%}")
     
     logger.info("\n" + "="*50)
-    logger.info("✅ TRAINING COMPLETE")
+    logger.info("✅ ALL MODELS TRAINED")
     logger.info("="*50)
-    logger.info(f"  Model: {result.model_name}_{result.version}")
-    logger.info(f"  Train Accuracy: {result.train_accuracy:.2%}")
-    logger.info(f"  Validation Accuracy: {result.val_accuracy:.2%}")
-    logger.info(f"  Walk-Forward Avg: {result.walk_forward_results.get('avg_accuracy', 0):.2%}")
     
-    return result
+    return results
 
 
 def run_backtest(symbols: list):
-    """Backtest çalıştır."""
-    from src.models.trainer import get_model_trainer
+    """Gelişmiş Risk Yönetimi ile Backtest çalıştır."""
+    from src.execution.backtester import AdvancedBacktester
     
     logger.info("="*50)
-    logger.info("📈 RUNNING BACKTEST")
+    logger.info("📈 RUNNING ADVANCED BACKTEST (RISK MANAGED)")
     logger.info("="*50)
     
-    trainer = get_model_trainer("quant_btc_eth")
-    
-    try:
-        trainer.load_model()
-    except FileNotFoundError:
-        logger.error("No trained model found! Run --train first")
-        return None
-    
-    # Her sembol için backtest
     for symbol in symbols:
+        model_name = f"quant_{symbol.lower().replace('usdt', '')}"
+        
+        try:
+            backtester = AdvancedBacktester(symbol, model_name)
+        except Exception as e:
+            logger.warning(f"Skipping {symbol}: {e}")
+            continue
+        
         path = f"data/processed/{symbol}_features.parquet"
         try:
             df = pd.read_parquet(path)
         except FileNotFoundError:
-            logger.warning(f"  {symbol} not found, skipping...")
+            logger.warning(f"  {symbol} data not found, skipping...")
             continue
         
-        logger.info(f"\n📊 Backtesting {symbol}...")
-        result = trainer.backtest(df)
+        # Simülasyonu başlat
+        results = backtester.run(df)
         
-        logger.info(f"  Trades: {result.total_trades}")
-        logger.info(f"  Win Rate: {result.win_rate:.2%}")
-        logger.info(f"  Sharpe: {result.sharpe_ratio:.2f}")
-        logger.info(f"  Max Drawdown: {result.max_drawdown:.2%}")
-        logger.info(f"  Profit Factor: {result.profit_factor:.2f}")
+        # Ekstra analiz gerekirse burada yapılabilir
+        # Örneğin max drawdown hesaplama (backtester raporluyor ama burada özet geçebiliriz)
+
 
 
 async def run_all(symbols: list, days: int):

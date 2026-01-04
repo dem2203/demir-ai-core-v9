@@ -1,68 +1,9 @@
-# --- Core --- (CACHE BUSTER: 2024-12-31-00:22 UTC)
-python-dotenv
-requests
-
-# --- Data & Math ---
-pandas
-numpy
-ccxt>=4.0.0
-scikit-learn
-joblib
-# pandas_ta REMOVED - incompatible with Python 3.11, using manual calculations
-# yfinance REMOVED - causes production errors on Railway
-# pandas_datareader REMOVED - yfinance dependency
-
-# --- Deep Learning ---
-tensorflow
-
-# --- Quant ML (NEW) ---
-lightgbm>=4.0.0
+aiohttp>=3.9.0
+joblib>=1.3.0
+lightgbm>=4.1.0
+numpy>=1.26.0
+pandas>=2.1.0
 pyarrow>=14.0.0
-
-# --- Reinforcement Learning ---
-stable-baselines3
-sb3-contrib>=2.1.0
-gymnasium
-shimmy>=0.2.1
-
-# --- Dashboard & Visuals ---
-streamlit
-watchdog
-plotly
-
-# --- Phase 4A: Institutional Arsenal ---
-websockets>=11.0
-
-# --- Phase 5: Advanced Analytics ---
-arch>=5.3.0
-scipy>=1.10.0
-
-# --- Phase 10: Superhuman Intelligence Enhancement ---
-apscheduler
-google-generativeai
-openai
-anthropic>=0.20.0
-plotly
-kaleido
-pillow
-
-# --- Phase 13: Sentiment Analysis ---
-praw
-beautifulsoup4>=3.10.0
-matplotlib>=3.7.0
-
-# --- Browser-Based Web Scraping ---
-playwright
-
-# --- Interactive Features ---
+python-dotenv>=1.0.0
 python-telegram-bot>=20.0
-fastapi
-uvicorn
-jinja2
-playwright>=1.40.0
-
-# --- Async Support ---
-nest-asyncio==1.6.0
-
-# --- News Feed Parsing ---
-feedparser
+requests>=2.31.0

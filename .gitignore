@@ -3,16 +3,23 @@ __pycache__/
 .env
 .DS_Store
 
-# Large data files (cached at runtime)
-data/backtest/
-data/risk_engine/
+# Data (Raw data is huge, ignore it. Collector will download)
+data/raw/*
+!data/raw/.gitkeep
 *.parquet
 
-# Model files (trained at runtime)
-models/*.keras
-models/*.h5
-*.keras
-*.h5
+# Models (We WANT to commit trained models)
+!data/models/*.joblib
+!data/models/*.json
 
-# Performance tracking
+# Logs
+*.log
+live_trading.log
+
+# IDE
+.vscode/
+.idea/
+
+# Temp
+data/backtest/
 src/v10/performance/

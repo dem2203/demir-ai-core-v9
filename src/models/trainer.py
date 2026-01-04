@@ -107,7 +107,7 @@ class QuantModelTrainer:
         
         # Feature seçimi (hedef ve timestamp hariç)
         exclude_cols = ['timestamp', 'label_1h', 'label_4h', 'label_4h_triple', 
-                       'future_return_60', 'future_return_240']
+                       'future_return_60', 'future_return_240', 'symbol']
         self.feature_columns = [c for c in df.columns if c not in exclude_cols]
         
         # NaN içeren satırları temizle
@@ -261,9 +261,9 @@ class QuantModelTrainer:
             
             return {
                 "folds": results,
-                "avg_accuracy": avg_accuracy,
-                "std_accuracy": std_accuracy,
-                "is_consistent": std_accuracy < 0.05  # %5'ten az varyans
+                "avg_accuracy": float(avg_accuracy),
+                "std_accuracy": float(std_accuracy),
+                "is_consistent": bool(std_accuracy < 0.05)  # %5'ten az varyans
             }
         
         return {"error": "Not enough data for walk-forward"}
