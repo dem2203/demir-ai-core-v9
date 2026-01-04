@@ -123,7 +123,7 @@ class AICouncilV2:
         
         # 3. DEMIR v11
         if self.demir_generator:
-            tasks.append(self._query_demir(symbol))
+            tasks.append(self._query_demir(symbol, df))
         
         # Sonuçları topla
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -150,11 +150,19 @@ class AICouncilV2:
         )
     
     async def _fetch_data(self, symbol: str):
-        """Binance'dan veri çek."""
+        """Binance'dan veri çek - Robust Implementation."""
         try:
             from src.data_pipeline.collector import get_data_collector
             collector = get_data_collector()
+            
+            # 1. Mevcut veriyi güncelle
             df = await collector.update_symbol(symbol, interval="1m")
+            
+            # 2. Eğer veri yetersizse, zorla son 3 günü indir
+            if df is None or len(df) < 100:
+                logger.warning(f"⚠️ Insufficient data ({len(df) if df is not None else 0} rows), forcing new download...")
+                df = await collector.download_symbol(symbol, interval="1m", days=3)
+            
             return df
         except Exception as e:
             logger.error(f"Data fetch error: {e}")
@@ -200,10 +208,23 @@ class AICouncilV2:
             
             # Teknik özet oluştur
             current_price = float(recent['close'].iloc[-1])
-            price_change_1h = (current_price / float(recent['close'].iloc[-60]) - 1) * 100 if len(recent) >= 60 else 0
+            
+            # Safe metrics
+            if len(recent) >= 60:
+                price_change_1h = (current_price / float(recent['close'].iloc[-60]) - 1) * 100
+            else:
+                price_change_1h = 0.0
+                
             high_24h = float(recent['high'].max())
             low_24h = float(recent['low'].min())
-            volume_trend = "Artıyor" if float(recent['volume'].tail(30).mean()) > float(recent['volume'].head(30).mean()) else "Azalıyor"
+            
+            # Safe volume trend
+            if len(recent) >= 30:
+                vol_recent = float(recent['volume'].tail(15).mean())
+                vol_past = float(recent['volume'].head(15).mean())
+                volume_trend = "Artıyor" if vol_recent > vol_past else "Azalıyor"
+            else:
+                volume_trend = "Nötr"
             
             prompt = f"""Sen profesyonel bir kripto trader'sın. Aşağıdaki verileri analiz et ve kısa bir değerlendirme yap.
 
@@ -253,24 +274,22 @@ JSON formatında yanıt ver:
             emoji="🧪"
         )
     
-    async def _query_demir(self, symbol: str) -> AIVote:
+    async def _query_demir(self, symbol: str, df=None) -> AIVote:
         """DEMIR v11 ML modeli ile analiz."""
         try:
             # Enhancer initialize et
             if self.demir_enhancer and not self.demir_enhancer.initialized:
                 await self.demir_enhancer.initialize()
             
-            # Veri güncelle
-            from src.data_pipeline.collector import get_data_collector
-            from src.features.technical import TechnicalFeatures
-            
-            collector = get_data_collector()
-            df = await collector.update_symbol(symbol, interval="1m")
+            # Veri kontrol
+            if df is None:
+                df = await self._fetch_data(symbol)
             
             if df is None or len(df) < 100:
-                raise Exception("Yetersiz veri")
+                raise Exception(f"Yetersiz veri ({len(df) if df is not None else 0} satır)")
             
             # Feature hesapla
+            from src.features.technical import TechnicalFeatures
             fe = TechnicalFeatures()
             df_features = fe.calculate_all(df)
             
