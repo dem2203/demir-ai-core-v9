@@ -35,13 +35,22 @@ logger = logging.getLogger("LIVE_RUNNER")
 
 async def main():
     logger.info("="*50)
-    logger.info("🚀 DEMIR AI v11 LIVE TRADING SYSTEM STARTED")
+    logger.info("🚀 DEMIR AI v11.1 LIVE TRADING SYSTEM STARTED")
+    logger.info("   🐋 Whale + 💥 Liquidation + 📊 Sentiment ACTIVE")
     logger.info("="*50)
     
-    send_message("🚀 **DEMIR AI v11 BAŞLATILDI**\nMod: Live Monitor (%80 Eşik)\nSemboller: BTC, ETH")
+    send_message("🚀 **DEMIR AI v11.1 BAŞLATILDI**\n"
+                 "Mod: Live Monitor (%80 Eşik + Advanced)\n"
+                 "🐋 Whale Tracking: AKTIF\n"
+                 "💥 Likidation Hunter: AKTIF\n"
+                 "📊 Sentiment Analyzer: AKTIF\n"
+                 "Semboller: BTC, ETH")
     
     symbols = ["BTCUSDT", "ETHUSDT"]
-    generator = SignalGenerator(symbols)
+    generator = SignalGenerator(symbols, use_advanced=True)
+    
+    # Initialize async components (Whale WebSocket, etc.)
+    await generator.initialize()
     
     logger.info(f"Monitor edilen semboller: {symbols}")
     
