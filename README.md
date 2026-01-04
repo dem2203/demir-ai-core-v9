@@ -1,80 +1,142 @@
-# 🦅 DEMIR AI - Institutional Trading Terminal
-**Version 23.0 | Phase 23: Smart Money Concepts**
+# 🤖 DEMIR AI v11 - Quantitative Trading System
 
-![Status](https://img.shields.io/badge/Status-OPERATIONAL-green)
-![Python](https://img.shields.io/badge/Python-3.12-blue)
-![AI](https://img.shields.io/badge/AI-Multi--Model-orange)
-![Railway](https://img.shields.io/badge/Deployed%20on-Railway-violet)
-
-## 🏗️ System Overview
-Demir AI is an autonomous institutional-grade trading system powered by a **Hybrid Intelligence** architecture. It combines quantitative finance (LSTM, RL) with generative AI (GPT-4o, Gemini) and **Smart Money Concepts (SMC)** to dominate the market.
-
-### 🧠 AI Superpowers (v23)
-1.  **Smart Money Concepts (NEW!):**
-    *   Detects **Order Blocks** - institutional entry zones
-    *   Identifies **Fair Value Gaps (FVG)** - price imbalances
-    *   Maps **Liquidity Zones** - where stops accumulate
-2.  **Multi-Timeframe Confluence:**
-    *   Analyzes 1H, 4H, 1D trends simultaneously
-    *   Confluence scoring (0-100%)
-    *   Entry quality assessment
-3.  **Volume Profile:**
-    *   VPOC (Volume Point of Control)
-    *   HVN/LVN zones (High/Low Volume Nodes)
-    *   Price magnet detection
-4.  **Smart SL/TP:**
-    *   SMC-based stop losses (below Order Blocks)
-    *   Multi-target take profits (TP1, TP2, TP3)
-    *   R:R ratios calculated automatically
-5.  **RL Agent v4 (5 Years, 500K Steps):**
-    *   BTC: Sharpe 0.13, +10.7% ROI (30d backtest)
-    *   ETH, LTC, SOL: All trained on 5 years of data
-6.  **Dual Vision Cortex:**
-    *   Uses **Google Gemini 1.5** + **OpenAI GPT-4o** to "see" charts.
-7.  **Liquidation Hunter:**
-    *   Maps "Magnet Levels" where high leverage traders get liquidated.
-
-## 🚀 Deployment
-This project is automatically deployed to **Railway** on every push to `main`.
-
-### Dashboard Features
-*   **📡 Live Market Intelligence:**
-    *   Real-time SMC analysis (Order Blocks, FVG)
-    *   MTF Confluence display (1H/4H/1D)
-    *   Volume Profile (VPOC, VAH, VAL)
-    *   Smart Entry/Exit levels with R:R
-*   **🧠 Neural Brain Monitor:**
-    *   RL Agent v4 decision visualization
-    *   Dual Vision analysis results
-*   **💼 Advisory Portfolio:**
-    *   Paper trading with advanced risk sizing
-*   **🧪 Backtest Lab:**
-    *   Test v4 models on historical data
-
-## 📂 Project Structure
-```
-src/
-├── brain/              # The Cortex
-│   ├── smc_analyzer.py     # Smart Money Concepts (NEW)
-│   ├── mtf_analyzer.py     # Multi-Timeframe Confluence (NEW)
-│   ├── volume_profile.py   # Volume Profile Analysis (NEW)
-│   ├── smart_sltp.py       # Intelligent SL/TP (NEW)
-│   ├── vision_analyst.py   # GPT-4o + Gemini Vision
-│   └── rl_agent/           # PPO v4 Models
-├── core/               # The Engine
-│   ├── engine.py           # Main Orchestrator
-│   └── risk_shield.py      # Capital Protection
-└── data_ingestion/     # The Senses (Binance, Macro)
-```
-
-## 📜 Recent Updates
-- **Phase 23 (Current):**
-    - **SMC Analyzer:** Order Blocks, Fair Value Gaps, Liquidity Zones
-    - **MTF Confluence:** 1H/4H/1D trend alignment scoring
-    - **Volume Profile:** VPOC, VAH, VAL, HVN/LVN detection
-    - **Smart SL/TP:** Multi-target TP with R:R ratios
-    - **v4 Models:** All 4 coins (BTC/ETH/LTC/SOL) trained on 5 years
-    - **Enhanced Telegram:** R:R ratios, MTF confluence in signals
+![Status](https://img.shields.io/badge/Status-LIVE-green)
+![Python](https://img.shields.io/badge/Python-3.11-blue)
+![ML](https://img.shields.io/badge/ML-LightGBM-orange)
+![Risk](https://img.shields.io/badge/Risk-Kelly%20Criterion-red)
+![Railway](https://img.shields.io/badge/Deploy-Railway-violet)
 
 ---
-*Created by Demir AI Team. Proprietary Software.*
+
+## 🧠 Ne Yapıyor?
+
+**DEMIR AI v11**, kripto para piyasalarında (BTC, ETH) yapay zeka destekli **otomatik sinyal üretimi** yapan profesyonel bir quant trading sistemidir.
+
+### ⚙️ Nasıl Çalışıyor?
+
+```
+📊 Binance Veri → 🔬 74 Teknik İndikatör → 🤖 LightGBM ML Modeli → 📈 Sinyal Üretimi → 📱 Telegram Bildirimi
+```
+
+1. **Veri Toplama:** Binance Futures'dan dakikalık OHLCV verisi çeker
+2. **Feature Engineering:** RSI, MACD, Bollinger, ATR, OBV ve 70+ teknik indikatör hesaplar
+3. **ML Prediction:** LightGBM modeli ile yön tahmini yapar (BUY/SELL)
+4. **Risk Yönetimi:** Kelly Criterion ile pozisyon büyüklüğü, ATR-bazlı Stop Loss/Take Profit hesaplar
+5. **Sinyal Gönderimi:** %80+ güvenli sinyalleri Telegram'dan bildirir
+
+---
+
+## 📊 Backtest Sonuçları
+
+| Coin | İşlem Sayısı (Yıllık) | Win Rate | Max Drawdown |
+|:--|:--|:--|:--|
+| **BTCUSDT** | ~7,200 | %44 | %8 |
+| **ETHUSDT** | ~7,200 | %49 | %3 |
+
+> **Not:** Eski sistemde %99 batış yaşanırken, yeni risk yönetimi ile maksimum kayıp %8'e düşürüldü.
+
+---
+
+## 🏗️ Proje Yapısı
+
+```
+demir-ai-core-v9/
+├── src/
+│   ├── data_pipeline/
+│   │   └── collector.py      # Binance veri indirme (async)
+│   ├── features/
+│   │   └── technical.py      # 74 teknik indikatör
+│   ├── models/
+│   │   └── trainer.py        # LightGBM eğitimi
+│   ├── risk/
+│   │   └── position_sizer.py # Kelly Criterion
+│   ├── execution/
+│   │   ├── backtester.py     # Profesyonel backtest
+│   │   ├── signal_generator.py # Canlı sinyal üretimi
+│   │   └── notifier.py       # Telegram bildirimi
+│   └── ...
+├── data/
+│   ├── raw/                  # Ham OHLCV verileri (parquet)
+│   └── models/               # Eğitilmiş LightGBM modelleri
+├── run_backtest.py           # Backtest çalıştırma
+├── run_live_trading.py       # Canlı sistem çalıştırma
+└── Dockerfile                # Railway deployment
+```
+
+---
+
+## 🚀 Kurulum ve Çalıştırma
+
+### Gereksinimler
+```bash
+pip install -r requirements.txt
+```
+
+### Backtest
+```bash
+python run_backtest.py --download --train --backtest --symbols BTCUSDT ETHUSDT
+```
+
+### Canlı Mod (Railway)
+```bash
+python run_live_trading.py
+```
+
+### Ortam Değişkenleri (.env)
+```
+TELEGRAM_TOKEN=your_bot_token
+TELEGRAM_CHAT_ID=your_chat_id
+```
+
+---
+
+## 🛡️ Risk Yönetimi
+
+| Mekanizma | Açıklama |
+|:--|:--|
+| **Kelly Criterion** | Optimal pozisyon büyüklüğü hesaplama |
+| **ATR Stop Loss** | Volatiliteye göre dinamik stop loss |
+| **Risk:Reward 1:1.5** | Her işlemde minimum 1.5x kar hedefi |
+| **%80 Güven Eşiği** | Sadece yüksek güvenli sinyallere giriş |
+
+---
+
+## 📱 Telegram Sinyalleri
+
+Sistem sinyal bulduğunda şu formatta mesaj atar:
+
+```
+🟢 SİNYAL ALARMI 🟢
+━━━━━━━━━━━━━━━━━━
+🪙 ETHUSDT
+↕️ Yön: BUY
+💵 Fiyat: 2450.50
+🎯 Güven: %82.3
+
+🛑 SL: 2420.00
+💰 TP: 2495.75
+🎲 Büyüklük: $150.00
+━━━━━━━━━━━━━━━━━━
+🤖 Demir AI v11 Live
+```
+
+---
+
+## 📈 Teknoloji Stack
+
+- **Python 3.11**
+- **LightGBM** - Gradient Boosting ML
+- **Pandas/NumPy** - Veri işleme
+- **aiohttp** - Async HTTP (Binance API)
+- **PyArrow** - Parquet dosya formatı
+- **python-telegram-bot** - Telegram entegrasyonu
+
+---
+
+## ⚠️ Sorumluluk Reddi
+
+Bu yazılım sadece eğitim amaçlıdır. Gerçek para ile işlem yapmadan önce kendi araştırmanızı yapın. Yatırım kararlarınızdan tamamen siz sorumlusunuz.
+
+---
+
+*Created by Demir AI Team | v11.0 | January 2026*
