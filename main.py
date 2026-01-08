@@ -49,13 +49,15 @@ class AIPhoenixBot:
             logger.info(f"Confidence: {decision.confidence}/10")
             logger.info(f"\n{decision.reasoning}\n")
             
-            # Send Telegram notification
+            # Send Telegram notification with AI voting results
             await self.telegram.send_message(
                 f"⚡ *LIVE TRIGGER: {symbol}*\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"Event: {reason}\n\n"
-                f"🧠 AI Decision: *{decision.position}*\n"
-                f"Confidence: {decision.confidence}/10\n\n"
+                f"{decision.get_consensus_report()}\n\n"
+                f"✅ *Final Decision: {decision.position}*\n"
+                f"Confidence: {decision.confidence}/10\n"
+                f"Risk: {decision.risk_level}\n\n"
                 f"_{decision.entry_conditions}_"
             )
             
