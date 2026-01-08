@@ -64,6 +64,10 @@ class AICortex:
         # Consensus requirements
         self.MIN_CONSENSUS = 3  # At least 3/4 AIs must agree
         
+        # Performance tracking for self-learning
+        from src.utils.signal_tracker import SignalPerformanceTracker
+        self.tracker = SignalPerformanceTracker()
+        
     async def think(self, symbol: str) -> DirectorDecision:
         """
         Main AI decision loop with voting consensus.
@@ -85,9 +89,10 @@ class AICortex:
             logger.info("🗳️ Collecting AI votes...")
             votes = self._collect_votes(macro_data, chart_analysis, news_data)
             
-            # 3. Claude Strategic Reasoning (Final arbiter)
+            # 3. Claude Strategic Reasoning (Final arbiter) - WITH PERFORMANCE FEEDBACK
             logger.info("🧠 Claude analyzing all inputs...")
-            strategy = await self.claude.formulate_strategy(macro_data, chart_analysis, news_data)
+            performance_feedback = self.tracker.get_ai_feedback_prompt()
+            strategy = await self.claude.formulate_strategy(macro_data, chart_analysis, news_data, performance_feedback)
             
             # Add Claude's vote
             claude_vote = self._extract_claude_vote(strategy)

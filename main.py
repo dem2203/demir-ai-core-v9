@@ -63,12 +63,17 @@ class AIPhoenixBot:
             
             # Execute if confidence high enough
             if decision.confidence >= 7 and decision.position != "CASH":
+                # Extract AI votes for tracking
+                ai_votes_dict = {vote.name: vote.vote for vote in decision.votes}
+                
                 signal = {
                     "action": "BUY" if decision.position == "LONG" else "SELL",
                     "entry_price": await self.binance.get_current_price(symbol),
                     "stop_loss": 0,
                     "reason": f"Live AI ({reason})",
-                    "cortex_note": decision.reasoning
+                    "cortex_note": decision.reasoning,
+                    "ai_votes": ai_votes_dict,  # For performance tracking
+                    "confidence": decision.confidence  # For performance tracking
                 }
                 await self.trader.execute(symbol, signal)
             else:

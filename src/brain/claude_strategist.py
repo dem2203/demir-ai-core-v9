@@ -15,9 +15,10 @@ class ClaudeStrategist:
             self.client = None
             logger.warning("⚠️ Claude API Key missing. Strategic reasoning disabled.")
     
-    async def formulate_strategy(self, macro_data: dict, chart_analysis: dict, news_sentiment: dict) -> dict:
+    async def formulate_strategy(self, macro_data: dict, chart_analysis: dict, news_sentiment: dict, performance_feedback: str = "") -> dict:
         """
         Ask Claude to act as a hedge fund manager and formulate trading strategy.
+        Now includes historical performance feedback for self-learning.
         """
         if not self.client:
             return {"directive": "NEUTRAL", "reasoning": "Claude unavailable"}
@@ -35,13 +36,15 @@ class ClaudeStrategist:
 
 **News Sentiment:**
 {news_sentiment.get('summary', 'No news data')}
-Sentiment Score: {news_sentiment.get('sentiment', 'NEUTRAL')}"""
+Sentiment Score: {news_sentiment.get('sentiment', 'NEUTRAL')}
+
+{performance_feedback if performance_feedback else ""}"""
 
             prompt = f"""You are a professional hedge fund manager specializing in crypto trading. 
 
 {context}
 
-Based on this data, provide your strategic directive for trading BTC/ETH:
+Based on this data (and your historical performance if provided), provide your strategic directive for trading BTC/ETH:
 
 1. **Overall Market Assessment**: What is the current market environment? (Risk-On/Risk-Off/Uncertain)
 2. **Recommended Position**: Should we be LONG, SHORT, or stay in CASH?
@@ -49,6 +52,8 @@ Based on this data, provide your strategic directive for trading BTC/ETH:
 4. **Reasoning**: Explain your logic step by step (macro → sentiment → technical → conclusion)
 5. **Entry Conditions**: What specific conditions must be met before entering a trade?
 6. **Stop Loss Strategy**: Where should protective stops be placed?
+
+IMPORTANT: If historical performance shows certain confidence levels failing, adjust your strategy accordingly.
 
 Respond in JSON format with keys: assessment, position, risk_level, reasoning, entry_conditions, stop_strategy"""
 
