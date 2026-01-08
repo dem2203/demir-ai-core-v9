@@ -1,4 +1,3 @@
-Procfile
 config/
 data/
 src/__pycache__/
