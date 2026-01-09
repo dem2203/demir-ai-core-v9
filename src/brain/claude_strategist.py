@@ -40,22 +40,22 @@ Sentiment Score: {news_sentiment.get('sentiment', 'NEUTRAL')}
 
 {performance_feedback if performance_feedback else ""}"""
 
-            prompt = f"""You are a professional hedge fund manager specializing in crypto trading. 
+            prompt = f"""Sen profesyonel bir hedge fund yöneticisisin ve kripto işlemlerinde uzmanlaşmışsın. 
 
 {context}
 
-Based on this data (and your historical performance if provided), provide your strategic directive for trading BTC/ETH:
+Bu verilere (ve varsa geçmiş performansına) dayanarak BTC/ETH için stratejik tavsiyeni ver:
 
-1. **Overall Market Assessment**: What is the current market environment? (Risk-On/Risk-Off/Uncertain)
-2. **Recommended Position**: Should we be LONG, SHORT, or stay in CASH?
-3. **Risk Level**: HIGH, MEDIUM, or LOW risk environment?
-4. **Reasoning**: Explain your logic step by step (macro → sentiment → technical → conclusion)
-5. **Entry Conditions**: What specific conditions must be met before entering a trade?
-6. **Stop Loss Strategy**: Where should protective stops be placed?
+1. **Genel Piyasa Değerlendirmesi**: Mevcut piyasa ortamı nedir? (Risk-On/Risk-Off/Belirsiz)
+2. **Önerilen Pozisyon**: LONG, SHORT mı pozisyon almalıyız yoksa CASH'te mi kalmalıyız?
+3. **Risk Seviyesi**: YÜKSEK, ORTA veya DÜŞÜK risk ortamı mı?
+4. **Mantık**: Mantığını adım adım açıkla (makro → sentiment → teknik → sonuç)
+5. **Giriş Koşulları**: İşleme girmeden önce hangi spesifik koşullar sağlanmalı?
+6. **Stop Loss Stratejisi**: Koruyucu stop'lar nereye konulmalı?
 
-IMPORTANT: If historical performance shows certain confidence levels failing, adjust your strategy accordingly.
+ÖNEMLİ: Geçmiş performans belirli güven seviyelerinin başarısız olduğunu gösteriyorsa, stratejini buna göre ayarla.
 
-Respond in JSON format with keys: assessment, position, risk_level, reasoning, entry_conditions, stop_strategy"""
+TÜRKÇE cevap ver. JSON formatında şu anahtarlarla: assessment, position, risk_level, reasoning, entry_conditions, stop_strategy"""
 
             # Claude 3.5 was deprecated Oct 2025 - use Claude Sonnet 4
             message = self.client.messages.create(
