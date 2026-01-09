@@ -79,18 +79,27 @@ class AIPhoenixBot:
             
             # Run AI analysis (ALWAYS analyze)
             decision = await self.cortex.think(symbol)
-            
-            # Log reasoning (ALWAYS log)
+        
             logger.info(f"📋 AI DECISION for {symbol}:")
             logger.info(f"Position: {decision.position}")
             logger.info(f"Confidence: {decision.confidence}/10")
             logger.info(f"\n{decision.reasoning}\n")
             
-            # Check if we should notify (SMART filtering)
-            should_notify = self._should_notify(symbol, decision)
+            # HIGH CONFIDENCE FILTER (NEW!)
+            MIN_CONFIDENCE_FOR_NOTIFICATION = 6
             
-            if should_notify:
-                # Translate risk level
+            if decision.confidence < MIN_CONFIDENCE_FOR_NOTIFICATION:
+                logger.info(f"🔇 Low confidence ({decision.confidence}/10) - no notification sent")
+                logger.info(f"💤 Waiting for stronger signal (minimum: {MIN_CONFIDENCE_FOR_NOTIFICATION}/10)")
+                return
+            
+            # Check if this is a new/changed decision
+            current_decision_key = f"{symbol}_{decision.position}_{decision.confidence}"
+            
+            if current_decision_key == self.last_decisions.get(symbol):
+                logger.info("🔇 Bildirim yok (önceki analizle aynı)")
+            else:
+                # Translate risk to Turkish
                 risk_tr = {"HIGH": "YÜKSEK", "MEDIUM": "ORTA", "LOW": "DÜŞÜK"}.get(decision.risk_level, decision.risk_level)
                 
                 # Format entry conditions as readable text
@@ -98,8 +107,8 @@ class AIPhoenixBot:
                 if isinstance(entry_text, list):
                     entry_text = "\n• " + "\n• ".join(entry_text)
                 
-                # Send Telegram notification ONLY if something changed
-                await self.telegram.send_message(
+                # Build notification message
+                message = (
                     f"⚡ *CANLI TETİKLEME: {symbol}*\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"Olay: {reason}\n\n"
@@ -110,11 +119,21 @@ class AIPhoenixBot:
                     f"📋 *Giriş Koşulları:*{entry_text}"
                 )
                 
-                # Update last decision
-                self._update_last_decision(symbol, decision)
-                logger.info(f"📱 Telegram bildirimi gönderildi (değişiklik tespit edildi)")
-            else:
-                logger.info(f"🔇 Bildirim yok (önceki analizle aynı)")
+                # Add stop loss/take profit if available
+                if decision.stop_loss and decision.take_profit:
+                    message += f"\n\n🎯 *Risk Yönetimi:*\n"
+                    message += f"Stop Loss: ${decision.stop_loss:,.2f}\n"
+                    message += f"Take Profit: ${decision.take_profit:,.2f}"
+                
+                # Add position size if available
+                if decision.position_size:
+                    message += f"\n💰 Pozisyon: {decision.position_size:.4f} {symbol[:3]}"
+                
+                # Send Telegram notification
+                await self.telegram.send_message(message)
+                
+                logger.info("📱 Telegram bildirimi gönderildi (değişiklik tespit edildi)")
+                self.last_decisions[symbol] = current_decision_key
             
             # Execute if confidence high enough
             if decision.confidence >= 7 and decision.position != "CASH":
