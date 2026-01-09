@@ -96,26 +96,26 @@ class TechnicalAnalyzer:
     
     def _determine_trend(self, rsi, macd, signal, price, bb_middle) -> str:
         """
-        Determine overall trend from indicators
+        AGGRESSIVE trend determination - lower threshold!
         """
         bullish_signals = 0
         bearish_signals = 0
         
-        # RSI signals
-        if rsi < 30:
-            bullish_signals += 2  # Oversold = strong buy
-        elif rsi > 70:
-            bearish_signals += 2  # Overbought = strong sell
-        elif rsi > 50:
-            bullish_signals += 1
-        else:
-            bearish_signals += 1
+        # RSI signals (MORE WEIGHT)
+        if rsi < 35:  # Was 30, now 35 - easier to trigger
+            bullish_signals += 3  # Was 2, now 3 - stronger
+        elif rsi > 65:  # Was 70, now 65 - easier to trigger
+            bearish_signals += 3  # Was 2, now 3 - stronger
+        elif rsi > 52:  # Was 50, now 52 - more sensitive
+            bullish_signals += 2  # Was 1, now 2
+        elif rsi < 48:  # Was <50, now <48 - more sensitive
+            bearish_signals += 2  # Was 1, now 2
         
-        # MACD signals
+        # MACD signals (MORE WEIGHT)
         if macd > signal:
-            bullish_signals += 1
+            bullish_signals += 2  # Was 1, now 2
         else:
-            bearish_signals += 1
+            bearish_signals += 2  # Was 1, now 2
         
         # Bollinger Band position
         if price > bb_middle:
@@ -123,26 +123,41 @@ class TechnicalAnalyzer:
         else:
             bearish_signals += 1
         
-        # Decision
-        if bullish_signals > bearish_signals + 1:
+        # AGGRESSIVE Decision - only need equal or 1 advantage!
+        if bullish_signals >= bearish_signals:  # Was >, now >=
             return "BULLISH"
-        elif bearish_signals > bullish_signals + 1:
+        elif bearish_signals > bullish_signals:  # Removed +1
             return "BEARISH"
         else:
             return "NEUTRAL"
     
     def _calculate_strength(self, rsi, macd, signal) -> float:
         """
-        Calculate trend strength (0-1)
+        AGGRESSIVE strength calculation - exponential!
         """
-        # RSI contribution (distance from 50)
-        rsi_strength = abs(rsi - 50) / 50
+        # RSI contribution - EXPONENTIAL for more impact
+        rsi_distance = abs(rsi - 50) / 50
+        rsi_strength = min(rsi_distance ** 1.5, 1.0)  # Exponential boost!
+        # RSI 60: 0.2^1.5 = 0.089 → NOW: 0.2^1.5 = 0.089... wait
+        # Let me use better formula
+        # RSI 60: distance = 10, normalize to 0-1 scale
+        rsi_normalized = abs(rsi - 50)  # 0 to 50
+        if rsi_normalized > 20:
+            rsi_strength = 0.8 + (rsi_normalized - 20) * 0.01  # Strong signal
+        elif rsi_normalized > 10:
+            rsi_strength = 0.5 + (rsi_normalized - 10) * 0.03  # Medium
+        elif rsi_normalized > 5:
+            rsi_strength = 0.3 + (rsi_normalized - 5) * 0.04
+        else:
+            rsi_strength = rsi_normalized * 0.06
         
-        # MACD contribution (histogram strength)
-        macd_strength = min(abs(macd - signal) / 100, 1.0)
+        # MACD contribution - MORE AGGRESSIVE SCALING
+        macd_diff = abs(macd - signal)
+        macd_strength = min(macd_diff / 50, 1.0)  # Was /100, now /50 - 2x boost!
         
-        # Average strength
-        return (rsi_strength + macd_strength) / 2
+        # Average strength with minimum floor
+        avg_strength = (rsi_strength + macd_strength) / 2
+        return max(avg_strength, 0.4)  # FLOOR at 0.4 instead of 0!
     
     def _generate_analysis(self, symbol, rsi, macd, signal, price, bb_upper, bb_lower, trend, strength):
         """Generate human-readable analysis"""

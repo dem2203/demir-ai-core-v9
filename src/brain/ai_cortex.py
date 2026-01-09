@@ -153,10 +153,10 @@ class AICortex:
             logger.info("🔍 DeepSeek kararları doğruluyor...")
             validation = await self.deepseek.validate(votes, chart_analysis, macro_data)
             
-            # DeepSeek penalty reduction (was max -2, NOW max -1)
-            if validation.get('confidence_adjustment', 0) < -1:
-                logger.warning(f"⚠️ DeepSeek penalty capped at -1 (was {validation['confidence_adjustment']})")
-                validation['confidence_adjustment'] = -1
+            # AGGRESSIVE: REMOVE DeepSeek penalty entirely!
+            if validation.get('confidence_adjustment', 0) < 0:
+                logger.warning(f"⚠️ DeepSeek penalty REMOVED (was {validation['confidence_adjustment']})")
+                validation['confidence_adjustment'] = 0  # NO PENALTY!
             
             # 5. Calculate consensus
             consensus_result = self._calculate_consensus(votes)
@@ -467,16 +467,18 @@ class AICortex:
             f"Skor: {macro_score} | {macro.get('regime', 'BİLİNMİYOR')}"
         ))
         
-        # 2. Technical Analysis Vote
+        # 2. Technical Analysis Vote - AGGRESSIVE BOOST!
         chart_trend = chart.get('trend', 'UNKNOWN')
         chart_strength = chart.get('strength', 0.5)
         
         if chart_trend == 'BULLISH':
             chart_vote = "BULLISH"
-            chart_conf = max(int(chart_strength * 10), 6)
+            # AGGRESSIVE: +3 baseline, 12x multiplier instead of 10x
+            chart_conf = min(int(chart_strength * 12) + 3, 10)
         elif chart_trend == 'BEARISH':
             chart_vote = "BEARISH"
-            chart_conf = max(int(chart_strength * 10), 6)
+            # AGGRESSIVE: +3 baseline, 12x multiplier instead of 10x
+            chart_conf = min(int(chart_strength * 12) + 3, 10)
         else:
             chart_vote = "NEUTRAL"
             chart_conf = 5
