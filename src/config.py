@@ -24,11 +24,11 @@ class Config:
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # GPT-4
     DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")  # DeepSeek
     
-    # Macro Data (FRED)
-    FRED_API_KEY = os.getenv("FRED_API_KEY")
-    
-    # News APIs
-    NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
+    # Market Data APIs (for fallback)
+    TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "")
+    ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY", "")
+    FRED_API_KEY = os.getenv("FRED_API_KEY", "")
+    NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "")
     
     # Notifications
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
