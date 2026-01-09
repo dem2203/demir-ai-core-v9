@@ -235,39 +235,34 @@ class AICortex:
         }
     
     def _build_reasoning_with_votes(self, macro, news, strategy, votes, validation) -> str:
-        """Create human-readable reasoning with vote details and validation"""
+        """Create human-readable reasoning with vote details and validation (TURKISH)"""
         parts = []
         
         # Show all votes
-        parts.append("🗳️ AI VOTING:")
+        parts.append("🗳️ YAPAY ZEKA OYLAMASI:")
         for vote in votes:
             emoji = "🟢" if vote.vote == "BULLISH" else "🔴" if vote.vote == "BEARISH" else "⚪"
             parts.append(f"{emoji} {vote.name}: {vote.vote} ({vote.confidence}/10)")
         
         # DeepSeek validation
         if validation.get('confidence_adjustment') != 0:
-            parts.append(f"\n🔍 DEEPSEEK VALIDATION:")
-            parts.append(f"  Adjustment: {validation.get('confidence_adjustment'):+d}")
+            parts.append(f"\n🔍 DEEPSEEK DOĞRULAMA:")
+            parts.append(f"  Güven Ayarı: {validation.get('confidence_adjustment'):+d}")
             if validation.get('concerns'):
                 parts.append(f"  {validation.get('concerns')[:150]}")
         
-        parts.append("\n📊 DETAILED ANALYSIS:")
+        parts.append("\n📊 DETAYLI ANALİZ:")
         
         # Macro
-        parts.append(f"🌍 MACRO: {macro.get('regime', 'UNKNOWN')}")
+        parts.append(f"🌍 MAKRO: {macro.get('regime', 'BİLİNMİYOR')}")
         if macro.get('reasoning'):
             parts.append("  " + " | ".join(macro['reasoning'][:2]))
         
-        # Chart
-        parts.append(f"\n📈 CHART (Gemini Vision): {chart.get('trend', 'N/A')}")
-        if chart.get('analysis'):
-            parts.append(f"  {chart['analysis'][:150]}")
-        
-        # News
-        parts.append(f"\n📰 NEWS (GPT-4): {news.get('sentiment', 'N/A')}")
+        # News (NO CHART SECTION)
+        parts.append(f"\n📰 HABERLER (GPT-4): {news.get('sentiment', 'YOK')}")
         
         # Strategy
-        parts.append(f"\n🧠 CLAUDE FINAL VERDICT:")
-        parts.append(f"  {strategy.get('reasoning', 'N/A')[:200]}")
+        parts.append(f"\n🧠 CLAUDE SON KARAR:")
+        parts.append(f"  {strategy.get('reasoning', 'YOK')[:200]}")
         
         return "\n".join(parts)
