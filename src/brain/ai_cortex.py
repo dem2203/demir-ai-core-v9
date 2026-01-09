@@ -140,6 +140,12 @@ class AICortex:
             # 3. Claude Strategic Reasoning (WITH FEEDBACK)
             logger.info("🧠 Claude tüm girdileri analiz ediyor...")
             performance_feedback = self.tracker.get_ai_feedback_prompt()
+            # Add professional signal summaries for Claude
+            chart_analysis['orderbook_summary'] = f"{orderbook_data.get('signal', 'N/A')} ({orderbook_data.get('strength', 0)}/10) - {orderbook_data.get('reason', 'N/A')[:50]}"
+            chart_analysis['funding_summary'] = f"{funding_data.get('signal', 'N/A')} ({funding_data.get('strength', 0)}/10) - APR: {funding_data.get('annual_funding_pct', 0):.1f}%"
+            chart_analysis['cvd_summary'] = f"{cvd_data.get('signal', 'N/A')} ({cvd_data.get('strength', 0)}/10) - Δ: {cvd_data.get('cvd_change', 0):,.0f}"
+            chart_analysis['volume_profile_summary'] = f"{volume_profile.get('signal', 'N/A')} ({volume_profile.get('strength', 0)}/10) - POC dist: {volume_profile.get('distance_from_poc_pct', 0):.2f}%"
+            
             strategy = await self.claude.formulate_strategy(macro_data, chart_analysis, news_data, performance_feedback)
             
             # Add Claude's vote

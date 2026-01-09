@@ -40,22 +40,54 @@ Sentiment Score: {news_sentiment.get('sentiment', 'NEUTRAL')}
 
 {performance_feedback if performance_feedback else ""}"""
 
-            prompt = f"""Sen profesyonel bir hedge fund yöneticisisin ve kripto işlemlerinde uzmanlaşmışsın. 
+            prompt = f"""Sen profesyonel bir kripto trader'sın. 10 yıldır futures piyasasında trade ediyorsun. 
 
 {context}
 
-Bu verilere (ve varsa geçmiş performansına) dayanarak BTC/ETH için stratejik tavsiyeni ver:
+**ŞU ANKİ FİYAT DATA (PROFESYONEL):**
+- Order Book Imbalance: {chart_analysis.get('orderbook_summary', 'N/A')}
+- Funding Rate: {chart_analysis.get('funding_summary', 'N/A')}  
+- CVD (Volume Delta): {chart_analysis.get('cvd_summary', 'N/A')}
+- Volume Profile: {chart_analysis.get('volume_profile_summary', 'N/A')}
 
-1. **Genel Piyasa Değerlendirmesi**: Mevcut piyasa ortamı nedir? (Risk-On/Risk-Off/Belirsiz)
-2. **Önerilen Pozisyon**: LONG, SHORT mı pozisyon almalıyız yoksa CASH'te mi kalmalıyız?
-3. **Risk Seviyesi**: YÜKSEK, ORTA veya DÜŞÜK risk ortamı mı?
-4. **Mantık**: Mantığını adım adım açıkla (makro → sentiment → teknik → sonuç)
-5. **Giriş Koşulları**: İşleme girmeden önce hangi spesifik koşullar sağlanmalı?
-6. **Stop Loss Stratejisi**: Koruyucu stop'lar nereye konulmalı?
+SENİN GÖREVİN: Bu verilere dayanarak SPESIFIK bir trade analizi yap.
 
-ÖNEMLİ: Geçmiş performans belirli güven seviyelerinin başarısız olduğunu gösteriyorsa, stratejini buna göre ayarla.
+KURALLARIN:
+1. "Eğer" veya "ise" kullanma - KEŞİN analiz yap
+2. Spesifik fiyat seviyeleri ver (entry, stop, target)
+3. Risk/Reward hesapla
+4. Conviction ver (1-10)
+5. ACTIONABLE ol - trader bu analizi okuyup hemen işlem açabilmeli
 
-TÜRKÇE cevap ver. JSON formatında şu anahtarlarla: assessment, position, risk_level, reasoning, entry_conditions, stop_strategy"""
+FORMAT (JSON):
+{{
+  "market_view": "Kısa açıklama - ne görüyorsun (1 cümle)",
+  "position": "LONG" veya "SHORT" veya "NEUTRAL",
+  "conviction": 1-10 arası sayı,
+  "entry_price": "Şu anki fiyat veya spesifik seviye ($90,450 gibi)",
+  "stop_loss": "Spesifik stop seviyesi ($91,100 gibi)",
+  "target_1": "İlk hedef ($89,800 gibi)",
+  "target_2": "İkinci hedef ($89,100 gibi)",
+  "risk_reward": "1:2.5 gibi",
+  "reasoning": "NEDEN bu trade? Spesifik data points (Funding 12% APR, Order book $8M sell wall gibi)",
+  "risk_level": "HIGH", "MEDIUM" veya "LOW"
+}}
+
+ÖRNEK CEVAP:
+{{
+  "market_view": "BTC overleveraged longs, squeeze bekliyorum",
+  "position": "SHORT",
+  "conviction": 8,
+  "entry_price": "$90,450",
+  "stop_loss": "$91,100", 
+  "target_1": "$89,800",
+  "target_2": "$89,100",
+  "risk_reward": "1:2.5",
+  "reasoning": "Funding rate 12% APR (aşırı yüksek, long squeeze riski). Order book'ta $90,200'de $8M sell wall. CVD son 4 saatte -$45M (güçlü satış). MACD bearish crossover. DXY güçlü = kripto baskı altında. Çoklu confluence → yüksek probability short.",
+  "risk_level": "MEDIUM"
+}}
+
+TÜRKÇE cevap ver. Sadece JSON, ekstra açıklama yok."""
 
             # Claude 3.5 was deprecated Oct 2025 - use Claude Sonnet 4
             message = self.client.messages.create(
