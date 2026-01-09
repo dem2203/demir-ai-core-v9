@@ -57,9 +57,9 @@ IMPORTANT: If historical performance shows certain confidence levels failing, ad
 
 Respond in JSON format with keys: assessment, position, risk_level, reasoning, entry_conditions, stop_strategy"""
 
-            # FIX: Use correct model name
+            # FIXED: Use stable version that actually exists
             message = self.client.messages.create(
-                model="claude-3-5-sonnet-latest",
+                model="claude-3-5-sonnet-20241022",
                 max_tokens=1500,
                 messages=[
                     {"role": "user", "content": prompt}
