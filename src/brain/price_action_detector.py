@@ -61,10 +61,10 @@ class PriceActionDetector:
         bullish_count = sum(1 for s in signals if 'BULLISH' in str(s).upper() or 'Higher Lows' in str(s) or 'Accumulation' in str(s))
         bearish_count = sum(1 for s in signals if 'BEARISH' in str(s).upper() or 'Lower Highs' in str(s) or 'Distribution' in str(s))
         
-        if strength >= 7:
+        if strength >= 8:
             # Very strong signal
             overall = "STRONG_BULLISH" if bullish_count > bearish_count else "STRONG_BEARISH"
-        elif strength >= 4:
+        elif strength >= 3:
             # Mid-range = NEUTRAL (don't force a direction on weak signals!)
             overall = "NEUTRAL"
         elif strength >= 1:
