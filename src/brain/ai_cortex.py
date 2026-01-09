@@ -117,7 +117,7 @@ class AICortex:
                 logger.warning(f"⚠️ DeepSeek rejected decision: {validation.get('concerns')}")
             
             # Build detailed reasoning with validation
-            reasoning = self._build_reasoning_with_votes(macro_data, chart_analysis, news_data, strategy, votes, validation)
+            reasoning = self._build_reasoning_with_votes(macro_data, news_data, strategy, votes, validation)
             
             decision = DirectorDecision(
                 symbol=symbol,
