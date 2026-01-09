@@ -67,31 +67,38 @@ class MacroBrain:
         
         vix, dxy, btc_dominance = await asyncio.gather(vix_task, dxy_task, btc_dom_task)
         
+        # Fallback to reasonable defaults if API fails
+        if vix is None:
+            vix = 16.0  # Typical neutral value
+            logger.warning("⚠️ VIX data unavailable, using default 16.0")
+        
+        if dxy is None:
+            dxy = 104.0  # Typical recent value
+            logger.warning("⚠️ DXY data unavailable, using default 104.0")
+        
         # Scoring Logic
         score = 0
         reasons = []
         
         # VIX Analysis
-        if vix:
-            if vix > 30: 
-                score -= 30
-                reasons.append(f"VIX Yüksek ({vix:.2f}): Aşırı Korku")
-            elif vix < 15:
-                score += 10
-                reasons.append(f"VIX Düşük ({vix:.2f}): Stabil Piyasa")
-            else:
-                reasons.append(f"VIX Nötr ({vix:.2f})")
+        if vix > 30: 
+            score -= 30
+            reasons.append(f"VIX Yüksek ({vix:.2f}): Aşırı Korku")
+        elif vix < 15:
+            score += 10
+            reasons.append(f"VIX Düşük ({vix:.2f}): Stabil Piyasa")
+        else:
+            reasons.append(f"VIX Nötr ({vix:.2f})")
         
         # DXY Analysis - NOW ACCURATE!
-        if dxy:
-            if dxy > 106:
-                score -= 20
-                reasons.append(f"DXY Güçlü ({dxy:.2f}): Dolar Varlıkları Sıkıştırıyor")
-            elif dxy < 100:
-                score += 20
-                reasons.append(f"DXY Zayıf ({dxy:.2f}): Kripto İçin İyi")
-            else:
-                reasons.append(f"DXY Nötr ({dxy:.2f})")
+        if dxy > 106:
+            score -= 20
+            reasons.append(f"DXY Güçlü ({dxy:.2f}): Dolar Varlıkları Sıkıştırıyor")
+        elif dxy < 100:
+            score += 20
+            reasons.append(f"DXY Zayıf ({dxy:.2f}): Kripto İçin İyi")
+        else:
+            reasons.append(f"DXY Nötr ({dxy:.2f})")
                 
         # BTC Dominance
         if btc_dominance > 60:
