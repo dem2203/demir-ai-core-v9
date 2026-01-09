@@ -516,6 +516,9 @@ class AICortex:
                 orderbook['strength'],
                 orderbook['reason'][:100]
             ))
+        else:
+            logger.warning(f"📊 Order Book FAILED: {orderbook.get('reason', 'Unknown error')}")
+            votes.append(AIVote("Order Book Imbalance", "NEUTRAL", 5, "Data unavailable"))
         
         # 5. FUNDING RATE (NEW!)
         if funding.get('signal') != 'ERROR':
@@ -525,6 +528,9 @@ class AICortex:
                 funding['strength'],
                 funding['reason'][:100]
             ))
+        else:
+            logger.warning(f"💰 Funding Rate FAILED: {funding.get('reason', 'Unknown error')}")
+            votes.append(AIVote("Funding Rate", "NEUTRAL", 5, "Data unavailable"))
         
         # 6. VOLUME PROFILE (NEW!)
         if volume_profile.get('signal') != 'ERROR':
@@ -534,6 +540,9 @@ class AICortex:
                 volume_profile['strength'],
                 volume_profile['reason'][:100]
             ))
+        else:
+            logger.warning(f"📊 Volume Profile FAILED: {volume_profile.get('reason', 'Unknown error')}")
+            votes.append(AIVote("Volume Profile (POC)", "NEUTRAL", 5, "Data unavailable"))
         
         # 7. CVD - Cumulative Volume Delta (NEW!)
         if cvd.get('signal') != 'ERROR':
@@ -543,6 +552,9 @@ class AICortex:
                 cvd['strength'],
                 cvd['reason'][:100]
             ))
+        else:
+            logger.warning(f"📈 CVD FAILED: {cvd.get('reason', 'Unknown error')}")
+            votes.append(AIVote("CVD (Buy/Sell Pressure)", "NEUTRAL", 5, "Data unavailable"))
         
         # 8. News Sentiment Vote
         news_sentiment = news.get('sentiment', 'NEUTRAL')
