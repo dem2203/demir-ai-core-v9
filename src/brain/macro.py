@@ -143,46 +143,36 @@ class MacroBrain:
             vix_task, dxy_task, btc_dom_task
         )
         
-        # DATA QUALITY CHECK - CRITICAL!
+        # DATA QUALITY CHECK
         data_quality = "HIGH"
         failed_sources = []
         
         if vix is None:
             failed_sources.append("VIX")
-            data_quality = "CRITICAL"
-        elif vix_source != "yahoo":
-            data_quality = "MEDIUM"
+            vix = 16.0  # Neutral default
+            data_quality = "DEGRADED"
+            logger.warning("⚠️ VIX unavailable - using neutral default (16.0)")
             
         if dxy is None:
             failed_sources.append("DXY")
-            data_quality = "CRITICAL"
-        elif dxy_source != "yahoo":
+            dxy = 104.0  # Typical value
+            data_quality = "DEGRADED"
+            logger.warning("⚠️ DXY unavailable - using typical default (104.0)")
+        
+        # Adjust quality based on sources
+        if vix_source != "yahoo" or dxy_source != "yahoo":
             if data_quality == "HIGH":
                 data_quality = "MEDIUM"
         
-        # IF CRITICAL DATA MISSING → DEFENSIVE MODE
-        if data_quality == "CRITICAL":
-            logger.error(f"🚨 CRITICAL DATA FAILURE: {failed_sources}")
-            logger.error("🛡️ ENTERING DEFENSIVE MODE - NO TRADING!")
-            return {
-                "regime": "DATA_UNAVAILABLE",
-                "score": 0,
-                "vix": vix or 0,
-                "dxy": dxy or 0,
-                "btc_dominance": btc_dominance,
-                "data_quality": data_quality,
-                "failed_sources": failed_sources,
-                "reasoning": ["🚨 Critical macro data unavailable - DEFENSIVE MODE"],
-                "error": True
-            }
-        
-        # Continue with normal analysis if data quality acceptable
+        # Continue with analysis even if data unavailable (graceful degradation)
         score = 0
         reasons = []
         
-        # Add data source warnings if not primary
-        if data_quality == "MEDIUM":
-            reasons.append(f"⚠️ Data quality: {data_quality} (using fallback sources)")
+        # Add data source warnings
+        if data_quality == "DEGRADED":
+            reasons.append(f"⚠️ Macro data degraded (using defaults) - relying on TA/Price Action")
+        elif data_quality == "MEDIUM":
+            reasons.append(f"⚠️ Data quality: {data_quality} (fallback sources)")
         
         # VIX Analysis
         if vix > 30: 
@@ -224,5 +214,5 @@ class MacroBrain:
             "vix_source": vix_source,
             "dxy_source": dxy_source,
             "reasoning": reasons,
-            "error": False
+            "error": False  # Never error - graceful degradation
         }
