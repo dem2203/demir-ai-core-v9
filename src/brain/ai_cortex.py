@@ -4,6 +4,7 @@ from typing import Dict
 from src.brain.macro import MacroBrain
 from src.brain.technical_analyzer import TechnicalAnalyzer
 from src.brain.price_action_detector import PriceActionDetector
+from src.brain.market_microstructure import MarketMicrostructure
 from src.brain.claude_strategist import ClaudeStrategist
 from src.brain.news_sentiment import NewsSentimentAnalyzer
 from src.brain.deepseek_validator import DeepSeekValidator
@@ -58,16 +59,20 @@ class DirectorDecision:
 
 class AICortex:
     """
-    PROFESSIONAL TRADING SYSTEM
-    - Early movement detection (Price Action)
-    - Optimal position sizing (Kelly Criterion)
-    - Risk-controlled execution (ATR stops)
+    PROFESSIONAL TRADING SYSTEM WITH REAL MARKET MICROSTRUCTURE
+    - Order Book Imbalance
+    - Funding Rates
+    - Volume Profile
+    - CVD (Cumulative Volume Delta)
+    - Price Action
+    - AI Consensus (Claude, GPT-4, DeepSeek)
     """
     def __init__(self, binance: BinanceAPI):
         self.binance = binance
         self.macro = MacroBrain()
         self.technical = TechnicalAnalyzer()
-        self.price_action = PriceActionDetector()  # NEW: Early detection
+        self.price_action = PriceActionDetector()
+        self.market_micro = MarketMicrostructure(binance)  # NEW: Professional signals
         self.claude = ClaudeStrategist()
         self.news = NewsSentimentAnalyzer()
         self.deepseek = DeepSeekValidator()
@@ -81,23 +86,43 @@ class AICortex:
         
     async def think(self, symbol: str) -> DirectorDecision:
         """
-        PROFESSIONAL AI decision loop with EARLY DETECTION + RISK MANAGEMENT
+        PROFESSIONAL AI decision loop with MARKET MICROSTRUCTURE
         """
         logger.info(f"🧠 AI Cortex: Professional analizi başlatılıyor: {symbol}...")
         
         try:
-            # 1. Gather Data in Parallel
-            logger.info("📡 Tüm kaynaklardan veri çekiliyor...")
+            # 1. Gather ALL Data in Parallel (including professional signals)
+            logger.info("📡 Tüm kaynaklardan veri çekiliyor (order book, funding, volume)...")
+            
             macro_task = self.macro.analyze_world()
             news_task = self.news.analyze_sentiment()
-            chart_task = self._analyze_chart_professional(symbol) 
+            chart_task = self._analyze_chart_professional(symbol)
             
-            macro_data, news_data, chart_analysis = await asyncio.gather(
-                macro_task, news_task, chart_task
+            # PROFESSIONAL CRYPTO SIGNALS (NEW!)
+            df = await self.binance.fetch_candles(symbol, limit=100)
+            
+            orderbook_task = self.market_micro.analyze_orderbook_imbalance(symbol)
+            funding_task = self.market_micro.analyze_funding_rate(symbol)
+            volume_profile_task = self.market_micro.analyze_volume_profile(df)
+            cvd_task = self.market_micro.analyze_cvd(df)
+            
+            # Gather all in parallel
+            macro_data, news_data, chart_analysis, orderbook_data, funding_data, volume_profile, cvd_data = await asyncio.gather(
+                macro_task, news_task, chart_task,
+                orderbook_task, funding_task, volume_profile_task, cvd_task
             )
             
-            # 1.5 PRICE ACTION EARLY DETECTION (NEW!)
-            df = await self.binance.fetch_candles(symbol, limit=100)
+            # Log professional signals
+            if orderbook_data['signal'] != 'ERROR':
+                logger.info(f"📊 Order Book: {orderbook_data['signal']} ({orderbook_data['strength']}/10) - {orderbook_data['reason'][:50]}")
+            if funding_data['signal'] != 'ERROR':
+                logger.info(f"💰 Funding: {funding_data['signal']} ({funding_data['strength']}/10) - {funding_data['reason'][:50]}")
+            if volume_profile['signal'] != 'ERROR':
+                logger.info(f"📈 Volume Profile: {volume_profile['signal']} ({volume_profile['strength']}/10)")
+            if cvd_data['signal'] != 'ERROR':
+                logger.info(f"📊 CVD: {cvd_data['signal']} ({cvd_data['strength']}/10)")
+            
+            # 1.5 PRICE ACTION EARLY DETECTION
             price_action = self.price_action.analyze_price_action(df, symbol)
             
             if price_action['strength'] >= 7:
@@ -105,9 +130,12 @@ class AICortex:
                 for indicator in price_action['indicators']:
                     logger.info(f"   {indicator}")
             
-            # 2. Get individual AI votes (WITH PRICE ACTION!)
-            logger.info("🗳️ AI oyları toplanıyor...")
-            votes = self._collect_votes(macro_data, chart_analysis, news_data, price_action)
+            # 2. Collect votes (NOW INCLUDING PROFESSIONAL SIGNALS!)
+            logger.info("🗳️ AI oyları toplanıyor (+ professional market signals)...")
+            votes = self._collect_votes_professional(
+                macro_data, chart_analysis, news_data, price_action,
+                orderbook_data, funding_data, volume_profile, cvd_data
+            )
             
             # 3. Claude Strategic Reasoning (WITH FEEDBACK)
             logger.info("🧠 Claude tüm girdileri analiz ediyor...")
@@ -415,3 +443,116 @@ class AICortex:
         parts.append(f"  {strategy.get('reasoning', 'YOK')[:200]}")
         
         return "\n".join(parts)
+    def _collect_votes_professional(self, macro, chart, news, price_action, 
+                                     orderbook, funding, volume_profile, cvd) -> list:
+        """
+        Collect votes from ALL sources including PROFESSIONAL market signals
+        """
+        votes = []
+        
+        # 1. Macro Vote
+        macro_score = macro.get('score', 0)
+        if macro_score > 20:
+            macro_vote = "BULLISH"
+        elif macro_score < -20:
+            macro_vote = "BEARISH"
+        else:
+            macro_vote = "NEUTRAL"
+            
+        macro_conf = min(abs(macro_score) // 10 + 5, 10)
+        votes.append(AIVote(
+            "Makro Beyin (VIX/DXY)",
+            macro_vote,
+            macro_conf,
+            f"Skor: {macro_score} | {macro.get('regime', 'BİLİNMİYOR')}"
+        ))
+        
+        # 2. Technical Analysis Vote
+        chart_trend = chart.get('trend', 'UNKNOWN')
+        chart_strength = chart.get('strength', 0.5)
+        
+        if chart_trend == 'BULLISH':
+            chart_vote = "BULLISH"
+            chart_conf = max(int(chart_strength * 10), 6)
+        elif chart_trend == 'BEARISH':
+            chart_vote = "BEARISH"
+            chart_conf = max(int(chart_strength * 10), 6)
+        else:
+            chart_vote = "NEUTRAL"
+            chart_conf = 5
+            
+        votes.append(AIVote(
+            "Teknik Analiz (RSI/MACD)",
+            chart_vote,
+            chart_conf,
+            chart.get('analysis', 'Teknik analiz')[:100]
+        ))
+        
+        # 3. Price Action Vote
+        pa_signal = price_action.get('signal', 'NEUTRAL')
+        if 'BULLISH' in pa_signal:
+            pa_vote = "BULLISH"
+            pa_conf = min(price_action.get('strength', 5) + 2, 10)
+        elif 'BEARISH' in pa_signal:
+            pa_vote = "BEARISH"
+            pa_conf = min(price_action.get('strength', 5) + 2, 10)
+        else:
+            pa_vote = "NEUTRAL"
+            pa_conf = 5
+        
+        indicators_text = " | ".join(price_action.get('indicators', [])[:2])
+        votes.append(AIVote(
+            "Price Action Detector",
+            pa_vote,
+            pa_conf,
+            indicators_text[:100] if indicators_text else "No strong signals"
+        ))
+        
+        # 4. ORDER BOOK IMBALANCE (NEW!)
+        if orderbook.get('signal') != 'ERROR':
+            votes.append(AIVote(
+                "Order Book Imbalance",
+                orderbook['signal'],
+                orderbook['strength'],
+                orderbook['reason'][:100]
+            ))
+        
+        # 5. FUNDING RATE (NEW!)
+        if funding.get('signal') != 'ERROR':
+            votes.append(AIVote(
+                "Funding Rate",
+                funding['signal'],
+                funding['strength'],
+                funding['reason'][:100]
+            ))
+        
+        # 6. VOLUME PROFILE (NEW!)
+        if volume_profile.get('signal') != 'ERROR':
+            votes.append(AIVote(
+                "Volume Profile (POC)",
+                volume_profile['signal'],
+                volume_profile['strength'],
+                volume_profile['reason'][:100]
+            ))
+        
+        # 7. CVD - Cumulative Volume Delta (NEW!)
+        if cvd.get('signal') != 'ERROR':
+            votes.append(AIVote(
+                "CVD (Buy/Sell Pressure)",
+                cvd['signal'],
+                cvd['strength'],
+                cvd['reason'][:100]
+            ))
+        
+        # 8. News Sentiment Vote
+        news_sentiment = news.get('sentiment', 'NEUTRAL')
+        news_conf = news.get('confidence', 5)
+        
+        votes.append(AIVote(
+            "GPT-4 Haberler",
+            news_sentiment,
+            news_conf,
+            news.get('summary', 'Haber analizi')[:100]
+        ))
+        
+        return votes
