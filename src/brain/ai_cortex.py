@@ -2,6 +2,7 @@ import logging
 import asyncio
 from typing import Dict
 from src.brain.macro import MacroBrain
+from src.brain.technical_analyzer import TechnicalAnalyzer
 from src.brain.claude_strategist import ClaudeStrategist
 from src.brain.news_sentiment import NewsSentimentAnalyzer
 from src.brain.deepseek_validator import DeepSeekValidator
@@ -52,17 +53,23 @@ class DirectorDecision:
 
 class AICortex:
     """
-    4-AI Voting System (Gemini Vision REMOVED)
+    4-AI Voting System (PROFESSIONAL EDITION)
+    - Macro Brain (Yahoo Finance - accurate!)
+    - Technical Analyzer (RSI/MACD/BB - professional!)
+    - GPT-4 News
+    - Claude 4 Strategist
+    + DeepSeek Cross-Validator
     """
     def __init__(self, binance: BinanceAPI):
         self.binance = binance
         self.macro = MacroBrain()
+        self.technical = TechnicalAnalyzer()  # NEW: Professional TA
         self.claude = ClaudeStrategist()
         self.news = NewsSentimentAnalyzer()
-        self.deepseek = DeepSeekValidator()  # Cross validator
+        self.deepseek = DeepSeekValidator()
         
-        # Consensus requirements (now 3 AIs + Claude)
-        self.MIN_CONSENSUS = 2  # At least 2/3 AIs must agree (lowered from 3)
+        # Consensus requirements
+        self.MIN_CONSENSUS = 2  # At least 2/3 AIs must agree
         
         # Performance tracking for self-learning
         from src.utils.signal_tracker import SignalPerformanceTracker
@@ -70,28 +77,29 @@ class AICortex:
         
     async def think(self, symbol: str) -> DirectorDecision:
         """
-        Main AI decision loop with 4-AI voting (NO GEMINI).
+        Main AI decision loop with PROFESSIONAL UPGRADES
         """
-        logger.info(f"🧠 AI Cortex: 4-AI analizi başlatılıyor: {symbol}...")
+        logger.info(f"🧠 AI Cortex: Professional 4-AI analizi başlatılıyor: {symbol}...")
         
         try:
-            # 1. Gather Data in Parallel (NO CHART)
+            # 1. Gather Data in Parallel
             logger.info("📡 Tüm kaynaklardan veri çekiliyor...")
             macro_task = self.macro.analyze_world()
             news_task = self.news.analyze_sentiment()
+            chart_task = self._analyze_chart_professional(symbol)  # NEW: Professional TA
             
-            macro_data, news_data = await asyncio.gather(
-                macro_task, news_task
+            macro_data, news_data, chart_analysis = await asyncio.gather(
+                macro_task, news_task, chart_task
             )
             
-            # 2. Get individual AI votes (NO GEMINI)
+            # 2. Get individual AI votes (NOW WITH CHART!)
             logger.info("🗳️ AI oyları toplanıyor...")
-            votes = self._collect_votes(macro_data, news_data)
+            votes = self._collect_votes(macro_data, chart_analysis, news_data)
             
             # 3. Claude Strategic Reasoning (WITH FEEDBACK)
             logger.info("🧠 Claude tüm girdileri analiz ediyor...")
             performance_feedback = self.tracker.get_ai_feedback_prompt()
-            strategy = await self.claude.formulate_strategy(macro_data, {}, news_data, performance_feedback)
+            strategy = await self.claude.formulate_strategy(macro_data, chart_analysis, news_data, performance_feedback)
             
             # Add Claude's vote
             claude_vote = self._extract_claude_vote(strategy)
@@ -119,7 +127,7 @@ class AICortex:
                 logger.warning(f"⚠️ DeepSeek rejected decision: {validation.get('concerns')}")
             
             # Build detailed reasoning with validation
-            reasoning = self._build_reasoning_with_votes(macro_data, news_data, strategy, votes, validation)
+            reasoning = self._build_reasoning_with_votes(macro_data, chart_analysis, news_data, strategy, votes, validation)
             
             decision = DirectorDecision(
                 symbol=symbol,
@@ -151,8 +159,8 @@ class AICortex:
                 votes=[]
             )
     
-    def _collect_votes(self, macro, news) -> list:
-        """Collect votes from Macro and News AI (NO GEMINI)"""
+    def _collect_votes(self, macro, chart, news) -> list:
+        """Collect votes from Macro, Technical Analysis, and News AI"""
         votes = []
         
         # 1. Macro Vote
@@ -172,7 +180,26 @@ class AICortex:
             f"Skor: {macro_score} | {macro.get('regime', 'BİLİNMİYOR')}"
         ))
         
-        # 2. News Sentiment Vote
+        # 2. Technical Analysis Vote (NEW!)
+        chart_trend = chart.get('trend', 'UNKNOWN')
+        if chart_trend == 'BULLISH':
+            chart_vote = "BULLISH"
+            chart_conf = int(chart.get('strength', 0.5) * 10)
+        elif chart_trend == 'BEARISH':
+            chart_vote = "BEARISH"
+            chart_conf = int(chart.get('strength', 0.5) * 10)
+        else:
+            chart_vote = "NEUTRAL"
+            chart_conf = 5
+            
+        votes.append(AIVote(
+            "Teknik Analiz (RSI/MACD)",
+            chart_vote,
+            chart_conf,
+            chart.get('analysis', 'Teknik analiz')[:100]
+        ))
+        
+        # 3. News Sentiment Vote
         news_sentiment = news.get('sentiment', 'NEUTRAL')
         news_conf = news.get('confidence', 5)
         
@@ -184,6 +211,23 @@ class AICortex:
         ))
         
         return votes
+    
+    async def _analyze_chart_professional(self, symbol: str) -> dict:
+        """
+        Professional chart analysis using technical indicators
+        """
+        try:
+            df = await self.binance.fetch_candles(symbol, limit=100)
+            if df.empty:
+                return {"trend": "UNKNOWN", "analysis": "Veri yok"}
+            
+            # Use professional TA
+            analysis = self.technical.analyze(df, symbol)
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"Chart analysis error: {e}")
+            return {"trend": "ERROR", "analysis": str(e)}
     
     def _extract_claude_vote(self, strategy) -> AIVote:
         """Extract Claude's vote from strategy"""
@@ -236,7 +280,7 @@ class AICortex:
             'neutral': neutral_count
         }
     
-    def _build_reasoning_with_votes(self, macro, news, strategy, votes, validation) -> str:
+    def _build_reasoning_with_votes(self, macro, chart, news, strategy, votes, validation) -> str:
         """Create human-readable reasoning with vote details and validation (TURKISH)"""
         parts = []
         
@@ -244,7 +288,8 @@ class AICortex:
         parts.append("🗳️ YAPAY ZEKA OYLAMASI:")
         for vote in votes:
             emoji = "🟢" if vote.vote == "BULLISH" else "🔴" if vote.vote == "BEARISH" else "⚪"
-            parts.append(f"{emoji} {vote.name}: {vote.vote} ({vote.confidence}/10)")
+            vote_tr = {"BULLISH": "YÜKSELİŞ", "BEARISH": "DÜŞÜŞ", "NEUTRAL": "NÖTR", "MIXED": "KARIŞIK"}.get(vote.vote, vote.vote)
+            parts.append(f"{emoji} {vote.name}: {vote_tr} ({vote.confidence}/10)")
         
         # DeepSeek validation
         if validation.get('confidence_adjustment') != 0:
@@ -260,7 +305,12 @@ class AICortex:
         if macro.get('reasoning'):
             parts.append("  " + " | ".join(macro['reasoning'][:2]))
         
-        # News (NO CHART SECTION)
+        # Chart (NOW WITH PROFESSIONAL TA!)
+        parts.append(f"\n📈 TEKNİK ANALİZ: {chart.get('trend', 'YOK')}")
+        if chart.get('analysis'):
+            parts.append(f"  {chart['analysis'][:200]}")
+        
+        # News
         parts.append(f"\n📰 HABERLER (GPT-4): {news.get('sentiment', 'YOK')}")
         
         # Strategy
