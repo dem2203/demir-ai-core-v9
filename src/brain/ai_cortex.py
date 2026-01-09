@@ -3,6 +3,7 @@ import asyncio
 from typing import Dict
 from src.brain.macro import MacroBrain
 from src.brain.technical_analyzer import TechnicalAnalyzer
+from src.brain.price_action_detector import PriceActionDetector
 from src.brain.claude_strategist import ClaudeStrategist
 from src.brain.news_sentiment import NewsSentimentAnalyzer
 from src.brain.deepseek_validator import DeepSeekValidator
@@ -23,7 +24,8 @@ class DirectorDecision:
     The final output from the AI Cortex.
     """
     def __init__(self, symbol: str, position: str, reasoning: str, confidence: int, 
-                 risk_level: str, entry_conditions: str, votes: list):
+                 risk_level: str, entry_conditions: str, votes: list, 
+                 stop_loss: float = None, take_profit: float = None, position_size: float = None):
         self.symbol = symbol
         self.position = position  # LONG, SHORT, CASH
         self.reasoning = reasoning
@@ -31,6 +33,9 @@ class DirectorDecision:
         self.risk_level = risk_level  # HIGH, MEDIUM, LOW
         self.entry_conditions = entry_conditions
         self.votes = votes  # List of AIVote objects
+        self.stop_loss = stop_loss  # NEW: ATR-based stop
+        self.take_profit = take_profit  # NEW: ATR-based target
+        self.position_size = position_size  # NEW: Kelly-sized position
         
     def get_consensus_report(self) -> str:
         """Generate human-readable consensus report"""
@@ -53,17 +58,16 @@ class DirectorDecision:
 
 class AICortex:
     """
-    4-AI Voting System (PROFESSIONAL EDITION)
-    - Macro Brain (Yahoo Finance - accurate!)
-    - Technical Analyzer (RSI/MACD/BB - professional!)
-    - GPT-4 News
-    - Claude 4 Strategist
-    + DeepSeek Cross-Validator
+    PROFESSIONAL TRADING SYSTEM
+    - Early movement detection (Price Action)
+    - Optimal position sizing (Kelly Criterion)
+    - Risk-controlled execution (ATR stops)
     """
     def __init__(self, binance: BinanceAPI):
         self.binance = binance
         self.macro = MacroBrain()
-        self.technical = TechnicalAnalyzer()  # NEW: Professional TA
+        self.technical = TechnicalAnalyzer()
+        self.price_action = PriceActionDetector()  # NEW: Early detection
         self.claude = ClaudeStrategist()
         self.news = NewsSentimentAnalyzer()
         self.deepseek = DeepSeekValidator()
@@ -77,24 +81,33 @@ class AICortex:
         
     async def think(self, symbol: str) -> DirectorDecision:
         """
-        Main AI decision loop with PROFESSIONAL UPGRADES
+        PROFESSIONAL AI decision loop with EARLY DETECTION + RISK MANAGEMENT
         """
-        logger.info(f"🧠 AI Cortex: Professional 4-AI analizi başlatılıyor: {symbol}...")
+        logger.info(f"🧠 AI Cortex: Professional analizi başlatılıyor: {symbol}...")
         
         try:
             # 1. Gather Data in Parallel
             logger.info("📡 Tüm kaynaklardan veri çekiliyor...")
             macro_task = self.macro.analyze_world()
             news_task = self.news.analyze_sentiment()
-            chart_task = self._analyze_chart_professional(symbol)  # NEW: Professional TA
+            chart_task = self._analyze_chart_professional(symbol) 
             
             macro_data, news_data, chart_analysis = await asyncio.gather(
                 macro_task, news_task, chart_task
             )
             
-            # 2. Get individual AI votes (NOW WITH CHART!)
+            # 1.5 PRICE ACTION EARLY DETECTION (NEW!)
+            df = await self.binance.fetch_candles(symbol, limit=100)
+            price_action = self.price_action.analyze_price_action(df, symbol)
+            
+            if price_action['strength'] >= 7:
+                logger.warning(f"🚨 EARLY SIGNAL: {price_action['signal']} (Strength: {price_action['strength']}/10)")
+                for indicator in price_action['indicators']:
+                    logger.info(f"   {indicator}")
+            
+            # 2. Get individual AI votes (WITH PRICE ACTION!)
             logger.info("🗳️ AI oyları toplanıyor...")
-            votes = self._collect_votes(macro_data, chart_analysis, news_data)
+            votes = self._collect_votes(macro_data, chart_analysis, news_data, price_action)
             
             # 3. Claude Strategic Reasoning (WITH FEEDBACK)
             logger.info("🧠 Claude tüm girdileri analiz ediyor...")
@@ -105,7 +118,10 @@ class AICortex:
             claude_vote = self._extract_claude_vote(strategy)
             votes.append(claude_vote)
             
-            # 4. DeepSeek Cross-Validation (NO CHART DATA)
+            # Store as instance variable for use in other methods
+            self.votes = votes
+            
+            # 4. DeepSeek Cross-Validation
             logger.info("🔍 DeepSeek kararları doğruluyor...")
             validation = await self.deepseek.validate(votes, chart_analysis, macro_data)
             
@@ -131,19 +147,64 @@ class AICortex:
             # 5. Calculate consensus
             consensus_result = self._calculate_consensus(votes)
             
-            # Apply DeepSeek confidence adjustment
-            raw_confidence = consensus_result['confidence']
-            adjusted_confidence = max(1, min(10, raw_confidence + validation.get('confidence_adjustment', 0)))
-            
-            # 6. Formulate Final Decision
             position = consensus_result['position']
-            confidence = adjusted_confidence
+            confidence = consensus_result['confidence']
             
-            # If DeepSeek flagged as invalid, force CASH
-            if not validation.get('is_valid', True):
+            # Apply DeepSeek confidence adjustment
+            if validation.get('confidence_adjustment'):
+                confidence += validation['confidence_adjustment']
+                confidence = max(1, min(10, confidence))
+            
+            # DeepSeek rejection
+            if validation.get('rejected'):
                 position = "CASH"
                 confidence = 3
                 logger.warning(f"⚠️ DeepSeek rejected decision: {validation.get('concerns')}")
+            
+            # 6. CALCULATE POSITION SIZE & STOPS (NEW!)
+            stop_loss, take_profit, position_size = None, None, None
+            
+            if position in ["LONG", "SHORT"] and confidence >= 6:
+                # Get performance stats for Kelly
+                perf_stats = self.tracker.get_performance_stats()
+                
+                # Calculate ATR-based stops
+                from src.risk.position_sizer import ATRStopCalculator
+                atr_calc = ATRStopCalculator()
+                atr = atr_calc.calculate_atr(df)
+                current_price = df['close'].iloc[-1]
+                
+                stops = atr_calc.calculate_stops(
+                    entry_price=current_price,
+                    atr=atr,
+                    direction=position,
+                    multiplier=2.0
+                )
+                
+                stop_loss = stops['stop_loss']
+                take_profit = stops['take_profit']
+                
+                # Calculate Kelly position size
+                if 'message' not in perf_stats:
+                    from src.risk.position_sizer import KellyPositionSizer
+                    kelly = KellyPositionSizer()
+                    
+                    # Dummy account balance - will be read from config/binance later
+                    account_balance = 1000  # USDT
+                    
+                    win_rate = perf_stats['win_rate'] / 100
+                    avg_win_pct = 0.03  # 3% average win
+                    avg_loss_pct = 0.015  # 1.5% average loss (2:1 R:R)
+                    
+                    sizing = kelly.calculate_position_size(
+                        account_balance=account_balance,
+                        win_rate=win_rate,
+                        avg_win_pct=avg_win_pct,
+                        avg_loss_pct=avg_loss_pct,
+                        current_confidence=confidence
+                    )
+                    
+                    position_size = sizing['position_value'] / current_price  # Convert to quantity
             
             # Build detailed reasoning with validation
             reasoning = self._build_reasoning_with_votes(macro_data, chart_analysis, news_data, strategy, votes, validation)
@@ -155,12 +216,20 @@ class AICortex:
                 confidence=confidence,
                 risk_level=strategy.get('risk_level', 'MEDIUM'),
                 entry_conditions=strategy.get('entry_conditions', 'Wait for confirmation'),
-                votes=votes
+                votes=votes,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                position_size=position_size
             )
             
-            # Log consensus
+            # Log consensus + RISK MANAGEMENT
             logger.info(f"\n{decision.get_consensus_report()}")
-            logger.info(f"✅ Final Decision: {position} (Confidence: {confidence}/10)\n")
+            logger.info(f"✅ Final Decision: {position} (Confidence: {confidence}/10)")
+            if stop_loss and take_profit:
+                logger.info(f"🎯 Risk Management: SL=${stop_loss:.2f} | TP=${take_profit:.2f}")
+            if position_size:
+                logger.info(f"💰 Position Size: {position_size:.4f} {symbol[:3]}")
+            logger.info("")
             
             return decision
             
@@ -178,8 +247,8 @@ class AICortex:
                 votes=[]
             )
     
-    def _collect_votes(self, macro, chart, news) -> list:
-        """Collect votes from Macro, Technical Analysis, and News AI"""
+    def _collect_votes(self, macro, chart, news, price_action) -> list:
+        """Collect votes from Macro, Technical Analysis, News AI, and Price Action"""
         votes = []
         
         # 1. Macro Vote
@@ -199,7 +268,7 @@ class AICortex:
             f"Skor: {macro_score} | {macro.get('regime', 'BİLİNMİYOR')}"
         ))
         
-        # 2. Technical Analysis Vote (NEW!)
+        # 2. Technical Analysis Vote
         chart_trend = chart.get('trend', 'UNKNOWN')
         if chart_trend == 'BULLISH':
             chart_vote = "BULLISH"
@@ -218,7 +287,27 @@ class AICortex:
             chart.get('analysis', 'Teknik analiz')[:100]
         ))
         
-        # 3. News Sentiment Vote
+        # 3. Price Action Vote (NEW!)
+        pa_signal = price_action.get('signal', 'NEUTRAL')
+        if 'BULLISH' in pa_signal:
+            pa_vote = "BULLISH"
+            pa_conf = min(price_action.get('strength', 5) + 2, 10)
+        elif 'BEARISH' in pa_signal:
+            pa_vote = "BEARISH"
+            pa_conf = min(price_action.get('strength', 5) + 2, 10)
+        else:
+            pa_vote = "NEUTRAL"
+            pa_conf = 5
+        
+        indicators_text = " | ".join(price_action.get('indicators', [])[:2])
+        votes.append(AIVote(
+            "Price Action Detector",
+            pa_vote,
+            pa_conf,
+            indicators_text[:100] if indicators_text else "No strong signals"
+        ))
+        
+        # 4. News Sentiment Vote
         news_sentiment = news.get('sentiment', 'NEUTRAL')
         news_conf = news.get('confidence', 5)
         
