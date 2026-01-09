@@ -199,10 +199,10 @@ class AICortex:
         confidence = strategy.get('confidence', 7) if 'confidence' in strategy else 7
         
         return AIVote(
-            "Claude Strategist",
+            "Claude Stratejist",  # Turkish name
             vote,
             confidence,
-            strategy.get('reasoning', 'Strategic analysis')[:100]
+            strategy.get('reasoning', 'Stratejik analiz')[:100]
         )
     
     def _calculate_consensus(self, votes: list) -> dict:
