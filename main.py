@@ -29,6 +29,43 @@ class AIPhoenixBot:
         # Live Monitor (WebSocket)
         self.monitor = LiveMarketMonitor(self.on_market_event)
         
+        # Track last decisions to avoid spam
+        self.last_decisions = {}  # {symbol: {position, confidence, votes_hash}}
+        
+    def _should_notify(self, symbol: str, decision) -> bool:
+        """
+        Check if this decision is different enough to warrant a notification.
+        Only notify if there's a REAL change.
+        """
+        if symbol not in self.last_decisions:
+            # First decision for this symbol - notify
+            return True
+        
+        last = self.last_decisions[symbol]
+        
+        # Check for significant changes
+        position_changed = last['position'] != decision.position
+        confidence_changed = abs(last['confidence'] - decision.confidence) >= 2
+        
+        # Hash of AI votes to detect vote changes
+        current_votes = ",".join([f"{v.name}:{v.vote}" for v in decision.votes])
+        votes_changed = last.get('votes_hash') != current_votes
+        
+        # Notify if ANY significant change
+        if position_changed or confidence_changed or votes_changed:
+            return True
+        
+        return False
+    
+    def _update_last_decision(self, symbol: str, decision):
+        """Save this decision for comparison"""
+        votes_hash = ",".join([f"{v.name}:{v.vote}" for v in decision.votes])
+        self.last_decisions[symbol] = {
+            'position': decision.position,
+            'confidence': decision.confidence,
+            'votes_hash': votes_hash
+        }
+        
     async def on_market_event(self, symbol: str, reason: str):
         """
         Callback when market moves significantly.
@@ -40,26 +77,36 @@ class AIPhoenixBot:
             logger.info(f"Trigger: {reason}")
             logger.info(f"{'='*60}\n")
             
-            # Run AI analysis
+            # Run AI analysis (ALWAYS analyze)
             decision = await self.cortex.think(symbol)
             
-            # Log reasoning
+            # Log reasoning (ALWAYS log)
             logger.info(f"📋 AI DECISION for {symbol}:")
             logger.info(f"Position: {decision.position}")
             logger.info(f"Confidence: {decision.confidence}/10")
             logger.info(f"\n{decision.reasoning}\n")
             
-            # Send Telegram notification with AI voting results
-            await self.telegram.send_message(
-                f"⚡ *LIVE TRIGGER: {symbol}*\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"Event: {reason}\n\n"
-                f"{decision.get_consensus_report()}\n\n"
-                f"✅ *Final Decision: {decision.position}*\n"
-                f"Confidence: {decision.confidence}/10\n"
-                f"Risk: {decision.risk_level}\n\n"
-                f"_{decision.entry_conditions}_"
-            )
+            # Check if we should notify (SMART filtering)
+            should_notify = self._should_notify(symbol, decision)
+            
+            if should_notify:
+                # Send Telegram notification ONLY if something changed
+                await self.telegram.send_message(
+                    f"⚡ *LIVE TRIGGER: {symbol}*\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"Event: {reason}\n\n"
+                    f"{decision.get_consensus_report()}\n\n"
+                    f"✅ *Final Decision: {decision.position}*\n"
+                    f"Confidence: {decision.confidence}/10\n"
+                    f"Risk: {decision.risk_level}\n\n"
+                    f"_{decision.entry_conditions}_"
+                )
+                
+                # Update last decision
+                self._update_last_decision(symbol, decision)
+                logger.info(f"📱 Telegram notification sent (change detected)")
+            else:
+                logger.info(f"🔇 No notification (same as last analysis)")
             
             # Execute if confidence high enough
             if decision.confidence >= 7 and decision.position != "CASH":
@@ -72,8 +119,8 @@ class AIPhoenixBot:
                     "stop_loss": 0,
                     "reason": f"Live AI ({reason})",
                     "cortex_note": decision.reasoning,
-                    "ai_votes": ai_votes_dict,  # For performance tracking
-                    "confidence": decision.confidence  # For performance tracking
+                    "ai_votes": ai_votes_dict,
+                    "confidence": decision.confidence
                 }
                 await self.trader.execute(symbol, signal)
             else:
@@ -92,8 +139,9 @@ class AIPhoenixBot:
         
     async def run(self):
         logger.info(f"🔥 AI Phoenix v{Config.VERSION} Starting...")
-        logger.info("🤖 Powered by: Gemini Vision + Claude + GPT-4")
+        logger.info("🤖 Powered by: Gemini Vision + Claude + GPT-4 + DeepSeek")
         logger.info("📡 Mode: LIVE 7/24 WebSocket Monitoring")
+        logger.info("🔇 Smart Notifications: Only on real changes")
         
         # Verify Config
         if not Config.validate():
@@ -105,13 +153,16 @@ class AIPhoenixBot:
         await self.telegram.send_alert(
             "🤖 AI PHOENIX ONLINE", 
             f"Version: {Config.VERSION}\n"
-            f"AI Stack: Gemini Vision, Claude 3.5, GPT-4\n"
+            f"AI Stack: Gemini Vision, Claude 3.5, GPT-4, DeepSeek\n"
             f"Mode: 🔴 LIVE 7/24 WebSocket\n"
             f"Targets: BTCUSDT, ETHUSDT\n\n"
             f"⚡ Triggers:\n"
             f"• Price ±0.5% move\n"
             f"• Volume spike 2x+\n"
-            f"• Hourly fallback check", 
+            f"• Hourly fallback check\n\n"
+            f"🔇 Smart Notifications:\n"
+            f"• Only on position/confidence changes\n"
+            f"• No spam if analysis stays same", 
             "🟢"
         )
         
