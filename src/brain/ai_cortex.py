@@ -153,10 +153,10 @@ class AICortex:
             logger.info("🔍 DeepSeek kararları doğruluyor...")
             validation = await self.deepseek.validate(votes, chart_analysis, macro_data)
             
-            # DeepSeek penalty reduction (was too harsh at -4, now max -2)
-            if validation.get('confidence_adjustment', 0) < -2:
-                logger.warning(f"⚠️ DeepSeek penalty reduced from {validation['confidence_adjustment']} to -2 (was too harsh)")
-                validation['confidence_adjustment'] = -2
+            # DeepSeek penalty reduction (was max -2, NOW max -1)
+            if validation.get('confidence_adjustment', 0) < -1:
+                logger.warning(f"⚠️ DeepSeek penalty capped at -1 (was {validation['confidence_adjustment']})")
+                validation['confidence_adjustment'] = -1
             
             # 5. Calculate consensus
             consensus_result = self._calculate_consensus(votes)

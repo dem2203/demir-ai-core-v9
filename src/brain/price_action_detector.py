@@ -52,18 +52,31 @@ class PriceActionDetector:
             signals.append(pattern)
             strength += 2
         
-        # Overall signal
-        if strength >= 6:
-            overall = "STRONG_BULLISH" if "BULLISH" in str(signals) else "STRONG_BEARISH"
-        elif strength >= 3:
-            overall = "WEAK_BULLISH" if "BULLISH" in str(signals) else "WEAK_BEARISH"
+        
+        # Overall signal determination
+        # 0-3: Strong directional
+        # 4-6: NEUTRAL (no clear direction)
+        # 7-10: Very strong directional
+        
+        bullish_count = sum(1 for s in signals if 'BULLISH' in str(s).upper() or 'Higher Lows' in str(s) or 'Accumulation' in str(s))
+        bearish_count = sum(1 for s in signals if 'BEARISH' in str(s).upper() or 'Lower Highs' in str(s) or 'Distribution' in str(s))
+        
+        if strength >= 7:
+            # Very strong signal
+            overall = "STRONG_BULLISH" if bullish_count > bearish_count else "STRONG_BEARISH"
+        elif strength >= 4:
+            # Mid-range = NEUTRAL (don't force a direction on weak signals!)
+            overall = "NEUTRAL"
+        elif strength >= 1:
+            # Weak but present
+            overall = "WEAK_BULLISH" if bullish_count > bearish_count else "WEAK_BEARISH"
         else:
             overall = "NEUTRAL"
         
         return {
             'signal': overall,
             'strength': min(strength, 10),
-            'indicators': signals,
+            'indicators': signals if signals else ['No strong signals detected'],
             'current_price': df['close'].iloc[-1]
         }
     
