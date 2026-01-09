@@ -86,7 +86,7 @@ class AIPhoenixBot:
             logger.info(f"\n{decision.reasoning}\n")
             
             # HIGH CONFIDENCE FILTER
-            MIN_CONFIDENCE_FOR_NOTIFICATION = 3  # Lowered from 6 to get more signals
+            MIN_CONFIDENCE_FOR_NOTIFICATION = 5  # Lowered from 6 to get more signals
             
             if decision.confidence < MIN_CONFIDENCE_FOR_NOTIFICATION:
                 logger.info(f"🔇 Low confidence ({decision.confidence}/10) - no notification sent")
@@ -102,10 +102,34 @@ class AIPhoenixBot:
                 # Translate risk to Turkish
                 risk_tr = {"HIGH": "YÜKSEK", "MEDIUM": "ORTA", "LOW": "DÜŞÜK"}.get(decision.risk_level, decision.risk_level)
                 
-                # Format entry conditions as readable text
-                entry_text = decision.entry_conditions
-                if isinstance(entry_text, list):
-                    entry_text = "\n• " + "\n• ".join(entry_text)
+                # Extract Claude's professional trade setup if available
+                # entry_conditions now contains Claude's JSON response with entry_price, stop_loss, targets, etc.
+                trade_setup = ""
+                if isinstance(decision.entry_conditions, dict):
+                    # Claude's professional trade setup
+                    trade_setup += f"\n💹 *TRADE SETUP (Claude):*\n"
+                    if decision.entry_conditions.get('entry_price'):
+                        trade_setup += f"Entry: {decision.entry_conditions['entry_price']}\n"
+                    if decision.entry_conditions.get('stop_loss'):
+                        trade_setup += f"Stop Loss: {decision.entry_conditions['stop_loss']}\n"
+                    if decision.entry_conditions.get('target_1'):
+                        trade_setup += f"Target 1: {decision.entry_conditions['target_1']}\n"
+                    if decision.entry_conditions.get('target_2'):
+                        trade_setup += f"Target 2: {decision.entry_conditions['target_2']}\n"
+                    if decision.entry_conditions.get('risk_reward'):
+                        trade_setup += f"R:R: {decision.entry_conditions['risk_reward']}\n"
+                    if decision.entry_conditions.get('conviction'):
+                        trade_setup += f"Conviction: {decision.entry_conditions['conviction']}/10\n"
+                    if decision.entry_conditions.get('market_view'):
+                        trade_setup += f"\n📝 *Görüş:* {decision.entry_conditions['market_view']}\n"
+                    if decision.entry_conditions.get('reasoning'):
+                        trade_setup += f"\n🔍 *Analiz:*\n{decision.entry_conditions['reasoning'][:200]}"
+                else:
+                    # Fallback to old format
+                    entry_text = str(decision.entry_conditions)
+                    if isinstance(decision.entry_conditions, list):
+                        entry_text = "\n• " + "\n• ".join(decision.entry_conditions)
+                    trade_setup = f"\n📋 *Giriş Koşulları:*{entry_text}"
                 
                 # Build notification message
                 message = (
@@ -115,19 +139,9 @@ class AIPhoenixBot:
                     f"{decision.get_consensus_report()}\n\n"
                     f"✅ *Nihai Karar: {decision.position}*\n"
                     f"Güven: {decision.confidence}/10\n"
-                    f"Risk: {risk_tr}\n\n"
-                    f"📋 *Giriş Koşulları:*{entry_text}"
+                    f"Risk: {risk_tr}"
+                    f"{trade_setup}"
                 )
-                
-                # Add stop loss/take profit if available
-                if decision.stop_loss and decision.take_profit:
-                    message += f"\n\n🎯 *Risk Yönetimi:*\n"
-                    message += f"Stop Loss: ${decision.stop_loss:,.2f}\n"
-                    message += f"Take Profit: ${decision.take_profit:,.2f}"
-                
-                # Add position size if available
-                if decision.position_size:
-                    message += f"\n💰 Pozisyon: {decision.position_size:.4f} {symbol[:3]}"
                 
                 # Send Telegram notification
                 await self.telegram.send_message(message)
