@@ -107,7 +107,26 @@ class AICortex:
             
             # 4. DeepSeek Cross-Validation (NO CHART DATA)
             logger.info("🔍 DeepSeek kararları doğruluyor...")
-            validation = await self.deepseek.validate(votes, {}, macro_data)
+            validation = await self.deepseek.validate(votes, chart_analysis, macro_data)
+            
+            # DEFENSIVE MODE CHECK - CRITICAL!
+            if macro_data.get('error') or macro_data.get('data_quality') == 'CRITICAL':
+                logger.error("🛡️ DEFENSIVE MODE: Critical macro data failure")
+                logger.error("🚫 NO TRADING - Returning CASH position")
+                return DirectorDecision(
+                    symbol=symbol,
+                    position="CASH",
+                    reasoning="🛡️ DEFENSIVE MODE: " + macro_data.get('reasoning', ['Data unavailable'])[0],
+                    confidence=0,
+                    risk_level="CRITICAL",
+                    entry_conditions="DO NOT TRADE - Data unavailable",
+                    votes=votes
+                )
+            
+            # Adjust confidence for medium quality data
+            if macro_data.get('data_quality') == 'MEDIUM':
+                logger.warning("⚠️ Data quality MEDIUM - reducing confidence")
+                validation['confidence_adjustment'] -= 1
             
             # 5. Calculate consensus
             consensus_result = self._calculate_consensus(votes)
