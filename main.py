@@ -90,6 +90,14 @@ class AIPhoenixBot:
             should_notify = self._should_notify(symbol, decision)
             
             if should_notify:
+                # Translate risk level
+                risk_tr = {"HIGH": "YÜKSEK", "MEDIUM": "ORTA", "LOW": "DÜŞÜK"}.get(decision.risk_level, decision.risk_level)
+                
+                # Format entry conditions as readable text
+                entry_text = decision.entry_conditions
+                if isinstance(entry_text, list):
+                    entry_text = "\n• " + "\n• ".join(entry_text)
+                
                 # Send Telegram notification ONLY if something changed
                 await self.telegram.send_message(
                     f"⚡ *CANLI TETİKLEME: {symbol}*\n"
@@ -98,8 +106,8 @@ class AIPhoenixBot:
                     f"{decision.get_consensus_report()}\n\n"
                     f"✅ *Nihai Karar: {decision.position}*\n"
                     f"Güven: {decision.confidence}/10\n"
-                    f"Risk: {decision.risk_level}\n\n"
-                    f"_{decision.entry_conditions}_"
+                    f"Risk: {risk_tr}\n\n"
+                    f"📋 *Giriş Koşulları:*{entry_text}"
                 )
                 
                 # Update last decision

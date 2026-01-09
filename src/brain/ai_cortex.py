@@ -37,8 +37,10 @@ class DirectorDecision:
         lines.append("━━━━━━━━━━━━━━━━━━")
         
         for vote in self.votes:
+            # Translate vote to Turkish
+            vote_tr = {"BULLISH": "YÜKSELİŞ", "BEARISH": "DÜŞÜŞ", "NEUTRAL": "NÖTR", "MIXED": "KARIŞIK"}.get(vote.vote, vote.vote)
             emoji = "🟢" if vote.vote == "BULLISH" else "🔴" if vote.vote == "BEARISH" else "⚪"
-            lines.append(f"{emoji} {vote.name}: {vote.vote} ({vote.confidence}/10)")
+            lines.append(f"{emoji} {vote.name}: {vote_tr} ({vote.confidence}/10)")
         
         # Count votes
         bullish = sum(1 for v in self.votes if v.vote == "BULLISH")
