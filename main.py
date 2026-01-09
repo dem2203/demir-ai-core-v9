@@ -92,21 +92,21 @@ class AIPhoenixBot:
             if should_notify:
                 # Send Telegram notification ONLY if something changed
                 await self.telegram.send_message(
-                    f"⚡ *LIVE TRIGGER: {symbol}*\n"
+                    f"⚡ *CANLI TETİKLEME: {symbol}*\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
-                    f"Event: {reason}\n\n"
+                    f"Olay: {reason}\n\n"
                     f"{decision.get_consensus_report()}\n\n"
-                    f"✅ *Final Decision: {decision.position}*\n"
-                    f"Confidence: {decision.confidence}/10\n"
+                    f"✅ *Nihai Karar: {decision.position}*\n"
+                    f"Güven: {decision.confidence}/10\n"
                     f"Risk: {decision.risk_level}\n\n"
                     f"_{decision.entry_conditions}_"
                 )
                 
                 # Update last decision
                 self._update_last_decision(symbol, decision)
-                logger.info(f"📱 Telegram notification sent (change detected)")
+                logger.info(f"📱 Telegram bildirimi gönderildi (değişiklik tespit edildi)")
             else:
-                logger.info(f"🔇 No notification (same as last analysis)")
+                logger.info(f"🔇 Bildirim yok (önceki analizle aynı)")
             
             # Execute if confidence high enough
             if decision.confidence >= 7 and decision.position != "CASH":
@@ -151,18 +151,18 @@ class AIPhoenixBot:
         # Connect
         await self.binance.connect()
         await self.telegram.send_alert(
-            "🤖 AI PHOENIX ONLINE", 
-            f"Version: {Config.VERSION}\n"
-            f"AI Stack: Gemini Vision, Claude 3.5, GPT-4, DeepSeek\n"
-            f"Mode: 🔴 LIVE 7/24 WebSocket\n"
-            f"Targets: BTCUSDT, ETHUSDT\n\n"
-            f"⚡ Triggers:\n"
-            f"• Price ±0.5% move\n"
-            f"• Volume spike 2x+\n"
-            f"• Hourly fallback check\n\n"
-            f"🔇 Smart Notifications:\n"
-            f"• Only on position/confidence changes\n"
-            f"• No spam if analysis stays same", 
+            "🤖 AI PHOENIX AKTİF", 
+            f"Versiyon: {Config.VERSION}\n"
+            f"AI Takımı: Claude 4 Sonnet, GPT-4, DeepSeek (Gemini Kapalı)\n"
+            f"Mod: 🔴 CANLI 7/24 WebSocket\n"
+            f"Hedefler: BTCUSDT, ETHUSDT\n\n"
+            f"⚡ Tetikleyiciler:\n"
+            f"• Fiyat ±0.5% hareket\n"
+            f"• Hacim artışı 2x+\n"
+            f"• Saatlik kontrol\n\n"
+            f"🔇 Akıllı Bildirimler:\n"
+            f"• Sadece pozisyon/güven değişikliklerinde\n"
+            f"• Aynı analiz tekrarı yok", 
             "🟢"
         )
         

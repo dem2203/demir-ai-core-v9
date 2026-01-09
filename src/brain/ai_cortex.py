@@ -2,8 +2,6 @@ import logging
 import asyncio
 from typing import Dict
 from src.brain.macro import MacroBrain
-from src.brain.chart_generator import ChartGenerator
-from src.brain.vision_analyst import GeminiVisionAnalyst
 from src.brain.claude_strategist import ClaudeStrategist
 from src.brain.news_sentiment import NewsSentimentAnalyzer
 from src.brain.deepseek_validator import DeepSeekValidator
@@ -35,7 +33,7 @@ class DirectorDecision:
         
     def get_consensus_report(self) -> str:
         """Generate human-readable consensus report"""
-        lines = ["🗳️ AI VOTING RESULTS:"]
+        lines = ["🗳️ YAPAY ZEKA OY SONUÇLARI:"]
         lines.append("━━━━━━━━━━━━━━━━━━")
         
         for vote in self.votes:
@@ -47,24 +45,22 @@ class DirectorDecision:
         bearish = sum(1 for v in self.votes if v.vote == "BEARISH")
         neutral = sum(1 for v in self.votes if v.vote == "NEUTRAL")
         
-        lines.append(f"\n📊 Consensus: {bullish} BULL | {bearish} BEAR | {neutral} NEUTRAL")
+        lines.append(f"\n📊 Konsensus: {bullish} YÜKSELİŞ | {bearish} DÜŞÜŞ | {neutral} NÖTR")
         return "\n".join(lines)
 
 class AICortex:
     """
-    The True AI Brain with 4-AI Voting System
+    4-AI Voting System (Gemini Vision REMOVED)
     """
     def __init__(self, binance: BinanceAPI):
         self.binance = binance
         self.macro = MacroBrain()
-        self.chart_gen = ChartGenerator()
-        self.gemini = GeminiVisionAnalyst()
         self.claude = ClaudeStrategist()
         self.news = NewsSentimentAnalyzer()
-        self.deepseek = DeepSeekValidator()  # NEW: 5th AI - Cross validator
+        self.deepseek = DeepSeekValidator()  # Cross validator
         
-        # Consensus requirements
-        self.MIN_CONSENSUS = 3  # At least 3/4 AIs must agree
+        # Consensus requirements (now 3 AIs + Claude)
+        self.MIN_CONSENSUS = 2  # At least 2/3 AIs must agree (lowered from 3)
         
         # Performance tracking for self-learning
         from src.utils.signal_tracker import SignalPerformanceTracker
@@ -72,37 +68,36 @@ class AICortex:
         
     async def think(self, symbol: str) -> DirectorDecision:
         """
-        Main AI decision loop with voting consensus.
+        Main AI decision loop with 4-AI voting (NO GEMINI).
         """
-        logger.info(f"🧠 AI Cortex: Starting 4-AI analysis for {symbol}...")
+        logger.info(f"🧠 AI Cortex: 4-AI analizi başlatılıyor: {symbol}...")
         
         try:
-            # 1. Gather Data in Parallel
-            logger.info("📡 Fetching data from all sources...")
+            # 1. Gather Data in Parallel (NO CHART)
+            logger.info("📡 Tüm kaynaklardan veri çekiliyor...")
             macro_task = self.macro.analyze_world()
             news_task = self.news.analyze_sentiment()
-            chart_task = self._analyze_chart(symbol)
             
-            macro_data, news_data, chart_analysis = await asyncio.gather(
-                macro_task, news_task, chart_task
+            macro_data, news_data = await asyncio.gather(
+                macro_task, news_task
             )
             
-            # 2. Get individual AI votes
-            logger.info("🗳️ Collecting AI votes...")
-            votes = self._collect_votes(macro_data, chart_analysis, news_data)
+            # 2. Get individual AI votes (NO GEMINI)
+            logger.info("🗳️ AI oyları toplanıyor...")
+            votes = self._collect_votes(macro_data, news_data)
             
-            # 3. Claude Strategic Reasoning (Final arbiter) - WITH PERFORMANCE FEEDBACK
-            logger.info("🧠 Claude analyzing all inputs...")
+            # 3. Claude Strategic Reasoning (WITH FEEDBACK)
+            logger.info("🧠 Claude tüm girdileri analiz ediyor...")
             performance_feedback = self.tracker.get_ai_feedback_prompt()
-            strategy = await self.claude.formulate_strategy(macro_data, chart_analysis, news_data, performance_feedback)
+            strategy = await self.claude.formulate_strategy(macro_data, {}, news_data, performance_feedback)
             
             # Add Claude's vote
             claude_vote = self._extract_claude_vote(strategy)
             votes.append(claude_vote)
             
-            # 4. DeepSeek Cross-Validation
-            logger.info("🔍 DeepSeek validating AI decisions...")
-            validation = await self.deepseek.validate(votes, chart_analysis, macro_data)
+            # 4. DeepSeek Cross-Validation (NO CHART DATA)
+            logger.info("🔍 DeepSeek kararları doğruluyor...")
+            validation = await self.deepseek.validate(votes, {}, macro_data)
             
             # 5. Calculate consensus
             consensus_result = self._calculate_consensus(votes)
@@ -154,8 +149,8 @@ class AICortex:
                 votes=[]
             )
     
-    def _collect_votes(self, macro, chart, news) -> list:
-        """Collect votes from Macro, Gemini Vision, and News AI"""
+    def _collect_votes(self, macro, news) -> list:
+        """Collect votes from Macro and News AI (NO GEMINI)"""
         votes = []
         
         # 1. Macro Vote
@@ -169,40 +164,21 @@ class AICortex:
             
         macro_conf = min(abs(macro_score) // 10 + 5, 10)
         votes.append(AIVote(
-            "Macro Brain (VIX/DXY)",
+            "Makro Beyin (VIX/DXY)",
             macro_vote,
             macro_conf,
-            f"Score: {macro_score} | {macro.get('regime', 'UNKNOWN')}"
+            f"Skor: {macro_score} | {macro.get('regime', 'BİLİNMİYOR')}"
         ))
         
-        # 2. Gemini Vision Vote
-        gemini_trend = chart.get('trend', 'UNKNOWN')
-        if gemini_trend == 'BULLISH':
-            gemini_vote = "BULLISH"
-            gemini_conf = 8
-        elif gemini_trend == 'BEARISH':
-            gemini_vote = "BEARISH"
-            gemini_conf = 8
-        else:
-            gemini_vote = "NEUTRAL"
-            gemini_conf = 5
-            
-        votes.append(AIVote(
-            "Gemini Vision",
-            gemini_vote,
-            gemini_conf,
-            chart.get('analysis', 'Chart analysis')[:100]
-        ))
-        
-        # 3. News Sentiment Vote
+        # 2. News Sentiment Vote
         news_sentiment = news.get('sentiment', 'NEUTRAL')
         news_conf = news.get('confidence', 5)
         
         votes.append(AIVote(
-            "GPT-4 News",
+            "GPT-4 Haberler",
             news_sentiment,
             news_conf,
-            news.get('summary', 'News analysis')[:100]
+            news.get('summary', 'Haber analizi')[:100]
         ))
         
         return votes
@@ -258,25 +234,7 @@ class AICortex:
             'neutral': neutral_count
         }
     
-    async def _analyze_chart(self, symbol: str) -> dict:
-        """Generate chart and analyze with Gemini Vision."""
-        try:
-            df = await self.binance.fetch_candles(symbol, limit=100)
-            if df.empty:
-                return {"analysis": "No data", "trend": "UNKNOWN"}
-            
-            chart_path = self.chart_gen.generate_chart(symbol, df)
-            if not chart_path:
-                return {"analysis": "Chart generation failed", "trend": "UNKNOWN"}
-            
-            analysis = await self.gemini.analyze_chart(chart_path, symbol)
-            return analysis
-            
-        except Exception as e:
-            logger.error(f"Chart analysis error: {e}")
-            return {"analysis": str(e), "trend": "ERROR"}
-    
-    def _build_reasoning_with_votes(self, macro, chart, news, strategy, votes, validation) -> str:
+    def _build_reasoning_with_votes(self, macro, news, strategy, votes, validation) -> str:
         """Create human-readable reasoning with vote details and validation"""
         parts = []
         
