@@ -125,13 +125,10 @@ class AICortex:
             logger.info("🔍 DeepSeek kararları doğruluyor...")
             validation = await self.deepseek.validate(votes, chart_analysis, macro_data)
             
-            # Apply confidence penalty for degraded data quality
-            if macro_data.get('data_quality') == 'DEGRADED':
-                logger.warning("⚠️ Macro data degraded - reducing confidence by 2")
-                validation['confidence_adjustment'] = validation.get('confidence_adjustment', 0) - 2
-            elif macro_data.get('data_quality') == 'MEDIUM':
-                logger.warning("⚠️ Data quality MEDIUM - reducing confidence by 1")
-                validation['confidence_adjustment'] = validation.get('confidence_adjustment', 0) - 1
+            # DeepSeek penalty reduction (was too harsh at -4, now max -2)
+            if validation.get('confidence_adjustment', 0) < -2:
+                logger.warning(f"⚠️ DeepSeek penalty reduced from {validation['confidence_adjustment']} to -2 (was too harsh)")
+                validation['confidence_adjustment'] = -2
             
             # 5. Calculate consensus
             consensus_result = self._calculate_consensus(votes)
@@ -259,12 +256,15 @@ class AICortex:
         
         # 2. Technical Analysis Vote
         chart_trend = chart.get('trend', 'UNKNOWN')
+        chart_strength = chart.get('strength', 0.5)
+        
         if chart_trend == 'BULLISH':
             chart_vote = "BULLISH"
-            chart_conf = int(chart.get('strength', 0.5) * 10)
+            # Boost confidence for clear technical signals
+            chart_conf = max(int(chart_strength * 10), 6)  # Minimum 6 for clear trend
         elif chart_trend == 'BEARISH':
             chart_vote = "BEARISH"
-            chart_conf = int(chart.get('strength', 0.5) * 10)
+            chart_conf = max(int(chart_strength * 10), 6)  # Minimum 6 for clear trend
         else:
             chart_vote = "NEUTRAL"
             chart_conf = 5

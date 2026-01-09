@@ -85,8 +85,8 @@ class AIPhoenixBot:
             logger.info(f"Confidence: {decision.confidence}/10")
             logger.info(f"\n{decision.reasoning}\n")
             
-            # HIGH CONFIDENCE FILTER (NEW!)
-            MIN_CONFIDENCE_FOR_NOTIFICATION = 6
+            # HIGH CONFIDENCE FILTER
+            MIN_CONFIDENCE_FOR_NOTIFICATION = 5  # Lowered from 6 to get more signals
             
             if decision.confidence < MIN_CONFIDENCE_FOR_NOTIFICATION:
                 logger.info(f"🔇 Low confidence ({decision.confidence}/10) - no notification sent")
