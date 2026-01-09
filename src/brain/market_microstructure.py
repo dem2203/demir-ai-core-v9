@@ -52,15 +52,15 @@ class MarketMicrostructure:
             whale_bids = bids[bids['size'] >= bid_threshold]
             whale_asks = asks[asks['size'] >= ask_threshold]
             
-            # AGGRESSIVE thresholds (was 0.60/0.40, now 0.55/0.45)
+            # FIXED SCALING! Was 20x (too weak), now 100x
             if imbalance_ratio > 0.55:
                 signal = "BULLISH"
-                strength = min(int((imbalance_ratio - 0.5) * 20), 10)  # More aggressive scaling
+                strength = min(int((imbalance_ratio - 0.5) * 100), 10)  # 100x scaling!
                 reason = f"Order book shows {imbalance_ratio*100:.1f}% buy pressure"
             elif imbalance_ratio < 0.45:
                 signal = "BEARISH"
-                strength = min(int((0.5 - imbalance_ratio) * 20), 10)  # More aggressive scaling
-                reason = "Order book shows sell pressure"
+                strength = min(int((0.5 - imbalance_ratio) * 100), 10)  # 100x scaling!
+                reason = f"Order book shows {(1-imbalance_ratio)*100:.1f}% sell pressure"
             else:
                 signal = "NEUTRAL"
                 strength = 5
@@ -111,20 +111,20 @@ class MarketMicrostructure:
             # Annualized funding (funding happens 3x/day on Binance)
             annual_funding = funding_rate * 3 * 365 * 100
             
-            # Signal determination (AGGRESSIVE thresholds!)
-            if annual_funding > 15:  # Was 20%, now 15%
+            # LOWER THRESHOLDS based on real market test!
+            if annual_funding > 10:  # Was 15%, now 10%
                 signal = "BEARISH"
-                strength = min(int(annual_funding / 1.5), 10)
+                strength = min(int(annual_funding / 1.2), 10)
                 reason = f"High positive funding ({annual_funding:.1f}% APR) - longs overleveraged"
-            elif annual_funding < -15:  # Was -20%, now -15%
+            elif annual_funding < -10:  # Was -15%, now -10%
                 signal = "BULLISH"
-                strength = min(int(abs(annual_funding) / 1.5), 10)
+                strength = min(int(abs(annual_funding) / 1.2), 10)
                 reason = f"Negative funding ({annual_funding:.1f}% APR) - shorts overleveraged"
-            elif annual_funding > 5:  # Was 10%, now 5%
+            elif annual_funding > 3:  # Was 5%, now 3%
                 signal = "BEARISH"
                 strength = 6
                 reason = f"Elevated funding rate ({annual_funding:.1f}% APR) - long bias"
-            elif annual_funding < -5:  # Was -10%, now -5%
+            elif annual_funding < -3:  # Was -5%, now -3%
                 signal = "BULLISH"
                 strength = 6
                 reason = f"Negative funding rate ({annual_funding:.1f}% APR) - short bias"
@@ -183,18 +183,18 @@ class MarketMicrostructure:
             # Current price
             current_price = df['close'].iloc[-1]
             
-            # Signal based on price vs POC (AGGRESSIVE!)
+            # LOWER THRESHOLDS based on real market test!
             distance_from_poc = (current_price - poc_price) / poc_price
             
-            if abs(distance_from_poc) < 0.005:  # Within 0.5% of POC (was 1%)
+            if abs(distance_from_poc) < 0.003:  # Within 0.3% of POC (was 0.5%)
                 signal = "NEUTRAL"
                 strength = 7
                 reason = f"Price at POC (${poc_price:.2f}) - high volume node"
-            elif current_price > poc_price * 1.015:  # 1.5% above POC (was 2%)
+            elif current_price > poc_price * 1.010:  # 1.0% above POC (was 1.5%)
                 signal = "BEARISH"
                 strength = 7
                 reason = f"Price {distance_from_poc*100:.1f}% above POC (${poc_price:.2f}) - potential reversion"
-            elif current_price < poc_price * 0.985:  # 1.5% below POC (was 2%)
+            elif current_price < poc_price * 0.990:  # 1.0% below POC (was 1.5%)
                 signal = "BULLISH"
                 strength = 7
                 reason = f"Price {abs(distance_from_poc)*100:.1f}% below POC (${poc_price:.2f}) - potential bounce"
