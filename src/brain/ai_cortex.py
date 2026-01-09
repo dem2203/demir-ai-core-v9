@@ -6,6 +6,7 @@ from src.brain.chart_generator import ChartGenerator
 from src.brain.vision_analyst import GeminiVisionAnalyst
 from src.brain.claude_strategist import ClaudeStrategist
 from src.brain.news_sentiment import NewsSentimentAnalyzer
+from src.brain.deepseek_validator import DeepSeekValidator
 from src.infrastructure.binance_api import BinanceAPI
 
 logger = logging.getLogger("AI_CORTEX")
@@ -60,6 +61,7 @@ class AICortex:
         self.gemini = GeminiVisionAnalyst()
         self.claude = ClaudeStrategist()
         self.news = NewsSentimentAnalyzer()
+        self.deepseek = DeepSeekValidator()  # NEW: 5th AI - Cross validator
         
         # Consensus requirements
         self.MIN_CONSENSUS = 3  # At least 3/4 AIs must agree
@@ -98,15 +100,29 @@ class AICortex:
             claude_vote = self._extract_claude_vote(strategy)
             votes.append(claude_vote)
             
-            # 4. Calculate consensus
+            # 4. DeepSeek Cross-Validation
+            logger.info("🔍 DeepSeek validating AI decisions...")
+            validation = await self.deepseek.validate(votes, chart_analysis, macro_data)
+            
+            # 5. Calculate consensus
             consensus_result = self._calculate_consensus(votes)
             
-            # 5. Formulate Final Decision
-            position = consensus_result['position']
-            confidence = consensus_result['confidence']
+            # Apply DeepSeek confidence adjustment
+            raw_confidence = consensus_result['confidence']
+            adjusted_confidence = max(1, min(10, raw_confidence + validation.get('confidence_adjustment', 0)))
             
-            # Build detailed reasoning
-            reasoning = self._build_reasoning_with_votes(macro_data, chart_analysis, news_data, strategy, votes)
+            # 6. Formulate Final Decision
+            position = consensus_result['position']
+            confidence = adjusted_confidence
+            
+            # If DeepSeek flagged as invalid, force CASH
+            if not validation.get('is_valid', True):
+                position = "CASH"
+                confidence = 3
+                logger.warning(f"⚠️ DeepSeek rejected decision: {validation.get('concerns')}")
+            
+            # Build detailed reasoning with validation
+            reasoning = self._build_reasoning_with_votes(macro_data, chart_analysis, news_data, strategy, votes, validation)
             
             decision = DirectorDecision(
                 symbol=symbol,
@@ -260,8 +276,8 @@ class AICortex:
             logger.error(f"Chart analysis error: {e}")
             return {"analysis": str(e), "trend": "ERROR"}
     
-    def _build_reasoning_with_votes(self, macro, chart, news, strategy, votes) -> str:
-        """Create human-readable reasoning with vote details"""
+    def _build_reasoning_with_votes(self, macro, chart, news, strategy, votes, validation) -> str:
+        """Create human-readable reasoning with vote details and validation"""
         parts = []
         
         # Show all votes
@@ -269,6 +285,13 @@ class AICortex:
         for vote in votes:
             emoji = "🟢" if vote.vote == "BULLISH" else "🔴" if vote.vote == "BEARISH" else "⚪"
             parts.append(f"{emoji} {vote.name}: {vote.vote} ({vote.confidence}/10)")
+        
+        # DeepSeek validation
+        if validation.get('confidence_adjustment') != 0:
+            parts.append(f"\n🔍 DEEPSEEK VALIDATION:")
+            parts.append(f"  Adjustment: {validation.get('confidence_adjustment'):+d}")
+            if validation.get('concerns'):
+                parts.append(f"  {validation.get('concerns')[:150]}")
         
         parts.append("\n📊 DETAILED ANALYSIS:")
         

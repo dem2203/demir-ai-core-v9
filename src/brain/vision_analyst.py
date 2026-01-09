@@ -12,7 +12,8 @@ class GeminiVisionAnalyst:
     def __init__(self):
         if Config.GOOGLE_API_KEY:
             genai.configure(api_key=Config.GOOGLE_API_KEY)
-            self.model = genai.GenerativeModel('gemini-1.5-flash')
+            # FIX: Use working model name
+            self.model = genai.GenerativeModel('gemini-1.5-flash-latest')
         else:
             self.model = None
             logger.warning("⚠️ Gemini API Key missing. Vision analysis disabled.")

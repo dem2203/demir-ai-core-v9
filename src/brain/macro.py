@@ -14,7 +14,7 @@ class MacroBrain:
     def __init__(self):
         self.fred_key = Config.FRED_API_KEY
         self.base_fred_url = "https://api.stlouisfed.org/fred/series/observations"
-        self.cache = {}
+        # NO CACHE - Always fetch fresh data
         
     async def _fetch_fred(self, series_id: str):
         """Fetch single series from FRED"""
