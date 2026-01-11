@@ -1,7 +1,4 @@
-import aiohttp
-import logging
-from openai import AsyncOpenAI
-from src.config import Config
+from src.utils.retry import async_retry  # FIX 2.1
 
 logger = logging.getLogger("NEWS_SENTIMENT")
 
@@ -21,6 +18,7 @@ class NewsSentimentAnalyzer:
             "https://www.coindesk.com/arc/outboundfeeds/rss/"
         ]
     
+    @async_retry(max_attempts=3, base_delay=2)  # FIX 2.1: Retry logic
     async def get_latest_headlines(self) -> list:
         """Fetch recent crypto news headlines"""
         headlines = []
@@ -37,7 +35,8 @@ class NewsSentimentAnalyzer:
                         "pageSize": 10,
                         "apiKey": Config.NEWSAPI_KEY
                     }
-                    async with session.get(url, params=params) as resp:
+                    # FIX 1.30: Add timeout
+                    async with session.get(url, params=params, timeout=10) as resp:
                         if resp.status == 200:
                             data = await resp.json()
                             headlines = [article['title'] for article in data.get('articles', [])[:10]]
@@ -54,6 +53,7 @@ class NewsSentimentAnalyzer:
             
         return headlines
     
+    @async_retry(max_attempts=3, base_delay=2)  # FIX 2.1: Retry logic
     async def analyze_sentiment(self) -> dict:
         """
         Fetch news and use GPT-4 to analyze sentiment.
@@ -81,7 +81,7 @@ Provide:
 
 Respond in JSON format with keys: sentiment, confidence, themes, impact"""
 
-            # Call GPT-4
+            # Call GPT-4 with implicit retry from decorator
             response = await self.client.chat.completions.create(
                 model="gpt-4",
                 messages=[

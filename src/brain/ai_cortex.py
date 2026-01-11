@@ -86,181 +86,58 @@ class AICortex:
         
     async def think(self, symbol: str) -> DirectorDecision:
         """
-        PROFESSIONAL AI decision loop with MARKET MICROSTRUCTURE
+        The Brain's Core Loop:
+        1. Gather data (Parallel)
+        2. Professional Analysis (Microstructure, Fundamentals, Technicals)
+        3. Consult AIs (Claude, GPT-4)
+        4. Validate (DeepSeek)
+        5. Form Consensus & Strategy
         """
-        logger.info(f"🧠 AI Cortex: Professional analizi başlatılıyor: {symbol}...")
+        logger.info(f"🧠 Thinking about {symbol}...")
         
         try:
-            # 1. Gather ALL Data in Parallel (including professional signals)
-            logger.info("📡 Tüm kaynaklardan veri çekiliyor (order book, funding, volume)...")
+            # 1. Gather all data in parallel
+            data = await self._gather_all_data(symbol)
             
-            macro_task = self.macro.analyze_world()
-            news_task = self.news.analyze_sentiment()
-            chart_task = self._analyze_chart_professional(symbol)
-            
-            # PROFESSIONAL CRYPTO SIGNALS (NEW!)
-            df = await self.binance.fetch_candles(symbol, limit=100)
-            
-            orderbook_task = self.market_micro.analyze_orderbook_imbalance(symbol)
-            funding_task = self.market_micro.analyze_funding_rate(symbol)
-            volume_profile_task = self.market_micro.analyze_volume_profile(df)
-            cvd_task = self.market_micro.analyze_cvd(df)
-            
-            # Gather all in parallel
-            macro_data, news_data, chart_analysis, orderbook_data, funding_data, volume_profile, cvd_data = await asyncio.gather(
-                macro_task, news_task, chart_task,
-                orderbook_task, funding_task, volume_profile_task, cvd_task
-            )
-            
-            # Log professional signals
-            if orderbook_data['signal'] != 'ERROR':
-                logger.info(f"📊 Order Book: {orderbook_data['signal']} ({orderbook_data['strength']}/10) - {orderbook_data['reason'][:50]}")
-            if funding_data['signal'] != 'ERROR':
-                logger.info(f"💰 Funding: {funding_data['signal']} ({funding_data['strength']}/10) - {funding_data['reason'][:50]}")
-            if volume_profile['signal'] != 'ERROR':
-                logger.info(f"📈 Volume Profile: {volume_profile['signal']} ({volume_profile['strength']}/10)")
-            if cvd_data['signal'] != 'ERROR':
-                logger.info(f"📊 CVD: {cvd_data['signal']} ({cvd_data['strength']}/10)")
-            
-            # 1.5 PRICE ACTION EARLY DETECTION
-            price_action = self.price_action.analyze_price_action(df, symbol)
-            
-            if price_action['strength'] >= 7:
-                logger.warning(f"🚨 EARLY SIGNAL: {price_action['signal']} (Strength: {price_action['strength']}/10)")
-                for indicator in price_action['indicators']:
-                    logger.info(f"   {indicator}")
-            
-            # 2. Collect votes (NOW INCLUDING PROFESSIONAL SIGNALS!)
-            logger.info("🗳️ AI oyları toplanıyor (+ professional market signals)...")
+            # 2. Collect votes from all analyzers
             votes = self._collect_votes_professional(
-                macro_data, chart_analysis, news_data, price_action,
-                orderbook_data, funding_data, volume_profile, cvd_data
+                data['macro'], 
+                data['chart'], 
+                data['news'], 
+                data['price_action'], 
+                data['microstructure']['order_book'],
+                data['microstructure']['funding_rate'],
+                data['microstructure']['volume_profile'],
+                data['microstructure']['cvd']
             )
             
-            # 3. Claude Strategic Reasoning (WITH FEEDBACK)
-            logger.info("🧠 Claude tüm girdileri analiz ediyor...")
+            # Add Claude's vote (moved here from _build_final_decision)
             performance_feedback = self.tracker.get_ai_feedback_prompt()
-            # Add professional signal summaries for Claude
-            chart_analysis['orderbook_summary'] = f"{orderbook_data.get('signal', 'N/A')} ({orderbook_data.get('strength', 0)}/10) - {orderbook_data.get('reason', 'N/A')[:50]}"
-            chart_analysis['funding_summary'] = f"{funding_data.get('signal', 'N/A')} ({funding_data.get('strength', 0)}/10) - APR: {funding_data.get('annual_funding_pct', 0):.1f}%"
-            chart_analysis['cvd_summary'] = f"{cvd_data.get('signal', 'N/A')} ({cvd_data.get('strength', 0)}/10) - Δ: {cvd_data.get('cvd_change', 0):,.0f}"
-            chart_analysis['volume_profile_summary'] = f"{volume_profile.get('signal', 'N/A')} ({volume_profile.get('strength', 0)}/10) - POC dist: {volume_profile.get('distance_from_poc_pct', 0):.2f}%"
-            
-            strategy = await self.claude.formulate_strategy(macro_data, chart_analysis, news_data, performance_feedback)
-            
-            # Add Claude's vote
+            strategy = await self.claude.formulate_strategy(
+                data['macro'], 
+                data['chart'], 
+                data['news'], 
+                performance_feedback=performance_feedback
+            )
             claude_vote = self._extract_claude_vote(strategy)
             votes.append(claude_vote)
+
+            # 3. Calculate initial consensus
+            consensus = self._calculate_consensus_weighted(votes)
             
-            # Store as instance variable for use in other methods
-            self.votes = votes
+            # 4. Cross-Validation (DeepSeek)
+            validation = await self.deepseek.validate(votes, data['chart'], data['macro'])
             
-            # 4. DeepSeek Cross-Validation
-            logger.info("🔍 DeepSeek kararları doğruluyor...")
-            validation = await self.deepseek.validate(votes, chart_analysis, macro_data)
-            
-            # AGGRESSIVE: REMOVE DeepSeek penalty entirely!
-            if validation.get('confidence_adjustment', 0) < 0:
-                logger.warning(f"⚠️ DeepSeek penalty REMOVED (was {validation['confidence_adjustment']})")
-                validation['confidence_adjustment'] = 0  # NO PENALTY!
-            
-            # 5. Calculate consensus
-            consensus_result = self._calculate_consensus(votes)
-            
-            position = consensus_result['position']
-            confidence = consensus_result['confidence']
-            
-            # Apply DeepSeek confidence adjustment
-            if validation.get('confidence_adjustment'):
-                confidence += validation['confidence_adjustment']
-                confidence = max(1, min(10, confidence))
-            
-            # DeepSeek rejection
-            if validation.get('rejected'):
-                position = "CASH"
-                confidence = 3
-                logger.warning(f"⚠️ DeepSeek rejected decision: {validation.get('concerns')}")
-            
-            # 6. CALCULATE POSITION SIZE & STOPS (NEW!)
-            stop_loss, take_profit, position_size = None, None, None
-            
-            if position in ["LONG", "SHORT"] and confidence >= 6:
-                # Get performance stats for Kelly
-                perf_stats = self.tracker.get_performance_stats()
-                
-                # Calculate ATR-based stops
-                from src.risk.position_sizer import ATRStopCalculator
-                atr_calc = ATRStopCalculator()
-                atr = atr_calc.calculate_atr(df)
-                current_price = df['close'].iloc[-1]
-                
-                stops = atr_calc.calculate_stops(
-                    entry_price=current_price,
-                    atr=atr,
-                    direction=position,
-                    multiplier=2.0
-                )
-                
-                stop_loss = stops['stop_loss']
-                take_profit = stops['take_profit']
-                
-                
-                # Calculate Kelly position size
-                if 'message' not in perf_stats:
-                    from src.risk.position_sizer import KellyPositionSizer
-                    kelly = KellyPositionSizer()
-                    
-                    # FIX 1.6: Get REAL account balance from Binance
-                    account_balance = await self.binance.get_balance()
-                    if account_balance < 10:
-                        logger.warning("⚠️ Low balance detected, using conservative default")
-                        account_balance = 1000  # Fallback only if balance fetch fails
-                    
-                    win_rate = perf_stats.get('win_rate', 50) / 100
-                    
-                    # FIX 1.7: Use historical data if available, otherwise defaults
-                    if 'avg_win_pct' in perf_stats and 'avg_loss_pct' in perf_stats:
-                        avg_win_pct = perf_stats['avg_win_pct']
-                        avg_loss_pct = perf_stats['avg_loss_pct']
-                        logger.info(f"📊 Using historical R:R data: {avg_win_pct:.1%} win / {avg_loss_pct:.1%} loss")
-                    else:
-                        avg_win_pct = 0.03  # 3% average win (default)
-                        avg_loss_pct = 0.015  # 1.5% average loss (default, 2:1 R:R)
-                        logger.info("📊 Using default R:R assumptions (no historical data yet)")
-                    
-                    sizing = kelly.calculate_position_size(
-                        account_balance=account_balance,
-                        win_rate=win_rate,
-                        avg_win_pct=avg_win_pct,
-                        avg_loss_pct=avg_loss_pct,
-                        current_confidence=confidence
-                    )
-                    
-                    position_size = sizing['position_value'] / current_price  # Convert to quantity
-            
-            # Build detailed reasoning with validation
-            reasoning = self._build_reasoning_with_votes(macro_data, chart_analysis, news_data, strategy, votes, validation)
-            
-            decision = DirectorDecision(
-                symbol=symbol,
-                position=position,
-                reasoning=reasoning,
-                confidence=confidence,
-                risk_level=strategy.get('risk_level', 'MEDIUM'),
-                entry_conditions=strategy.get('entry_conditions', 'Wait for confirmation'),
-                votes=votes,
-                stop_loss=stop_loss,
-                take_profit=take_profit,
-                position_size=position_size
-            )
+            # 5. Finalize Decision
+            decision = await self._build_final_decision(symbol, consensus, strategy, votes, validation, data)
             
             # Log consensus + RISK MANAGEMENT
             logger.info(f"\n{decision.get_consensus_report()}")
-            logger.info(f"✅ Final Decision: {position} (Confidence: {confidence}/10)")
-            if stop_loss and take_profit:
-                logger.info(f"🎯 Risk Management: SL=${stop_loss:.2f} | TP=${take_profit:.2f}")
-            if position_size:
-                logger.info(f"💰 Position Size: {position_size:.4f} {symbol[:3]}")
+            logger.info(f"✅ Final Decision: {decision.position} (Confidence: {decision.confidence}/10)")
+            if decision.stop_loss and decision.take_profit:
+                logger.info(f"🎯 Risk Management: SL=${decision.stop_loss:.2f} | TP=${decision.take_profit:.2f}")
+            if decision.position_size:
+                logger.info(f"💰 Position Size: {decision.position_size:.4f} {symbol[:3]}")
             logger.info("")
             
             return decision
@@ -278,7 +155,50 @@ class AICortex:
                 entry_conditions="System error - stay cash",
                 votes=[]
             )
-    
+
+    async def _gather_all_data(self, symbol: str) -> dict:
+        """Gather all market data in parallel"""
+        # Start independent tasks
+        macro_task = self.macro.analyze_world()
+        news_task = self.news.analyze_sentiment()
+        
+        # Fetch price data first (needed for others)
+        df = await self.binance.fetch_candles(symbol, limit=200)
+        current_price = await self.binance.get_current_price(symbol)
+        
+        # Start dependent tasks
+        chart_task = self._analyze_chart_professional(symbol)
+        pa_detector_task = asyncio.create_task(self.price_action.analyze_price_action(df, symbol))
+        
+        # Market Microstructure (Orderbook, Funding, etc.)
+        orderbook_task = self.market_micro.analyze_orderbook_imbalance(symbol)
+        funding_task = self.market_micro.analyze_funding_rate(symbol)
+        volume_task = self.market_micro.analyze_volume_profile(df) # Corrected to use df
+        cvd_task = self.market_micro.analyze_cvd(df) # Corrected to use df
+        
+        # Wait for all
+        macro_data, news_data, chart_analysis, pa_data, ob_data, fund_data, vol_data, cvd_data = await asyncio.gather(
+            macro_task, news_task, chart_task, pa_detector_task,
+            orderbook_task, funding_task, volume_task, cvd_task
+        )
+        
+        # Aggregate microstructure
+        microstructure = {
+            "order_book": ob_data,
+            "funding_rate": fund_data,
+            "volume_profile": vol_data,
+            "cvd": cvd_data
+        }
+        
+        return {
+            "df": df,
+            "current_price": current_price,
+            "macro": macro_data,
+            "news": news_data,
+            "chart": chart_analysis,
+            "price_action": pa_data,
+            "microstructure": microstructure
+        }
     async def _analyze_chart_professional(self, symbol: str) -> dict:
         """
         Professional chart analysis using technical indicators
@@ -316,36 +236,133 @@ class AICortex:
             strategy.get('reasoning', 'Stratejik analiz')[:100]
         )
     
-    def _calculate_consensus(self, votes: list) -> dict:
-        """Calculate consensus from all AI votes"""
-        bullish_count = sum(1 for v in votes if v.vote == "BULLISH")
-        bearish_count = sum(1 for v in votes if v.vote == "BEARISH")
-        neutral_count = sum(1 for v in votes if v.vote == "NEUTRAL")
+    
+    def _calculate_consensus_weighted(self, votes: list) -> dict:
+        """Calculate weighted consensus score"""
+        bullish_score = 0
+        bearish_score = 0
+        total_weight = 0
         
-        total_votes = len(votes)
-        
-        # Determine position based on majority
-        if bullish_count >= self.MIN_CONSENSUS:
-            position = "LONG"
-            confidence = min((bullish_count / total_votes) * 10, 10)
-        elif bearish_count >= self.MIN_CONSENSUS:
-            position = "SHORT"
-            confidence = min((bearish_count / total_votes) * 10, 10)
-        else:
-            position = "CASH"
-            confidence = 3  # Low confidence, no consensus
-            
-        # Boost confidence if unanimous
-        if bullish_count == total_votes or bearish_count == total_votes:
-            confidence = 10
+        for vote in votes:
+            weight = vote.confidence
+            if vote.vote == "BULLISH":
+                bullish_score += weight
+            elif vote.vote == "BEARISH":
+                bearish_score += weight
+            total_weight += weight
             
         return {
-            'position': position,
-            'confidence': int(confidence),
-            'bullish': bullish_count,
-            'bearish': bearish_count,
-            'neutral': neutral_count
+            "bullish": bullish_score,
+            "bearish": bearish_score,
+            "total_weight": total_weight
         }
+
+    async def _build_final_decision(self, symbol: str, consensus: dict, strategy: dict, votes: list, validation: dict, data: dict) -> DirectorDecision:
+        """Construct the final DirectorDecision object"""
+        current_price = data['current_price']
+        
+        # Determine raw signals
+        bullish_score = consensus['bullish']
+        bearish_score = consensus['bearish']
+        total_weight = consensus['total_weight']
+        
+        # Apply Validation Adjustment
+        confidence_adjustment = validation.get('confidence_adjustment', 0)
+        
+        # Final Scoring
+        if bullish_score > bearish_score + 10:
+            position = "LONG"
+            raw_confidence = (bullish_score / max(total_weight, 1)) * 10
+        elif bearish_score > bullish_score + 10:
+            position = "SHORT"
+            raw_confidence = (bearish_score / max(total_weight, 1)) * 10
+        else:
+            position = "CASH"
+            raw_confidence = 5
+            
+        final_confidence = min(max(int(raw_confidence + confidence_adjustment), 1), 10)
+        
+        # AGGRESSIVE MODE: Ensure we take trades even if DeepSeek complains slightly
+        if final_confidence < 5 and raw_confidence > 7:
+             logger.info("⚠️ Overriding Validator: Raw confidence is strong enough!")
+             final_confidence = 6
+        
+        # Risk Management & Reasoning
+        entry_conditions = strategy if position != "CASH" else {}
+        
+        # Build detailed reasoning
+        reasoning = self._build_reasoning_with_votes(
+            data['macro'], data['chart'], data['news'], strategy, votes, validation
+        )
+        
+        decision = DirectorDecision(
+            symbol=symbol,
+            position=position,
+            confidence=final_confidence,
+            votes=votes,
+            reasoning=reasoning,
+            entry_conditions=entry_conditions,
+            risk_level=strategy.get('risk_level', 'MEDIUM')
+        )
+        
+        # Populate professional trade details if valid signal
+        if position != "CASH":
+            await self._populate_trade_details(decision, symbol, current_price, final_confidence)
+            
+        return decision
+
+    async def _populate_trade_details(self, decision: DirectorDecision, symbol: str, current_price: float, confidence: int):
+        """Populate stop loss, take profit, and position size"""
+        try:
+            # Get Stops from ATR
+            from src.risk.position_sizer import ATRStopCalculator, KellyPositionSizer
+            atr_calc = ATRStopCalculator()
+            
+            # Quick ATR calc (fetch new for accuracy or use existing df if possible, here fetch small)
+            df = await self.binance.fetch_candles(symbol, limit=50) 
+            atr = atr_calc.calculate_atr(df)
+            
+            stops = atr_calc.calculate_stops(
+                current_price, atr, decision.position, multiplier=2.0
+            )
+            
+            decision.stop_loss = stops['stop_loss']
+            decision.take_profit = stops['take_profit']
+            
+            # Get Position Size from Kelly
+            kelly = KellyPositionSizer()
+            account_balance = await self.binance.get_balance()
+            if account_balance < 10: account_balance = 1000 # Fallback
+            
+            perf_stats = self.tracker.get_performance_stats()
+            win_rate = perf_stats.get('win_rate', 50) / 100
+            
+            # FIX 1.7: Use historical data
+            if 'avg_win_pct' in perf_stats:
+                avg_win = perf_stats['avg_win_pct']
+                avg_loss = perf_stats['avg_loss_pct']
+            else:
+                avg_win = 0.03
+                avg_loss = 0.015
+            
+            sizing = kelly.calculate_position_size(
+                account_balance, win_rate, avg_win, avg_loss, confidence
+            )
+            
+            decision.position_size = sizing['position_value'] / current_price
+            
+            # Update entry conditions for UI
+            decision.entry_conditions.update({
+                "entry_price": current_price,
+                "stop_loss": decision.stop_loss,
+                "target_1": decision.take_profit,
+                "risk_reward": f"1:{stops['risk_reward_ratio']}",
+                "conviction": confidence
+            })
+        except Exception as e:
+            logger.error(f"Error calculating risk metrics: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _build_reasoning_with_votes(self, macro, chart, news, strategy, votes, validation) -> str:
         """Create human-readable reasoning with vote details and validation (TURKISH)"""

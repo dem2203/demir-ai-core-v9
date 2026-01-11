@@ -91,7 +91,17 @@ class AIPhoenixBot:
                     if decision.entry_conditions.get('market_view'):
                         trade_setup += f"\n📝 *Görüş:* {decision.entry_conditions['market_view']}\n"
                     if decision.entry_conditions.get('reasoning'):
-                        trade_setup += f"\n🔍 *Analiz:*\n{decision.entry_conditions['reasoning'][:200]}"
+                    # FIX 2.4: Safe truncation preserving words and markdown
+                        reasoning = decision.entry_conditions['reasoning']
+                        if len(reasoning) > 200:
+                            reasoning = reasoning[:197].rsplit(' ', 1)[0] + "..."
+                        trade_setup += f"💡 *Reason:* {reasoning}"
+                    
+                    await self.telegram.send_alert(
+                        f"🤖 {symbol} Trading Signal",
+                        trade_setup,
+                        color="🟢" if decision.position == "LONG" else "🔴"
+                    )
                 else:
                     # Fallback to old format
                     entry_text = str(decision.entry_conditions)

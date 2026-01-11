@@ -21,10 +21,11 @@ class LiveMarketMonitor:
         self.candle_data = {}
         self.last_ai_check = {}
         
-        # Trigger thresholds
-        self.PRICE_CHANGE_THRESHOLD = 0.005  # 0.5% hareket = AI trigger
-        self.VOLUME_SPIKE_MULTIPLIER = 2.0    # 2x normal volume = AI trigger
-        self.MIN_TIME_BETWEEN_AI = 300        # AI'yı en fazla 5 dakikada 1 çağır
+        # Trigger thresholds - Extracted magic numbers for clarity
+        self.PRICE_CHANGE_THRESHOLD = 0.005  # 0.5% price movement triggers AI
+        self.VOLUME_SPIKE_MULTIPLIER = 2.0   # 2x normal volume triggers AI
+        self.MIN_TIME_BETWEEN_AI = 300       # Minimum 5 minutes between AI calls (seconds)
+        self.HOURLY_CHECK_INTERVAL = 3600    # Fallback check every hour (seconds)
         
     async def start(self):
         """Start WebSocket streams for BTC and ETH"""
@@ -60,6 +61,11 @@ class LiveMarketMonitor:
                     
     async def _process_kline(self, symbol: str, data: dict):
         """Process incoming kline data"""
+        # Validate symbol format
+        if not symbol or not isinstance(symbol, str) or len(symbol) < 6:
+            logger.error(f"Invalid symbol format: {symbol}")
+            return
+        
         kline = data['k']
         is_closed = kline['x']  # Candle closed?
         
@@ -97,7 +103,7 @@ class LiveMarketMonitor:
             should_trigger = True
             reason = f"Volume spike: {volume_spike:.1f}x normal"
             
-        elif time_since_last >= 3600:  # Fallback: at least every hour
+        elif time_since_last >= self.HOURLY_CHECK_INTERVAL:  # Use named constant
             should_trigger = True
             reason = "Scheduled check (1h)"
         
