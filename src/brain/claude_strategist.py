@@ -1,6 +1,7 @@
 import anthropic
 import logging
 from src.config import Config
+from src.utils.retry import async_retry  # FIX 2.1
 
 logger = logging.getLogger("CLAUDE_STRATEGIST")
 
@@ -14,6 +15,19 @@ class ClaudeStrategist:
         else:
             self.client = None
             logger.warning("⚠️ Claude API Key missing. Strategic reasoning disabled.")
+    
+    @async_retry(max_attempts=3, base_delay=2)  # FIX 2.1: Add retry logic
+    async def _call_claude_api(self, prompt: str) -> str:
+        """Claude API call with retry logic"""
+        # Claude 3.5 was deprecated Oct 2025 - use Claude Sonnet 4
+        message = self.client.messages.create(
+            model="claude-sonnet-4-20250514",  # Latest available
+            max_tokens=1500,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return message.content[0].text
     
     async def formulate_strategy(self, macro_data: dict, chart_analysis: dict, news_sentiment: dict, performance_feedback: str = "") -> dict:
         """
@@ -90,15 +104,8 @@ FORMAT (JSON):
 TÜRKÇE cevap ver. Sadece JSON, ekstra açıklama yok."""
 
             # Claude 3.5 was deprecated Oct 2025 - use Claude Sonnet 4
-            message = self.client.messages.create(
-                model="claude-sonnet-4-20250514",  # Latest available
-                max_tokens=1500,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            
-            response_text = message.content[0].text
+            # FIX 2.1: Use retry-wrapped API call
+            response_text = await self._call_claude_api(prompt)
             
             # Parse JSON
             try:

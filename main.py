@@ -29,42 +29,9 @@ class AIPhoenixBot:
         # Live Monitor (WebSocket)
         self.monitor = LiveMarketMonitor(self.on_market_event)
         
-        # Track last decisions to avoid spam
-        self.last_decisions = {}  # {symbol: {position, confidence, votes_hash}}
-        
-    def _should_notify(self, symbol: str, decision) -> bool:
-        """
-        Check if this decision is different enough to warrant a notification.
-        Only notify if there's a REAL change.
-        """
-        if symbol not in self.last_decisions:
-            # First decision for this symbol - notify
-            return True
-        
-        last = self.last_decisions[symbol]
-        
-        # Check for significant changes
-        position_changed = last['position'] != decision.position
-        confidence_changed = abs(last['confidence'] - decision.confidence) >= 2
-        
-        # Hash of AI votes to detect vote changes
-        current_votes = ",".join([f"{v.name}:{v.vote}" for v in decision.votes])
-        votes_changed = last.get('votes_hash') != current_votes
-        
-        # Notify if ANY significant change
-        if position_changed or confidence_changed or votes_changed:
-            return True
-        
-        return False
-    
-    def _update_last_decision(self, symbol: str, decision):
-        """Save this decision for comparison"""
-        votes_hash = ",".join([f"{v.name}:{v.vote}" for v in decision.votes])
-        self.last_decisions[symbol] = {
-            'position': decision.position,
-            'confidence': decision.confidence,
-            'votes_hash': votes_hash
-        }
+        # Track last decisions to avoid spam (with thread safety)
+        self.last_decisions = {}
+        self._decision_lock = asyncio.Lock()  # FIX 1.4: Thread safety
         
     async def on_market_event(self, symbol: str, reason: str):
         """
@@ -85,18 +52,19 @@ class AIPhoenixBot:
             logger.info(f"Confidence: {decision.confidence}/10")
             logger.info(f"\n{decision.reasoning}\n")
             
-            # HIGH CONFIDENCE FILTER
-            MIN_CONFIDENCE_FOR_NOTIFICATION = 5  # Lowered from 6 to get more signals
-            
-            if decision.confidence < MIN_CONFIDENCE_FOR_NOTIFICATION:
+            # Use centralized configuration
+            if decision.confidence < Config.MIN_CONFIDENCE_FOR_NOTIFICATION:
                 logger.info(f"🔇 Low confidence ({decision.confidence}/10) - no notification sent")
-                logger.info(f"💤 Waiting for stronger signal (minimum: {MIN_CONFIDENCE_FOR_NOTIFICATION}/10)")
+                logger.info(f"💤 Waiting for stronger signal (minimum: {Config.MIN_CONFIDENCE_FOR_NOTIFICATION}/10)")
                 return
             
-            # Check if this is a new/changed decision
+            # Check if this is a new/changed decision (THREAD-SAFE)
             current_decision_key = f"{symbol}_{decision.position}_{decision.confidence}"
             
-            if current_decision_key == self.last_decisions.get(symbol):
+            async with self._decision_lock:  # FIX 1.4: Race condition protection
+                should_notify = (current_decision_key != self.last_decisions.get(symbol))
+            
+            if not should_notify:
                 logger.info("🔇 Bildirim yok (önceki analizle aynı)")
             else:
                 # Translate risk to Turkish
@@ -147,7 +115,8 @@ class AIPhoenixBot:
                 await self.telegram.send_message(message)
                 
                 logger.info("📱 Telegram bildirimi gönderildi (değişiklik tespit edildi)")
-                self.last_decisions[symbol] = current_decision_key
+                async with self._decision_lock:  # FIX 1.4: Thread-safe update
+                    self.last_decisions[symbol] = current_decision_key
             
             # Execute if confidence high enough
             if decision.confidence >= 7 and decision.position != "CASH":

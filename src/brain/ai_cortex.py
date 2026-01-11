@@ -204,17 +204,29 @@ class AICortex:
                 stop_loss = stops['stop_loss']
                 take_profit = stops['take_profit']
                 
+                
                 # Calculate Kelly position size
                 if 'message' not in perf_stats:
                     from src.risk.position_sizer import KellyPositionSizer
                     kelly = KellyPositionSizer()
                     
-                    # Dummy account balance - will be read from config/binance later
-                    account_balance = 1000  # USDT
+                    # FIX 1.6: Get REAL account balance from Binance
+                    account_balance = await self.binance.get_balance()
+                    if account_balance < 10:
+                        logger.warning("⚠️ Low balance detected, using conservative default")
+                        account_balance = 1000  # Fallback only if balance fetch fails
                     
-                    win_rate = perf_stats['win_rate'] / 100
-                    avg_win_pct = 0.03  # 3% average win
-                    avg_loss_pct = 0.015  # 1.5% average loss (2:1 R:R)
+                    win_rate = perf_stats.get('win_rate', 50) / 100
+                    
+                    # FIX 1.7: Use historical data if available, otherwise defaults
+                    if 'avg_win_pct' in perf_stats and 'avg_loss_pct' in perf_stats:
+                        avg_win_pct = perf_stats['avg_win_pct']
+                        avg_loss_pct = perf_stats['avg_loss_pct']
+                        logger.info(f"📊 Using historical R:R data: {avg_win_pct:.1%} win / {avg_loss_pct:.1%} loss")
+                    else:
+                        avg_win_pct = 0.03  # 3% average win (default)
+                        avg_loss_pct = 0.015  # 1.5% average loss (default, 2:1 R:R)
+                        logger.info("📊 Using default R:R assumptions (no historical data yet)")
                     
                     sizing = kelly.calculate_position_size(
                         account_balance=account_balance,
@@ -266,82 +278,6 @@ class AICortex:
                 entry_conditions="System error - stay cash",
                 votes=[]
             )
-    
-    def _collect_votes(self, macro, chart, news, price_action) -> list:
-        """Collect votes from Macro, Technical Analysis, News AI, and Price Action"""
-        votes = []
-        
-        # 1. Macro Vote
-        macro_score = macro.get('score', 0)
-        if macro_score > 20:
-            macro_vote = "BULLISH"
-        elif macro_score < -20:
-            macro_vote = "BEARISH"
-        else:
-            macro_vote = "NEUTRAL"
-            
-        macro_conf = min(abs(macro_score) // 10 + 5, 10)
-        votes.append(AIVote(
-            "Makro Beyin (VIX/DXY)",
-            macro_vote,
-            macro_conf,
-            f"Skor: {macro_score} | {macro.get('regime', 'BİLİNMİYOR')}"
-        ))
-        
-        # 2. Technical Analysis Vote
-        chart_trend = chart.get('trend', 'UNKNOWN')
-        chart_strength = chart.get('strength', 0.5)
-        
-        if chart_trend == 'BULLISH':
-            chart_vote = "BULLISH"
-            # Boost confidence for clear technical signals
-            chart_conf = max(int(chart_strength * 10), 6)  # Minimum 6 for clear trend
-        elif chart_trend == 'BEARISH':
-            chart_vote = "BEARISH"
-            chart_conf = max(int(chart_strength * 10), 6)  # Minimum 6 for clear trend
-        else:
-            chart_vote = "NEUTRAL"
-            chart_conf = 5
-            
-        votes.append(AIVote(
-            "Teknik Analiz (RSI/MACD)",
-            chart_vote,
-            chart_conf,
-            chart.get('analysis', 'Teknik analiz')[:100]
-        ))
-        
-        # 3. Price Action Vote (NEW!)
-        pa_signal = price_action.get('signal', 'NEUTRAL')
-        if 'BULLISH' in pa_signal:
-            pa_vote = "BULLISH"
-            pa_conf = min(price_action.get('strength', 5) + 2, 10)
-        elif 'BEARISH' in pa_signal:
-            pa_vote = "BEARISH"
-            pa_conf = min(price_action.get('strength', 5) + 2, 10)
-        else:
-            pa_vote = "NEUTRAL"
-            pa_conf = 5
-        
-        indicators_text = " | ".join(price_action.get('indicators', [])[:2])
-        votes.append(AIVote(
-            "Price Action Detector",
-            pa_vote,
-            pa_conf,
-            indicators_text[:100] if indicators_text else "No strong signals"
-        ))
-        
-        # 4. News Sentiment Vote
-        news_sentiment = news.get('sentiment', 'NEUTRAL')
-        news_conf = news.get('confidence', 5)
-        
-        votes.append(AIVote(
-            "GPT-4 Haberler",
-            news_sentiment,
-            news_conf,
-            news.get('summary', 'Haber analizi')[:100]
-        ))
-        
-        return votes
     
     async def _analyze_chart_professional(self, symbol: str) -> dict:
         """

@@ -129,7 +129,15 @@ class SignalPerformanceTracker:
         record.exit_timestamp = datetime.now().isoformat()
         record.outcome = outcome  # "TP" or "SL"
         record.pnl = pnl
-        record.pnl_pct = (pnl / (record.entry_price * abs(pnl / (exit_price - record.entry_price)))) * 100
+        
+        # FIX 1.10: Simplified PnL percentage calculation with zero protection
+        if record.entry_price > 0:
+            direction = 1 if record.signal_type == "LONG" else -1
+            price_change = (exit_price - record.entry_price) / record.entry_price
+            record.pnl_pct = price_change * direction * 100
+        else:
+            record.pnl_pct = 0
+            logger.warning(f"Invalid entry price for signal {signal_id}")
         
         # Calculate duration
         try:
@@ -164,6 +172,10 @@ class SignalPerformanceTracker:
         
         avg_duration = sum(s.duration_hours for s in completed if s.duration_hours) / total_trades
         
+        # FIX 1.7: Calculate average win/loss percentages for Kelly
+        avg_win_pct = sum(abs(s.pnl_pct) for s in tp_trades if s.pnl_pct) / len(tp_trades) / 100 if tp_trades else 0.03
+        avg_loss_pct = sum(abs(s.pnl_pct) for s in sl_trades if s.pnl_pct) / len(sl_trades) / 100 if sl_trades else 0.015
+        
         return {
             "total_trades": total_trades,
             "wins": len(tp_trades),
@@ -171,7 +183,9 @@ class SignalPerformanceTracker:
             "win_rate": round(win_rate, 1),
             "total_pnl": round(total_pnl, 2),
             "avg_pnl_per_trade": round(avg_pnl, 2),
-            "avg_duration_hours": round(avg_duration, 2)
+            "avg_duration_hours": round(avg_duration, 2),
+            "avg_win_pct": round(avg_win_pct, 4),  # FIX 1.7
+            "avg_loss_pct": round(avg_loss_pct, 4)  # FIX 1.7
         }
     
     def analyze_ai_performance(self) -> dict:

@@ -1,5 +1,5 @@
 import logging
-from openai import OpenAI
+from openai import AsyncOpenAI  # FIX 2.3: Use AsyncOpenAI
 from src.config import Config
 
 logger = logging.getLogger("DEEPSEEK_VALIDATOR")
@@ -11,7 +11,8 @@ class DeepSeekValidator:
     """
     def __init__(self):
         if Config.DEEPSEEK_API_KEY:
-            self.client = OpenAI(
+            # FIX 2.3: Use AsyncOpenAI to prevent blocking event loop
+            self.client = AsyncOpenAI(
                 api_key=Config.DEEPSEEK_API_KEY,
                 base_url="https://api.deepseek.com"
             )
@@ -60,7 +61,7 @@ Regime: {macro_data.get('regime', 'N/A')}
 
 Respond in JSON: {{"is_valid": true/false, "concerns": "your concerns", "confidence_adjustment": -3 to +3}}"""
 
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(  # FIX 2.3: await async call
                 model="deepseek-chat",
                 messages=[
                     {"role": "system", "content": "You are a critical AI validator. Be skeptical."},

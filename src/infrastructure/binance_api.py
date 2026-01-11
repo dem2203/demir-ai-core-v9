@@ -45,17 +45,23 @@ class BinanceAPI:
         if not self.exchange: return pd.DataFrame()
         
         try:
-            # Normalize symbol for CCXT (BTCUSDT -> BTC/USDT:USDT or just BTC/USDT depending on ccxt version)
-            # But usually for binance futures it's 'BTC/USDT'
+            # Normalize symbol for CCXT
             ticker = symbol.replace("USDT", "/USDT") if "/" not in symbol else symbol
             
-            ohlcv = await self.exchange.fetch_ohlcv(ticker, timeframe, limit=limit)
+            # FIX 1.8: Add timeout to prevent hanging
+            ohlcv = await asyncio.wait_for(
+                self.exchange.fetch_ohlcv(ticker, timeframe, limit=limit),
+                timeout=10.0
+            )
             
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             df.set_index('timestamp', inplace=True)
             return df
             
+        except asyncio.TimeoutError:
+            logger.error(f"⏱️ Binance API timeout fetching candles for {symbol}")
+            return pd.DataFrame()
         except Exception as e:
             logger.error(f"Error fetching candles for {symbol}: {e}")
             return pd.DataFrame()
@@ -66,8 +72,15 @@ class BinanceAPI:
         if not self.exchange: return 0.0
         
         try:
-            balance = await self.exchange.fetch_balance()
+            # FIX 1.8: Add timeout
+            balance = await asyncio.wait_for(
+                self.exchange.fetch_balance(),
+                timeout=10.0
+            )
             return float(balance['USDT']['free'])
+        except asyncio.TimeoutError:
+            logger.error("⏱️ Binance API timeout fetching balance")
+            return 0.0
         except Exception as e:
             logger.error(f"Error fetching balance: {e}")
             return 0.0
@@ -76,9 +89,16 @@ class BinanceAPI:
         if not self.exchange: await self.connect()
         if not self.exchange: return 0.0
         try:
-             ticker = symbol.replace("USDT", "/USDT") if "/" not in symbol else symbol
-             ticker_data = await self.exchange.fetch_ticker(ticker)
-             return float(ticker_data['last'])
+            ticker = symbol.replace("USDT", "/USDT") if "/" not in symbol else symbol
+            # FIX 1.8: Add timeout
+            ticker_data = await asyncio.wait_for(
+                self.exchange.fetch_ticker(ticker),
+                timeout=10.0
+            )
+            return float(ticker_data['last'])
+        except asyncio.TimeoutError:
+            logger.error(f"⏱️ Binance API timeout getting price for {symbol}")
+            return 0.0
         except Exception as e:
             logger.error(f"Price fetch error {symbol}: {e}")
             return 0.0

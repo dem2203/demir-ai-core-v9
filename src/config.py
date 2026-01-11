@@ -34,6 +34,10 @@ class Config:
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
     TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
     
+    # Trading Configuration
+    MIN_CONFIDENCE_FOR_NOTIFICATION = int(os.getenv("MIN_CONFIDENCE", "3"))  # Minimum confidence to notify user
+    
+    
     # Paths
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -47,6 +51,8 @@ class Config:
         if not cls.TELEGRAM_TOKEN: missing.append("TELEGRAM_TOKEN")
         if not cls.GOOGLE_API_KEY: missing.append("GOOGLE_API_KEY (Gemini)")
         if not cls.ANTHROPIC_API_KEY: missing.append("ANTHROPIC_API_KEY (Claude)")
+        if not cls.OPENAI_API_KEY: missing.append("OPENAI_API_KEY (GPT-4)")  # FIX 1.5
+        if not cls.DEEPSEEK_API_KEY: missing.append("DEEPSEEK_API_KEY")  # FIX 1.5
         
         if missing:
             logging.warning(f"⚠️ Missing Critical Config: {', '.join(missing)}")
