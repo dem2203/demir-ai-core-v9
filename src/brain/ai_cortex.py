@@ -1,6 +1,6 @@
 import logging
 import asyncio
-from typing import Dict
+from typing import Dict, List, Optional
 from src.brain.macro import MacroBrain
 from src.brain.technical_analyzer import TechnicalAnalyzer
 from src.brain.price_action_detector import PriceActionDetector
@@ -86,17 +86,13 @@ class AICortex:
         
     async def think(self, symbol: str) -> DirectorDecision:
         """
-        The Brain's Core Loop:
-        1. Gather data (Parallel)
-        2. Professional Analysis (Microstructure, Fundamentals, Technicals)
-        3. Consult AIs (Claude, GPT-4)
-        4. Validate (DeepSeek)
-        5. Form Consensus & Strategy
+        PROFESSIONAL AI decision loop with MARKET MICROSTRUCTURE
         """
-        logger.info(f"🧠 Thinking about {symbol}...")
+        logger.info(f"🧠 AI Cortex: Starting professional analysis for {symbol}...")
         
         try:
-            # 1. Gather all data in parallel
+            # 1. Gather ALL Data in Parallel (including professional signals)
+            logger.info("📡 Gathering data from all sources (order book, funding, volume)...")
             data = await self._gather_all_data(symbol)
             
             # 2. Collect votes from all analyzers
@@ -111,7 +107,8 @@ class AICortex:
                 data['microstructure']['cvd']
             )
             
-            # Add Claude's vote (moved here from _build_final_decision)
+            # 3. Claude Strategic Reasoning (WITH FEEDBACK)
+            logger.info("🧠 Claude analyzing all inputs...")
             performance_feedback = self.tracker.get_ai_feedback_prompt()
             strategy = await self.claude.formulate_strategy(
                 data['macro'], 
@@ -122,10 +119,11 @@ class AICortex:
             claude_vote = self._extract_claude_vote(strategy)
             votes.append(claude_vote)
 
-            # 3. Calculate initial consensus
+            # Calculate initial consensus
             consensus = self._calculate_consensus_weighted(votes)
             
-            # 4. Cross-Validation (DeepSeek)
+            # 4. DeepSeek Cross-Validation
+            logger.info("🔍 DeepSeek validating decisions...")
             validation = await self.deepseek.validate(votes, data['chart'], data['macro'])
             
             # 5. Finalize Decision
@@ -206,7 +204,7 @@ class AICortex:
         try:
             df = await self.binance.fetch_candles(symbol, limit=100)
             if df.empty:
-                return {"trend": "UNKNOWN", "analysis": "Veri yok"}
+                return {"trend": "UNKNOWN", "analysis": "No data available"}
             
             # Use professional TA
             analysis = self.technical.analyze(df, symbol)
@@ -230,14 +228,14 @@ class AICortex:
         confidence = strategy.get('confidence', 7) if 'confidence' in strategy else 7
         
         return AIVote(
-            "Claude Stratejist",  # Turkish name
+            "Claude Strategist",  # Turkish name
             vote,
             confidence,
-            strategy.get('reasoning', 'Stratejik analiz')[:100]
+            strategy.get('reasoning', 'Strategic analysis')[:100]
         )
     
     
-    def _calculate_consensus_weighted(self, votes: list) -> dict:
+    def _calculate_consensus_weighted(self, votes: List[AIVote]) -> Dict[str, int]:
         """Calculate weighted consensus score"""
         bullish_score = 0
         bearish_score = 0
@@ -306,7 +304,7 @@ class AICortex:
         )
         
         # Populate professional trade details if valid signal
-        if position != "CASH":
+        if decision.position != "CASH":
             await self._populate_trade_details(decision, symbol, current_price, final_confidence)
             
         return decision
@@ -365,45 +363,47 @@ class AICortex:
             traceback.print_exc()
     
     def _build_reasoning_with_votes(self, macro, chart, news, strategy, votes, validation) -> str:
-        """Create human-readable reasoning with vote details and validation (TURKISH)"""
+        """Create human-readable reasoning with vote details and validation"""
         parts = []
         
         # Show all votes
-        parts.append("🗳️ YAPAY ZEKA OYLAMASI:")
+        parts.append("🗳️ AI VOTING:")
         for vote in votes:
             emoji = "🟢" if vote.vote == "BULLISH" else "🔴" if vote.vote == "BEARISH" else "⚪"
-            vote_tr = {"BULLISH": "YÜKSELİŞ", "BEARISH": "DÜŞÜŞ", "NEUTRAL": "NÖTR", "MIXED": "KARIŞIK"}.get(vote.vote, vote.vote)
+            # User-facing output (Turkish)
+            
+            vote_tr = {"BULLISH": "BULLISH", "BEARISH": "BEARISH", "NEUTRAL": "NEUTRAL", "MIXED": "MIXED"}.get(vote.vote, vote.vote)
             parts.append(f"{emoji} {vote.name}: {vote_tr} ({vote.confidence}/10)")
         
         # DeepSeek validation
         if validation.get('confidence_adjustment') != 0:
-            parts.append(f"\n🔍 DEEPSEEK DOĞRULAMA:")
-            parts.append(f"  Güven Ayarı: {validation.get('confidence_adjustment'):+d}")
+            parts.append(f"\n🔍 DEEPSEEK VALIDATION:")
+            parts.append(f"  Confidence Adj: {validation.get('confidence_adjustment'):+d}")
             if validation.get('concerns'):
                 parts.append(f"  {validation.get('concerns')[:150]}")
         
-        parts.append("\n📊 DETAYLI ANALİZ:")
+        parts.append("\n📊 DETAILED ANALYSIS:")
         
         # Macro
-        parts.append(f"🌍 MAKRO: {macro.get('regime', 'BİLİNMİYOR')}")
+        parts.append(f"🌍 MACRO: {macro.get('regime', 'UNKNOWN')}")
         if macro.get('reasoning'):
             parts.append("  " + " | ".join(macro['reasoning'][:2]))
         
         # Chart (NOW WITH PROFESSIONAL TA!)
-        parts.append(f"\n📈 TEKNİK ANALİZ: {chart.get('trend', 'YOK')}")
+        parts.append(f"\n📈 TECHNICAL: {chart.get('trend', 'NONE')}")
         if chart.get('analysis'):
             parts.append(f"  {chart['analysis'][:200]}")
         
         # News
-        parts.append(f"\n📰 HABERLER (GPT-4): {news.get('sentiment', 'YOK')}")
+        parts.append(f"\n📰 NEWS (GPT-4): {news.get('sentiment', 'NONE')}")
         
         # Strategy
-        parts.append(f"\n🧠 CLAUDE SON KARAR:")
-        parts.append(f"  {strategy.get('reasoning', 'YOK')[:200]}")
+        parts.append(f"\n🧠 CLAUDE VERDICT:")
+        parts.append(f"  {strategy.get('reasoning', 'NONE')[:200]}")
         
         return "\n".join(parts)
     def _collect_votes_professional(self, macro, chart, news, price_action, 
-                                     orderbook, funding, volume_profile, cvd) -> list:
+                                     orderbook, funding, volume_profile, cvd) -> List[AIVote]:
         """
         Collect votes from ALL sources including PROFESSIONAL market signals
         """

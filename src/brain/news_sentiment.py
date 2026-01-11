@@ -1,3 +1,7 @@
+import logging
+import aiohttp
+from openai import AsyncOpenAI
+from src.config import Config
 from src.utils.retry import async_retry  # FIX 2.1
 
 logger = logging.getLogger("NEWS_SENTIMENT")

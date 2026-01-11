@@ -11,7 +11,7 @@ class TechnicalAnalyzer:
     Uses industry-standard indicators: RSI, MACD, Bollinger Bands
     """
     
-    def analyze(self, df: pd.DataFrame, symbol: str) -> Dict:
+    def analyze(self, df: pd.DataFrame, symbol: str) -> Dict[str, any]:
         """
         Full technical analysis using traditional indicators
         
@@ -164,25 +164,25 @@ class TechnicalAnalyzer:
         
         # RSI interpretation
         if rsi < 30:
-            rsi_text = f"RSI {rsi:.1f} (AŞırı Satım - Güçlü Al Sinyali)"
+            rsi_text = f"RSI {rsi:.1f} (Oversold - Strong BUY Signal)" # User facing: Aşırı Satım
         elif rsi > 70:
-            rsi_text = f"RSI {rsi:.1f} (Aşırı Alım - Sat Sinyali)"
+            rsi_text = f"RSI {rsi:.1f} (Overbought - SELL Signal)" # User facing: Aşırı Alım
         else:
-            rsi_text = f"RSI {rsi:.1f} (Normal Seviyeler)"
+            rsi_text = f"RSI {rsi:.1f} (Normal Levels)" # User facing: Normal
         
         # MACD interpretation
         if macd > signal:
-            macd_text = "MACD Pozitif (Bullish momentum)"
+            macd_text = "MACD Positive (Bullish momentum)"
         else:
-            macd_text = "MACD Negatif (Bearish momentum)"
+            macd_text = "MACD Negative (Bearish momentum)"
         
         # Bollinger Bands
         if price > bb_upper:
-            bb_text = f"Fiyat Bollinger üst bandında (${price:.2f} > ${bb_upper:.2f})"
+            bb_text = f"Price at Upper Bollinger Band (${price:.2f} > ${bb_upper:.2f})"
         elif price < bb_lower:
-            bb_text = f"Fiyat Bollinger alt bandında (${price:.2f} < ${bb_lower:.2f})"
+            bb_text = f"Price at Lower Bollinger Band (${price:.2f} < ${bb_lower:.2f})"
         else:
-            bb_text = f"Fiyat Bollinger bandları içinde (${bb_lower:.2f} - ${bb_upper:.2f})"
+            bb_text = f"Price within Bollinger Bands (${bb_lower:.2f} - ${bb_upper:.2f})"
         
         analysis = f"""
 {symbol} Teknik Analiz:

@@ -65,7 +65,7 @@ class AIPhoenixBot:
                 should_notify = (current_decision_key != self.last_decisions.get(symbol))
             
             if not should_notify:
-                logger.info("🔇 Bildirim yok (önceki analizle aynı)")
+                logger.info("🔇 No notification (same as previous analysis)")
             else:
                 # Translate risk to Turkish
                 risk_tr = {"HIGH": "YÜKSEK", "MEDIUM": "ORTA", "LOW": "DÜŞÜK"}.get(decision.risk_level, decision.risk_level)
@@ -89,7 +89,7 @@ class AIPhoenixBot:
                     if decision.entry_conditions.get('conviction'):
                         trade_setup += f"Conviction: {decision.entry_conditions['conviction']}/10\n"
                     if decision.entry_conditions.get('market_view'):
-                        trade_setup += f"\n📝 *Görüş:* {decision.entry_conditions['market_view']}\n"
+                        trade_setup += f"\n📝 *View:* {decision.entry_conditions['market_view']}\n"
                     if decision.entry_conditions.get('reasoning'):
                     # FIX 2.4: Safe truncation preserving words and markdown
                         reasoning = decision.entry_conditions['reasoning']
@@ -107,16 +107,16 @@ class AIPhoenixBot:
                     entry_text = str(decision.entry_conditions)
                     if isinstance(decision.entry_conditions, list):
                         entry_text = "\n• " + "\n• ".join(decision.entry_conditions)
-                    trade_setup = f"\n📋 *Giriş Koşulları:*{entry_text}"
+                    trade_setup = f"\n📋 *Entry Conditions:*{entry_text}"
                 
                 # Build notification message
                 message = (
-                    f"⚡ *CANLI TETİKLEME: {symbol}*\n"
+                    f"⚡ *LIVE TRIGGER: {symbol}*\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
-                    f"Olay: {reason}\n\n"
+                    f"Event: {reason}\n\n"
                     f"{decision.get_consensus_report()}\n\n"
-                    f"✅ *Nihai Karar: {decision.position}*\n"
-                    f"Güven: {decision.confidence}/10\n"
+                    f"✅ *Final Decision: {decision.position}*\n"
+                    f"Confidence: {decision.confidence}/10\n"
                     f"Risk: {risk_tr}"
                     f"{trade_setup}"
                 )
@@ -124,7 +124,7 @@ class AIPhoenixBot:
                 # Send Telegram notification
                 await self.telegram.send_message(message)
                 
-                logger.info("📱 Telegram bildirimi gönderildi (değişiklik tespit edildi)")
+                logger.info("📱 Telegram notification sent (change detected)")
                 async with self._decision_lock:  # FIX 1.4: Thread-safe update
                     self.last_decisions[symbol] = current_decision_key
             
@@ -171,7 +171,6 @@ class AIPhoenixBot:
         # Connect
         await self.binance.connect()
         await self.telegram.send_alert(
-            "🤖 AI PHOENIX AKTİF", 
             f"Versiyon: {Config.VERSION}\n"
             f"AI Takımı: Claude 4 Sonnet, GPT-4, DeepSeek (Gemini Kapalı)\n"
             f"Mod: 🔴 CANLI 7/24 WebSocket\n"

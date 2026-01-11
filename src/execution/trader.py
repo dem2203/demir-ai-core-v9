@@ -18,7 +18,7 @@ class Trader:
         self.active_positions = {}  # symbol -> {entry, size, stop, signal_id}
         self.tracker = SignalPerformanceTracker()
         
-    async def execute(self, symbol: str, signal: dict):
+    async def execute(self, symbol: str, signal: Dict[str, any]):
         action = signal["action"]
         
         if action == "HOLD":
@@ -36,7 +36,7 @@ class Trader:
         if action in ["BUY", "SELL"]:
             await self._open_position(symbol, action, signal)
             
-    async def _open_position(self, symbol: str, side: str, signal: dict):
+    async def _open_position(self, symbol: str, side: str, signal: Dict[str, any]):
         balance = await self.binance.get_balance()
         if balance < 10:
             logger.warning(f"Insufficient funds ({balance} USDT)")

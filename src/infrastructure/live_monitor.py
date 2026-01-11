@@ -9,23 +9,22 @@ logger = logging.getLogger("LIVE_MONITOR")
 
 class LiveMarketMonitor:
     """
-    7/24 WebSocket stream - ANINDA fiyat değişikliklerini yakalar
+    24/7 WebSocket stream - Instantly catches price changes
     """
     def __init__(self, on_signal_trigger: Callable):
         self.client = None
         self.bsm = None
-        self.on_signal_trigger = on_signal_trigger  # AI'yı tetikleyen callback
+        self.on_signal_trigger = on_signal_trigger  # Callback triggering AI
         
         # Monitoring state
         self.last_prices = {}
         self.candle_data = {}
         self.last_ai_check = {}
         
-        # Trigger thresholds - Extracted magic numbers for clarity
-        self.PRICE_CHANGE_THRESHOLD = 0.005  # 0.5% price movement triggers AI
-        self.VOLUME_SPIKE_MULTIPLIER = 2.0   # 2x normal volume triggers AI
-        self.MIN_TIME_BETWEEN_AI = 300       # Minimum 5 minutes between AI calls (seconds)
-        self.HOURLY_CHECK_INTERVAL = 3600    # Fallback check every hour (seconds)
+        # Trigger thresholds
+        self.PRICE_CHANGE_THRESHOLD = 0.005  # 0.5% move = AI trigger
+        self.VOLUME_SPIKE_MULTIPLIER = 2.0    # 2x normal volume = AI trigger
+        self.MIN_TIME_BETWEEN_AI = 300        # AI cooldown (max once every 5 mins)
         
     async def start(self):
         """Start WebSocket streams for BTC and ETH"""
@@ -61,11 +60,6 @@ class LiveMarketMonitor:
                     
     async def _process_kline(self, symbol: str, data: dict):
         """Process incoming kline data"""
-        # Validate symbol format
-        if not symbol or not isinstance(symbol, str) or len(symbol) < 6:
-            logger.error(f"Invalid symbol format: {symbol}")
-            return
-        
         kline = data['k']
         is_closed = kline['x']  # Candle closed?
         
@@ -103,7 +97,7 @@ class LiveMarketMonitor:
             should_trigger = True
             reason = f"Volume spike: {volume_spike:.1f}x normal"
             
-        elif time_since_last >= self.HOURLY_CHECK_INTERVAL:  # Use named constant
+        elif time_since_last >= 3600:  # Fallback: at least every hour
             should_trigger = True
             reason = "Scheduled check (1h)"
         
