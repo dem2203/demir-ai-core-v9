@@ -1,0 +1,4 @@
+# Railway will automatically rebuild on git push
+# This is a dummy file to force full rebuild and cache invalidation
+# Timestamp: 2026-01-12T22:40:00Z
+# Purpose: Clear old llama-3.1 model cache, refresh Gemini API

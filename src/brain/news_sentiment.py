@@ -11,7 +11,7 @@ logger = logging.getLogger("NEWS_SENTIMENT")
 class NewsSentimentAnalyzer:
     """
     Multi-AI News Sentiment Analyzer
-    - Primary: GROQ (Llama 3.1 70B) - free, unlimited
+    - Primary: GROQ (Llama 3.3 70B) - free, unlimited
     - Fallback: Gemini Flash - fast and free
     - Legacy: OpenAI GPT-4 (optional)
     """
@@ -25,15 +25,16 @@ class NewsSentimentAnalyzer:
                     api_key=Config.GROQ_API_KEY,
                     base_url="https://api.groq.com/openai/v1"
                 )
-                logger.info("✅ GROQ (Llama 3.1) initialized for news sentiment")
+                logger.info("✅ GROQ (Llama 3.3) initialized for news sentiment")
             except Exception as e:
                 logger.warning(f"⚠️ GROQ init failed: {e}")
         
-        # Initialize Gemini (fallback)
+        # Initialize Gemini (fallback) - NEW CORRECT SYNTAX
         self.gemini_client = None
         if Config.GOOGLE_API_KEY:
             try:
                 from google import genai
+                from google.genai import types
                 self.gemini_client = genai.Client(api_key=Config.GOOGLE_API_KEY)
                 logger.info("✅ Gemini Flash initialized as fallback")
             except Exception as e:
@@ -118,11 +119,12 @@ class NewsSentimentAnalyzer:
             raise
     
     async def _analyze_with_gemini(self, prompt: str) -> Dict[str, any]:
-        """Analyze using Gemini Flash"""
+        """Analyze using Gemini Flash - CORRECTED SYNTAX"""
         try:
+            # Correct google-genai syntax
             response = await asyncio.to_thread(
                 self.gemini_client.models.generate_content,
-                model='models/gemini-1.5-flash-latest',  # Fix: Add 'models/' prefix
+                model='gemini-1.5-flash',
                 contents=prompt
             )
             result_text = response.text
