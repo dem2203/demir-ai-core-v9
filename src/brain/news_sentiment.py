@@ -20,6 +20,7 @@ class NewsSentimentAnalyzer:
         self.groq_client = None
         if Config.GROQ_API_KEY:
             try:
+                logger.info("🔧 Attempting GROQ initialization...")
                 from openai import AsyncOpenAI
                 self.groq_client = AsyncOpenAI(
                     api_key=Config.GROQ_API_KEY,
@@ -27,18 +28,27 @@ class NewsSentimentAnalyzer:
                 )
                 logger.info("✅ GROQ (Llama 3.3) initialized for news sentiment")
             except Exception as e:
-                logger.warning(f"⚠️ GROQ init failed: {e}")
+                logger.error(f"❌ GROQ init failed: {type(e).__name__}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+        else:
+            logger.warning("⚠️ GROQ_API_KEY not found in config")
         
         # Initialize Gemini (fallback) - NEW CORRECT SYNTAX
         self.gemini_client = None
         if Config.GOOGLE_API_KEY:
             try:
+                logger.info("🔧 Attempting Gemini initialization...")
                 from google import genai
                 from google.genai import types
                 self.gemini_client = genai.Client(api_key=Config.GOOGLE_API_KEY)
                 logger.info("✅ Gemini Flash initialized as fallback")
             except Exception as e:
-                logger.warning(f"⚠️ Gemini init failed: {e}")
+                logger.error(f"❌ Gemini init failed: {type(e).__name__}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+        else:
+            logger.warning("⚠️ GOOGLE_API_KEY not found in config")
         
         # Legacy OpenAI (optional)
         self.openai_client = None
