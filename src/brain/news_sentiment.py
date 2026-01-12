@@ -122,7 +122,7 @@ class NewsSentimentAnalyzer:
         try:
             response = await asyncio.to_thread(
                 self.gemini_client.models.generate_content,
-                model='gemini-1.5-flash',
+                model='models/gemini-1.5-flash-latest',  # Fix: Add 'models/' prefix
                 contents=prompt
             )
             result_text = response.text

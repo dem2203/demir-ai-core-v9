@@ -100,8 +100,11 @@ class MacroBrain:
     async def _get_vix_with_fallback(self):
         """VIX with multi-source fallback chain"""
         # Try FRED (primary - most reliable)
-        vix = await asyncio.to_thread(self._fetch_fred, "VIXCLS")
-        if vix: return vix, "fred"
+        try:
+            vix = await asyncio.to_thread(self._fetch_fred, "VIXCLS")
+            if vix: return vix, "fred"
+        except Exception as e:
+            logger.warning(f"FRED VIX failed: {e}")
         
         # Try Yahoo Finance (fallback 1)
         vix = await self._fetch_yahoo_finance("^VIX")
@@ -122,8 +125,11 @@ class MacroBrain:
     async def _get_dxy_with_fallback(self):
         """DXY with multi-source fallback chain"""
         # Try FRED (primary - most reliable)
-        dxy = await asyncio.to_thread(self._fetch_fred, "DTWEXBGS")
-        if dxy: return dxy, "fred"
+        try:
+            dxy = await asyncio.to_thread(self._fetch_fred, "DTWEXBGS")
+            if dxy: return dxy, "fred"
+        except Exception as e:
+            logger.warning(f"FRED DXY failed: {e}")
         
         # Try Yahoo Finance (fallback 1)
         dxy = await self._fetch_yahoo_finance("DX-Y.NYB")
