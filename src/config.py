@@ -21,7 +21,8 @@ class Config:
     # AI Services
     GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")  # Gemini
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")  # Claude
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # GPT-4
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # GPT-4 (legacy, being replaced)
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY")  # GROQ (Llama 3.1)
     DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")  # DeepSeek
     
     # Market Data APIs (for fallback)
@@ -51,8 +52,10 @@ class Config:
         if not cls.TELEGRAM_TOKEN: missing.append("TELEGRAM_TOKEN")
         if not cls.GOOGLE_API_KEY: missing.append("GOOGLE_API_KEY (Gemini)")
         if not cls.ANTHROPIC_API_KEY: missing.append("ANTHROPIC_API_KEY (Claude)")
-        if not cls.OPENAI_API_KEY: missing.append("OPENAI_API_KEY (GPT-4)")  # FIX 1.5
-        if not cls.DEEPSEEK_API_KEY: missing.append("DEEPSEEK_API_KEY")  # FIX 1.5
+        # GROQ and OpenAI are optional (news sentiment has fallbacks)
+        if not cls.GROQ_API_KEY and not cls.OPENAI_API_KEY:
+            logging.warning("⚠️ No GROQ or OpenAI key - news sentiment will use Gemini only")
+        if not cls.DEEPSEEK_API_KEY: missing.append("DEEPSEEK_API_KEY")
         
         if missing:
             logging.warning(f"⚠️ Missing Critical Config: {', '.join(missing)}")
