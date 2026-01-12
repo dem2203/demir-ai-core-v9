@@ -34,7 +34,7 @@ class NewsSentimentAnalyzer:
             try:
                 import google.generativeai as genai
                 genai.configure(api_key=Config.GOOGLE_API_KEY)
-                self.gemini_client = genai.GenerativeModel('gemini-1.5-flash')
+                self.gemini_client = genai.GenerativeModel('gemini-1.5-flash-latest')  # Updated for stability
                 logger.info("✅ Gemini Flash initialized as fallback")
             except Exception as e:
                 logger.warning(f"⚠️ Gemini init failed: {e}")
@@ -91,10 +91,10 @@ class NewsSentimentAnalyzer:
         return headlines
     
     async def _analyze_with_groq(self, prompt: str) -> Dict[str, any]:
-        """Analyze using GROQ (Llama 3.1)"""
+        """Analyze using GROQ (Llama 3.3)"""
         try:
             response = await self.groq_client.chat.completions.create(
-                model="llama-3.1-70b-versatile",  # Fast and capable
+                model="llama-3.3-70b-versatile",  # Updated: 3.1 was decommissioned
                 messages=[
                     {"role": "system", "content": "You are a crypto market analyst. Respond in JSON."},
                     {"role": "user", "content": prompt}
