@@ -1,6 +1,7 @@
 import logging
 import aiohttp
 import json
+import asyncio
 from typing import Dict, List
 from src.config import Config
 from src.utils.retry import async_retry
@@ -32,9 +33,8 @@ class NewsSentimentAnalyzer:
         self.gemini_client = None
         if Config.GOOGLE_API_KEY:
             try:
-                import google.generativeai as genai
-                genai.configure(api_key=Config.GOOGLE_API_KEY)
-                self.gemini_client = genai.GenerativeModel('gemini-1.5-flash-latest')  # Updated for stability
+                from google import genai
+                self.gemini_client = genai.Client(api_key=Config.GOOGLE_API_KEY)
                 logger.info("✅ Gemini Flash initialized as fallback")
             except Exception as e:
                 logger.warning(f"⚠️ Gemini init failed: {e}")
@@ -120,7 +120,11 @@ class NewsSentimentAnalyzer:
     async def _analyze_with_gemini(self, prompt: str) -> Dict[str, any]:
         """Analyze using Gemini Flash"""
         try:
-            response = await self.gemini_client.generate_content_async(prompt)
+            response = await asyncio.to_thread(
+                self.gemini_client.models.generate_content,
+                model='gemini-1.5-flash',
+                contents=prompt
+            )
             result_text = response.text
             
             # Parse JSON

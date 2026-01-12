@@ -3,6 +3,7 @@ import asyncio
 import logging
 from datetime import datetime
 from src.config import Config
+from fredapi import Fred
 
 logger = logging.getLogger("MACRO_BRAIN")
 
@@ -14,6 +15,8 @@ class MacroBrain:
     def __init__(self):
         self.twelve_data_key = Config.TWELVE_DATA_API_KEY
         self.alpha_vantage_key = Config.ALPHA_VANTAGE_API_KEY
+        # FRED API (St. Louis Fed - most reliable)
+        self.fred = Fred(api_key=Config.FRED_API_KEY) if Config.FRED_API_KEY else None
         
     async def _fetch_yahoo_finance(self, symbol: str):
         """PRIMARY: Yahoo Finance API"""
@@ -80,17 +83,35 @@ class MacroBrain:
             logger.warning(f"⚠️ Alpha Vantage failed ({symbol}): {e}")
         return None
 
+    def _fetch_fred(self, series_id: str):
+        """FRED API (Federal Reserve Economic Data) - Most Reliable"""
+        if not self.fred:
+            return None
+        try:
+            data = self.fred.get_series_latest_release(series_id)
+            if data is not None and len(data) > 0:
+                value = float(data.iloc[-1])
+                logger.info(f"✅ FRED: {series_id} = {value}")
+                return value
+        except Exception as e:
+            logger.warning(f"⚠️ FRED failed ({series_id}): {e}")
+        return None
+
     async def _get_vix_with_fallback(self):
         """VIX with multi-source fallback chain"""
-        # Try Yahoo Finance (primary)
+        # Try FRED (primary - most reliable)
+        vix = await asyncio.to_thread(self._fetch_fred, "VIXCLS")
+        if vix: return vix, "fred"
+        
+        # Try Yahoo Finance (fallback 1)
         vix = await self._fetch_yahoo_finance("^VIX")
         if vix: return vix, "yahoo"
         
-        # Try Twelve Data (fallback 1)
+        # Try Twelve Data (fallback 2)
         vix = await self._fetch_twelve_data("VIX")
         if vix: return vix, "twelve_data"
         
-        # Try Alpha Vantage (fallback 2)
+        # Try Alpha Vantage (fallback 3)
         vix = await self._fetch_alpha_vantage("VIX")
         if vix: return vix, "alpha_vantage"
         
@@ -100,15 +121,19 @@ class MacroBrain:
     
     async def _get_dxy_with_fallback(self):
         """DXY with multi-source fallback chain"""
-        # Try Yahoo Finance (primary)
+        # Try FRED (primary - most reliable)
+        dxy = await asyncio.to_thread(self._fetch_fred, "DTWEXBGS")
+        if dxy: return dxy, "fred"
+        
+        # Try Yahoo Finance (fallback 1)
         dxy = await self._fetch_yahoo_finance("DX-Y.NYB")
         if dxy: return dxy, "yahoo"
         
-        # Try Twelve Data (fallback 1)
+        # Try Twelve Data (fallback 2)
         dxy = await self._fetch_twelve_data("DXY")
         if dxy: return dxy, "twelve_data"
         
-        # Try Alpha Vantage (fallback 2)  
+        # Try Alpha Vantage (fallback 3)  
         dxy = await self._fetch_alpha_vantage("DXY")
         if dxy: return dxy, "alpha_vantage"
         
