@@ -9,6 +9,8 @@ from src.infrastructure.telegram import TelegramBot
 from src.infrastructure.live_monitor import LiveMarketMonitor
 from src.brain.ai_cortex import AICortex
 from src.execution.trader import Trader
+from src.utils.position_manager import PositionManager
+from src.utils.signal_tracker import SignalPerformanceTracker
 
 # Setup Logging
 logger = setup_logging("AI_PHOENIX")
@@ -29,6 +31,10 @@ class AIPhoenixBot:
         # Live Monitor (WebSocket)
         self.monitor = LiveMarketMonitor(self.on_market_event)
         
+        # Position & Signal Tracking
+        self.position_manager = PositionManager()
+        self.signal_tracker = SignalPerformanceTracker()
+        
         # Track last decisions to avoid spam (with thread safety)
         self.last_decisions = {}
         self._decision_lock = asyncio.Lock()  # FIX 1.4: Thread safety
@@ -43,6 +49,55 @@ class AIPhoenixBot:
             logger.info(f"⚡ LIVE EVENT: {symbol}")
             logger.info(f"Trigger: {reason}")
             logger.info(f"{'='*60}\n")
+            
+            # Get current price for position monitoring
+            current_price = await self.binance.get_current_price(symbol)
+            
+            # CHECK ACTIVE POSITION FIRST
+            if self.position_manager.has_active_position(symbol):
+                status = self.position_manager.check_position_status(symbol, current_price)
+                
+                if status['should_close']:
+                    # TP or SL hit!
+                    position = self.position_manager.get_position(symbol)
+                    
+                    # Calculate PnL for notification
+                    pnl_emoji = "🎯" if status['outcome'] == "TP" else "🛑"
+                    pnl_text = f"{status['pnl']:+.2f}%"
+                    
+                    await self.telegram.send_message(
+                        f"{pnl_emoji} **{status['outcome']} HIT!**\n"
+                        f"━━━━━━━━━━━━━━━━━━\n"
+                        f"Symbol: {symbol}\n"
+                        f"Position: {position.signal_type}\n"
+                        f"Entry: ${position.entry_price:,.2f}\n"
+                        f"Exit: ${current_price:,.2f}\n"
+                        f"PnL: {pnl_text}\n"
+                        f"Confidence: {position.confidence}/10"
+                    )
+                    
+                    # Update signal tracker
+                    pnl_absolute = abs(current_price - position.entry_price) * 100  # Example, adjust based on position size
+                    self.signal_tracker.update_outcome(
+                        position.signal_id,
+                        current_price,
+                        status['outcome'],
+                        pnl_absolute
+                    )
+                    
+                    # Close position
+                    self.position_manager.close_position(symbol, current_price)
+                    
+                elif status['status'] == 'REVERSAL_WARNING':
+                    # Send reversal warning (only sent once)
+                    await self.telegram.send_message(status['message'])
+                    
+                else:
+                    # Still monitoring
+                    logger.info(status['message'])
+                
+                # Don't send new signal while position active
+                return
             
             # Run AI analysis (ALWAYS analyze)
             decision = await self.cortex.think(symbol)
@@ -128,15 +183,54 @@ class AIPhoenixBot:
                 async with self._decision_lock:  # FIX 1.4: Thread-safe update
                     self.last_decisions[symbol] = current_decision_key
             
-            # Execute if confidence high enough
+            # Execute if confidence high enough AND not CASH
             if decision.confidence >= 7 and decision.position != "CASH":
                 # Extract AI votes for tracking
                 ai_votes_dict = {vote.name: vote.vote for vote in decision.votes}
                 
+                # Extract TP/SL from Claude's trade setup
+                entry_price = current_price
+                stop_loss = None
+                take_profit = None
+                
+                if isinstance(decision.entry_conditions, dict):
+                    stop_loss = decision.entry_conditions.get('stop_loss')
+                    # Use target_1 as TP, or target_2 if target_1 not available
+                    take_profit = decision.entry_conditions.get('target_1') or decision.entry_conditions.get('target_2')
+                
+                # Fallback: Calculate TP/SL if not provided (2% SL, 4% TP for 2:1 R:R)
+                if not stop_loss:
+                    if decision.position == "LONG":
+                        stop_loss = entry_price * 0.98  # -2%
+                        take_profit = entry_price * 1.04 if not take_profit else take_profit  # +4%
+                    else:  # SHORT
+                        stop_loss = entry_price * 1.02  # +2%
+                        take_profit = entry_price * 0.96 if not take_profit else take_profit  # -4%
+                
+                # Log signal to tracker
+                signal_id = self.signal_tracker.log_signal(
+                    symbol,
+                    decision.position,
+                    entry_price,
+                    ai_votes_dict,
+                    decision.confidence
+                )
+                
+                # Open position in manager
+                self.position_manager.open_position(
+                    symbol,
+                    decision.position,
+                    entry_price,
+                    stop_loss,
+                    take_profit,
+                    signal_id,
+                    decision.confidence
+                )
+                
                 signal = {
                     "action": "BUY" if decision.position == "LONG" else "SELL",
-                    "entry_price": await self.binance.get_current_price(symbol),
-                    "stop_loss": 0,
+                    "entry_price": entry_price,
+                    "stop_loss": stop_loss,
                     "reason": f"Live AI ({reason})",
                     "cortex_note": decision.reasoning,
                     "ai_votes": ai_votes_dict,
