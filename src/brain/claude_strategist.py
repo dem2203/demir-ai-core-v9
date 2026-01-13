@@ -73,6 +73,12 @@ KURALLARIN:
 4. Conviction ver (1-10)
 5. ACTIONABLE ol - trader bu analizi okuyup hemen işlem açabilmeli
 
+ÖNEMLİ MANTIK KURALLARI:
+- RSI > 75 (Overbought) ise: LONG pozisyon önerme, sadece breakout teyidi varsa (volume spike vs). Genelde CASH veya SHORT (Reversal) düşün.
+- RSI < 25 (Oversold) ise: SHORT pozisyon önerme. Genelde CASH veya LONG (Bounce) düşün.
+- MACRO vs TEKNİK çelişkisi: Eğer DXY çok güçlü (>105) ama Teknik Bullish ise, Conviction'ı düşür (<5/10) veya CASH kal.
+- Asla şunu yapma: "Teknik çok güçlü, RSI overbought... SHORT". Trend tersine dönmediyse trendin karşısına çıkma.
+
 FORMAT (JSON):
 {{
   "market_view": "Kısa açıklama - ne görüyorsun (1 cümle)",

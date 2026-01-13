@@ -23,15 +23,18 @@ class MacroBrain:
         try:
             url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
             params = {'interval': '1d', 'range': '1d'}
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
             
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params, timeout=5) as resp:
+                async with session.get(url, params=params, headers=headers, timeout=5) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         quote = data['chart']['result'][0]['meta']
                         value = quote['regularMarketPrice']
                         logger.info(f"✅ Yahoo Finance: {symbol} = {value}")
                         return value
+                    else:
+                        logger.warning(f"⚠️ Yahoo Finance error {resp.status}: {symbol}")
         except Exception as e:
             logger.warning(f"⚠️ Yahoo Finance failed ({symbol}): {e}")
         return None
@@ -205,35 +208,47 @@ class MacroBrain:
         elif data_quality == "MEDIUM":
             reasons.append(f"⚠️ Data quality: {data_quality} (fallback sources)")
         
-        # VIX Analysis
-        if vix > 30: 
-            score -= 30
+        # VIX Analysis (More Sensitive Thresholds)
+        # >25: Panic (Bearish)
+        # 18-25: Elevated Risk (Slight Bearish)
+        # <15: Risk On (Bullish)
+        if vix > 25: 
+            score -= 25
             reasons.append(f"VIX Yüksek ({vix:.2f}): Aşırı Korku")
+        elif vix > 18:
+            score -= 10
+            reasons.append(f"VIX Yükseliyor ({vix:.2f}): Risk İştahı Düşük")
         elif vix < 15:
-            score += 10
-            reasons.append(f"VIX Düşük ({vix:.2f}): Stabil Piyasa")
+            score += 15
+            reasons.append(f"VIX Düşük ({vix:.2f}): Risk İştahı Yüksek")
         else:
             reasons.append(f"VIX Nötr ({vix:.2f})")
         
-        # DXY Analysis
-        if dxy > 106:
-            score -= 20
-            reasons.append(f"DXY Güçlü ({dxy:.2f}): Dolar Varlıkları Sıkıştırıyor")
-        elif dxy < 100:
+        # DXY Analysis (More Sensitive Thresholds)
+        # >104: Strong Dollar (Bearish for Crypto)
+        # 102-104: Neutral/Slight Bearish
+        # <101: Weak Dollar (Bullish for Crypto)
+        if dxy > 104:
+            score -= 25
+            reasons.append(f"DXY Çok Güçlü ({dxy:.2f}): Kripto Baskılanıyor")
+        elif dxy > 102:
+            score -= 10
+            reasons.append(f"DXY Güçlü ({dxy:.2f}): Negatif Baskı")
+        elif dxy < 101:
             score += 20
-            reasons.append(f"DXY Zayıf ({dxy:.2f}): Kripto İçin İyi")
+            reasons.append(f"DXY Zayıf ({dxy:.2f}): Kripto İçin Pozitif")
         else:
             reasons.append(f"DXY Nötr ({dxy:.2f})")
                 
         # BTC Dominance
-        if btc_dominance > 60:
-            reasons.append(f"BTC Dominansı Yüksek ({btc_dominance:.1f}%): Altcoin'ler Zor Durumda")
+        if btc_dominance > 58: # Lowered threshold slightly
+            reasons.append(f"BTC Dominansı Yüksek ({btc_dominance:.1f}%): Altcoin'ler Baskı Altında")
         
         regime = "NEUTRAL"
-        if score > 20: regime = "RISK_ON"
-        elif score < -20: regime = "RISK_OFF"
+        if score > 15: regime = "RISK_ON" # Lowered from 20 to 15
+        elif score < -15: regime = "RISK_OFF" # Lowered from -20 to -15
         
-        logger.info(f"📊 Macro: {regime} | Quality: {data_quality} | VIX: {vix:.2f} ({vix_source}) | DXY: {dxy:.2f} ({dxy_source})")
+        logger.info(f"📊 Macro: {regime} | Score: {score} | VIX: {vix:.2f} ({vix_source}) | DXY: {dxy:.2f} ({dxy_source})")
         
         return {
             "regime": regime,

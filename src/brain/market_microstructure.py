@@ -111,27 +111,27 @@ class MarketMicrostructure:
             # Annualized funding (funding happens 3x/day on Binance)
             annual_funding = funding_rate * 3 * 365 * 100
             
-            # LOWER THRESHOLDS based on real market test!
-            if annual_funding > 10:  # Was 15%, now 10%
+            # FIXED LOGIC: Positive funding is normal in uptrend. Only extreme is bearish.
+            if annual_funding > 50:  # Extreme Overheating (>50% APR)
                 signal = "BEARISH"
-                strength = min(int(annual_funding / 1.2), 10)
-                reason = f"High positive funding ({annual_funding:.1f}% APR) - longs overleveraged"
-            elif annual_funding < -10:  # Was -15%, now -10%
+                strength = min(int(annual_funding / 5), 10)
+                reason = f"Extreme positive funding ({annual_funding:.1f}% APR) - short squeeze risk"
+            elif annual_funding < -20:  # Extreme Fear
                 signal = "BULLISH"
-                strength = min(int(abs(annual_funding) / 1.2), 10)
-                reason = f"Negative funding ({annual_funding:.1f}% APR) - shorts overleveraged"
-            elif annual_funding > 3:  # Was 5%, now 3%
-                signal = "BEARISH"
+                strength = min(int(abs(annual_funding) / 2), 10)
+                reason = f"Negative funding ({annual_funding:.1f}% APR) - shorts paying longs"
+            elif annual_funding > 5:  # Healthy Uptrend
+                signal = "BULLISH" # Was BEARISH
                 strength = 6
-                reason = f"Elevated funding rate ({annual_funding:.1f}% APR) - long bias"
-            elif annual_funding < -3:  # Was -5%, now -3%
-                signal = "BULLISH"
+                reason = f"Positive funding ({annual_funding:.1f}% APR) - confirms bullish sentiment"
+            elif annual_funding < -2:  # Bearish Sentiment
+                signal = "BEARISH" # Was BULLISH
                 strength = 6
-                reason = f"Negative funding rate ({annual_funding:.1f}% APR) - short bias"
+                reason = f"Negative funding ({annual_funding:.1f}% APR) - confirms bearish sentiment"
             else:
                 signal = "NEUTRAL"
                 strength = 5
-                reason = f"Balanced funding rate ({annual_funding:.1f}% APR)"
+                reason = f"Balanced funding ({annual_funding:.1f}% APR)"
             
             logger.info(f"💰 Funding: {annual_funding:.1f}% APR → {signal}")
             
@@ -183,25 +183,31 @@ class MarketMicrostructure:
             # Current price
             current_price = df['close'].iloc[-1]
             
-            # LOWER THRESHOLDS based on real market test!
+            # FIXED LOGIC: Price > POC = Bullish (Support), Price < POC = Bearish (Resistance)
             distance_from_poc = (current_price - poc_price) / poc_price
             
-            if abs(distance_from_poc) < 0.003:  # Within 0.3% of POC (was 0.5%)
+            if abs(distance_from_poc) < 0.003:  # Within 0.3% of POC
                 signal = "NEUTRAL"
                 strength = 7
                 reason = f"Price at POC (${poc_price:.2f}) - high volume node"
-            elif current_price > poc_price * 1.010:  # 1.0% above POC (was 1.5%)
-                signal = "BEARISH"
-                strength = 7
-                reason = f"Price {distance_from_poc*100:.1f}% above POC (${poc_price:.2f}) - potential reversion"
-            elif current_price < poc_price * 0.990:  # 1.0% below POC (was 1.5%)
-                signal = "BULLISH"
-                strength = 7
-                reason = f"Price {abs(distance_from_poc)*100:.1f}% below POC (${poc_price:.2f}) - potential bounce"
-            else:
-                signal = "NEUTRAL"
-                strength = 5
-                reason = f"Price near POC (${poc_price:.2f})"
+            elif current_price > poc_price:  # Above POC = Support below
+                if distance_from_poc > 0.05: # Too far extended (5%)
+                    signal = "BEARISH"
+                    strength = 6
+                    reason = f"Price extended {distance_from_poc*100:.1f}% above POC - reversion risk"
+                else:
+                    signal = "BULLISH"
+                    strength = 7
+                    reason = f"Price above POC (${poc_price:.2f}) - volume acting as support"
+            else:  # Below POC = Resistance above
+                if distance_from_poc < -0.05: # Too far extended (-5%)
+                    signal = "BULLISH"
+                    strength = 6
+                    reason = f"Price extended {abs(distance_from_poc)*100:.1f}% below POC - reversion risk"
+                else:
+                    signal = "BEARISH"
+                    strength = 7
+                    reason = f"Price below POC (${poc_price:.2f}) - volume acting as resistance"
             
             logger.info(f"📊 Volume Profile: POC=${poc_price:.2f} | Current=${current_price:.2f}")
             

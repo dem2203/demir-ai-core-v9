@@ -175,15 +175,19 @@ class TechnicalAnalyzer:
         bullish_score = 0
         bearish_score = 0
         
-        # RSI (weight: 2)
-        if rsi < 35: bullish_score += 2
-        elif rsi > 65: bearish_score += 2
-        elif rsi > 52: bullish_score += 1
-        elif rsi < 48: bearish_score += 1
+        # RSI (weight: 3 - Increased)
+        if rsi < 30: bullish_score += 3  # Oversold = Buy
+        elif rsi > 75: bearish_score += 4  # Extreme Overbought = Strong Sell
+        elif rsi > 70: bearish_score += 3  # Overbought = Sell
+        elif rsi > 55: bullish_score += 1
+        elif rsi < 45: bearish_score += 1
         
-        # MACD (weight: 3 - most important)
-        if macd > signal: bullish_score += 3
-        else: bearish_score += 3
+        # MACD (weight: 3)
+        if macd > signal: 
+            # Check if MACD is flattening/rolling over at high levels? (Simple check: is hist shrinking?)
+            bullish_score += 3
+        else: 
+            bearish_score += 3
         
         # Bollinger (weight: 1)
         if price > bb_middle: bullish_score += 1
@@ -191,12 +195,19 @@ class TechnicalAnalyzer:
         
         # Stochastic (weight: 2)
         if stoch_k < 20: bullish_score += 2  # Oversold
+        elif stoch_k > 90: bearish_score += 3  # Extreme Overbought
         elif stoch_k > 80: bearish_score += 2  # Overbought
         elif stoch_k > 50: bullish_score += 1
         else: bearish_score += 1
         
         # ADX Trend Strength (weight: 1)
-        if adx > 25:  # Strong trend
+        # If trend is too strong (extended), be cautious
+        if adx > 50: # Very extended trend
+            if rsi > 70 or stoch_k > 80:
+                bearish_score += 1 # Likely exhaustion
+            else:
+                bullish_score += 1
+        elif adx > 25:
             if bullish_score > bearish_score: bullish_score += 1
             else: bearish_score += 1
         
@@ -205,8 +216,9 @@ class TechnicalAnalyzer:
         else: bearish_score += 2
         
         # FINAL DECISION
-        if bullish_score > bearish_score: return "BULLISH"
-        elif bearish_score > bullish_score: return "BEARISH"
+        # Require stronger score difference for reversal calls
+        if bullish_score > bearish_score + 1: return "BULLISH"
+        elif bearish_score > bullish_score + 1: return "BEARISH"
         else: return "NEUTRAL"
     
     def _calculate_strength_professional(self, rsi, macd, signal, stoch_k, adx):
