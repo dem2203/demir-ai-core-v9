@@ -36,7 +36,7 @@ class Config:
     TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
     
     # Trading Configuration
-    MIN_CONFIDENCE_FOR_NOTIFICATION = int(os.getenv("MIN_CONFIDENCE", "3"))  # Minimum confidence to notify user
+    MIN_CONFIDENCE_FOR_NOTIFICATION = int(os.getenv("MIN_CONFIDENCE", "5"))  # Minimum confidence to notify user (was 3, now 5)
     
     
     # Paths
