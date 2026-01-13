@@ -16,7 +16,12 @@ class MacroBrain:
         self.twelve_data_key = Config.TWELVE_DATA_API_KEY
         self.alpha_vantage_key = Config.ALPHA_VANTAGE_API_KEY
         # FRED API (St. Louis Fed - most reliable)
-        self.fred = Fred(api_key=Config.FRED_API_KEY) if Config.FRED_API_KEY else None
+        self.fred = None
+        if Config.FRED_API_KEY:
+            try:
+                self.fred = Fred(api_key=Config.FRED_API_KEY)
+            except Exception as e:
+                logger.warning(f"FRED Init failed: {e}")
         
     async def _fetch_yahoo_finance(self, symbol: str):
         """PRIMARY: Yahoo Finance API"""

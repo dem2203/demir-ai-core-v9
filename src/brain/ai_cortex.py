@@ -155,24 +155,35 @@ class AICortex:
             )
 
     async def _gather_all_data(self, symbol: str) -> dict:
-        """Gather all market data in parallel"""
+        """Gather all market data in parallel (Multi-Timeframe)"""
         # Start independent tasks
         macro_task = self.macro.analyze_world()
         news_task = self.news.analyze_sentiment()
         
-        # Fetch price data first (needed for others)
-        df = await self.binance.fetch_candles(symbol, limit=200)
-        current_price = await self.binance.get_current_price(symbol)
+        # Fetch price data (Multi-Timeframe)
+        # 1h = Primary Trading Timeframe
+        # 4h = Intermediate Trend
+        # 1d = Major Trend
+        df_1h_task = self.binance.fetch_candles(symbol, interval="1h", limit=200)
+        df_4h_task = self.binance.fetch_candles(symbol, interval="4h", limit=100)
+        df_1d_task = self.binance.fetch_candles(symbol, interval="1d", limit=100)
         
-        # Start dependent tasks
-        chart_task = self._analyze_chart_professional(symbol)
-        pa_detector_task = asyncio.create_task(self.price_action.analyze_price_action(df, symbol))
+        current_price_task = self.binance.get_current_price(symbol)
+        
+        # Wait for price data first (needed for indicators)
+        df_1h, df_4h, df_1d, current_price = await asyncio.gather(
+            df_1h_task, df_4h_task, df_1d_task, current_price_task
+        )
+        
+        # Start dependent tasks with 1h data (primary)
+        chart_task = self._analyze_chart_professional(symbol, df_1h, df_4h, df_1d)
+        pa_detector_task = asyncio.create_task(self.price_action.analyze_price_action(df_1h, symbol))
         
         # Market Microstructure (Orderbook, Funding, etc.)
         orderbook_task = self.market_micro.analyze_orderbook_imbalance(symbol)
         funding_task = self.market_micro.analyze_funding_rate(symbol)
-        volume_task = self.market_micro.analyze_volume_profile(df) # Corrected to use df
-        cvd_task = self.market_micro.analyze_cvd(df) # Corrected to use df
+        volume_task = self.market_micro.analyze_volume_profile(df_1h)
+        cvd_task = self.market_micro.analyze_cvd(df_1h)
         
         # Wait for all
         macro_data, news_data, chart_analysis, pa_data, ob_data, fund_data, vol_data, cvd_data = await asyncio.gather(
@@ -189,26 +200,45 @@ class AICortex:
         }
         
         return {
-            "df": df,
+            "df": df_1h,
             "current_price": current_price,
             "macro": macro_data,
             "news": news_data,
-            "chart": chart_analysis,
+            "chart": chart_analysis, # Contains HTF info now
             "price_action": pa_data,
             "microstructure": microstructure
         }
-    async def _analyze_chart_professional(self, symbol: str) -> dict:
+
+    async def _analyze_chart_professional(self, symbol: str, df_1h, df_4h, df_1d) -> dict:
         """
-        Professional chart analysis using technical indicators
+        Professional chart analysis using Multi-Timeframe technical indicators
         """
         try:
-            df = await self.binance.fetch_candles(symbol, limit=100)
-            if df.empty:
+            if df_1h.empty:
                 return {"trend": "UNKNOWN", "analysis": "No data available"}
             
-            # Use professional TA
-            analysis = self.technical.analyze(df, symbol)
-            return analysis
+            # Analyze Primary Timeframe (1h)
+            analysis_1h = self.technical.analyze(df_1h, symbol)
+            
+            # Simple Trend Checks for HTF
+            # 4h Trend
+            ema200_4h = df_4h['close'].ewm(span=200).mean().iloc[-1]
+            price_4h = df_4h['close'].iloc[-1]
+            trend_4h = "BULLISH" if price_4h > ema200_4h else "BEARISH"
+            
+            # 1d Trend
+            ema200_1d = df_1d['close'].ewm(span=200).mean().iloc[-1]
+            price_1d = df_1d['close'].iloc[-1]
+            trend_1d = "BULLISH" if price_1d > ema200_1d else "BEARISH"
+            
+            # Enrich Analysis with Confluence
+            analysis_1h['trend_4h'] = trend_4h
+            analysis_1h['trend_1d'] = trend_1d
+            
+            # Append context to analysis text
+            analysis_1h['analysis'] += f"\n📊 Multi-Timeframe: 4h={trend_4h} | 1d={trend_1d}"
+            
+            return analysis_1h
             
         except Exception as e:
             logger.error(f"Chart analysis error: {e}")
@@ -426,24 +456,35 @@ class AICortex:
             f"Skor: {macro_score} | {macro.get('regime', 'BİLİNMİYOR')}"
         ))
         
-        # 2. Technical Analysis Vote - AGGRESSIVE BOOST!
+        # 2. Technical Analysis Vote - AGGRESSIVE BOOST with Multi-Timeframe
         chart_trend = chart.get('trend', 'UNKNOWN')
         chart_strength = chart.get('strength', 0.5)
+        trend_4h = chart.get('trend_4h', 'UNKNOWN') # New
+        trend_1d = chart.get('trend_1d', 'UNKNOWN') # New
         
         if chart_trend == 'BULLISH':
             chart_vote = "BULLISH"
-            # AGGRESSIVE: +3 baseline, 12x multiplier instead of 10x
+            # AGGRESSIVE: +3 baseline, 12x multiplier
             chart_conf = min(int(chart_strength * 12) + 3, 10)
+            
+            # HTF Confirmation
+            if trend_1d == 'BULLISH': chart_conf = min(chart_conf + 1, 10) # Bonus
+            if trend_1d == 'BEARISH': chart_conf = min(chart_conf, 6) # Cap risk against major trend
+            
         elif chart_trend == 'BEARISH':
             chart_vote = "BEARISH"
-            # AGGRESSIVE: +3 baseline, 12x multiplier instead of 10x
             chart_conf = min(int(chart_strength * 12) + 3, 10)
+            
+            # HTF Confirmation
+            if trend_1d == 'BEARISH': chart_conf = min(chart_conf + 1, 10) # Bonus
+            if trend_1d == 'BULLISH': chart_conf = min(chart_conf, 6) # Cap risk against major trend
+            
         else:
             chart_vote = "NEUTRAL"
             chart_conf = 5
             
         votes.append(AIVote(
-            "Teknik Analiz (RSI/MACD)",
+            f"Teknik Analiz (RSI/MACD) [1d: {trend_1d}]",
             chart_vote,
             chart_conf,
             chart.get('analysis', 'Teknik analiz')[:100]
