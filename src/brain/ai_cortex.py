@@ -141,7 +141,7 @@ class AICortex:
             
             # 4. DeepSeek Cross-Validation
             logger.info("🔍 DeepSeek validating decisions...")
-            validation = await self.deepseek.validate(votes, data['chart'], data['macro'])
+            validation = await self.validator.validate(votes, data['chart'], data['macro'])
             
             # 5. Finalize Decision
             decision = await self._build_final_decision(symbol, consensus, strategy, votes, validation, data)
