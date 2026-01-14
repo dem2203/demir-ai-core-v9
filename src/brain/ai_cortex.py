@@ -9,7 +9,16 @@ from src.brain.claude_strategist import ClaudeStrategist
 from src.brain.news_sentiment import NewsSentimentAnalyzer
 from src.brain.deepseek_validator import DeepSeekValidator
 from src.brain.gemini_vision import GeminiVisionAnalyzer  # NEW: Visual chart analysis
-from src.utils.chart_capture import TradingViewCapture  # NEW: Screenshot system
+
+# Optional: TradingView screenshot (requires Playwright)
+try:
+    from src.utils.chart_capture import TradingViewCapture
+    SCREENSHOT_AVAILABLE = True
+except ImportError:
+    logger.warning("⚠️ Playwright not available - TradingView screenshots disabled")
+    SCREENSHOT_AVAILABLE = False
+    TradingViewCapture = None
+
 from src.infrastructure.binance_api import BinanceAPI
 
 logger = logging.getLogger("AI_CORTEX")
@@ -83,7 +92,7 @@ class AICortex:
         
         # VISUAL ANALYSIS (New - Primary)
         self.gemini_vision = GeminiVisionAnalyzer()
-        self.chart_capture = TradingViewCapture()
+        self.chart_capture = TradingViewCapture() if SCREENSHOT_AVAILABLE else None
         
         # Consensus requirements
         self.MIN_CONSENSUS = 2  # At least 2/3 AIs must agree
@@ -271,24 +280,25 @@ class AICortex:
             
             # OPTIONAL: Try screenshot analysis (non-blocking)
             screenshot_result = None
-            try:
-                screenshot_path = await asyncio.wait_for(
-                    self.chart_capture.capture_chart(symbol.replace('/', ''), timeframe="15"),
-                    timeout=10.0
-                )
-                
-                if screenshot_path:
-                    # Analyze screenshot with Gemini
-                    with open(screenshot_path, 'rb') as f:
-                        import base64
-                        img_b64 = base64.b64encode(f.read()).decode()
-                        
-                    # Quick screenshot analysis
-                    prompt = "Analyze this TradingView chart. BULLISH, BEARISH, or NEUTRAL? 1 sentence."
-                    screenshot_result = await self.gemini_vision._call_gemini_vision(img_b64, prompt)
+            if self.chart_capture:  # Only if Playwright available
+                try:
+                    screenshot_path = await asyncio.wait_for(
+                        self.chart_capture.capture_chart(symbol.replace('/', ''), timeframe="15"),
+                        timeout=10.0
+                    )
                     
-            except Exception as e:
-                logger.warning(f"Screenshot analysis skipped: {e}")
+                    if screenshot_path:
+                        # Analyze screenshot with Gemini
+                        with open(screenshot_path, 'rb') as f:
+                            import base64
+                            img_b64 = base64.b64encode(f.read()).decode()
+                            
+                        # Quick screenshot analysis
+                        prompt = "Analyze this TradingView chart. BULLISH, BEARISH, or NEUTRAL? 1 sentence."
+                        screenshot_result = await self.gemini_vision._call_gemini_vision(img_b64, prompt)
+                        
+                except Exception as e:
+                    logger.warning(f"Screenshot analysis skipped: {e}")
             
             # Combine results if both available
             if screenshot_result and screenshot_result.get('verdict') == visual_result.get('verdict'):
