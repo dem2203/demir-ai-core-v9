@@ -456,28 +456,27 @@ class AICortex:
             f"Skor: {macro_score} | {macro.get('regime', 'BİLİNMİYOR')}"
         ))
         
-        # 2. Technical Analysis Vote - AGGRESSIVE BOOST with Multi-Timeframe
+        # 2. Technical Analysis Vote - PRICE ACTION FOCUS
         chart_trend = chart.get('trend', 'UNKNOWN')
         chart_strength = chart.get('strength', 0.5)
-        trend_4h = chart.get('trend_4h', 'UNKNOWN') # New
-        trend_1d = chart.get('trend_1d', 'UNKNOWN') # New
+        trend_4h = chart.get('trend_4h', 'UNKNOWN')
+        trend_1d = chart.get('trend_1d', 'UNKNOWN')
         
         if chart_trend == 'BULLISH':
             chart_vote = "BULLISH"
-            # AGGRESSIVE: +3 baseline, 12x multiplier
             chart_conf = min(int(chart_strength * 12) + 3, 10)
             
-            # HTF Confirmation
-            if trend_1d == 'BULLISH': chart_conf = min(chart_conf + 1, 10) # Bonus
-            if trend_1d == 'BEARISH': chart_conf = min(chart_conf, 6) # Cap risk against major trend
+            # HTF Confirmation (SOFT, not blocking)
+            if trend_1d == 'BULLISH': chart_conf = min(chart_conf + 1, 10)
+            # REMOVED: Hard cap at 6 when 1d conflicts - let it through!
             
         elif chart_trend == 'BEARISH':
             chart_vote = "BEARISH"
             chart_conf = min(int(chart_strength * 12) + 3, 10)
             
-            # HTF Confirmation
-            if trend_1d == 'BEARISH': chart_conf = min(chart_conf + 1, 10) # Bonus
-            if trend_1d == 'BULLISH': chart_conf = min(chart_conf, 6) # Cap risk against major trend
+            # HTF Confirmation (SOFT)
+            if trend_1d == 'BEARISH': chart_conf = min(chart_conf + 1, 10)
+            # REMOVED: Hard cap blocking logic
             
         else:
             chart_vote = "NEUTRAL"
