@@ -164,9 +164,9 @@ class AICortex:
         # 1h = Primary Trading Timeframe
         # 4h = Intermediate Trend
         # 1d = Major Trend
-        df_1h_task = self.binance.fetch_candles(symbol, interval="1h", limit=200)
-        df_4h_task = self.binance.fetch_candles(symbol, interval="4h", limit=100)
-        df_1d_task = self.binance.fetch_candles(symbol, interval="1d", limit=100)
+        df_1h_task = self.binance.fetch_candles(symbol, timeframe="1h", limit=200)
+        df_4h_task = self.binance.fetch_candles(symbol, timeframe="4h", limit=100)
+        df_1d_task = self.binance.fetch_candles(symbol, timeframe="1d", limit=100)
         
         current_price_task = self.binance.get_current_price(symbol)
         
