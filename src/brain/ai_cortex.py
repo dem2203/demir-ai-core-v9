@@ -8,6 +8,8 @@ from src.brain.market_microstructure import MarketMicrostructure
 from src.brain.claude_strategist import ClaudeStrategist
 from src.brain.news_sentiment import NewsSentimentAnalyzer
 from src.brain.deepseek_validator import DeepSeekValidator
+from src.brain.gemini_vision import GeminiVisionAnalyzer  # NEW: Visual chart analysis
+from src.utils.chart_capture import TradingViewCapture  # NEW: Screenshot system
 from src.infrastructure.binance_api import BinanceAPI
 
 logger = logging.getLogger("AI_CORTEX")
@@ -67,15 +69,21 @@ class AICortex:
     - Price Action
     - AI Consensus (Claude, GPT-4, DeepSeek)
     """
-    def __init__(self, binance: BinanceAPI):
-        self.binance = binance
+    def __init__(self, binance_api: BinanceAPI):
+        self.binance = binance_api
+        
+        # AI Modules
         self.macro = MacroBrain()
         self.technical = TechnicalAnalyzer()
         self.price_action = PriceActionDetector()
-        self.market_micro = MarketMicrostructure(binance)  # NEW: Professional signals
+        self.market_micro = MarketMicrostructure(binance_api)
         self.claude = ClaudeStrategist()
         self.news = NewsSentimentAnalyzer()
-        self.deepseek = DeepSeekValidator()
+        self.validator = DeepSeekValidator()
+        
+        # VISUAL ANALYSIS (New - Primary)
+        self.gemini_vision = GeminiVisionAnalyzer()
+        self.chart_capture = TradingViewCapture()
         
         # Consensus requirements
         self.MIN_CONSENSUS = 2  # At least 2/3 AIs must agree
@@ -243,6 +251,56 @@ class AICortex:
         except Exception as e:
             logger.error(f"Chart analysis error: {e}")
             return {"trend": "ERROR", "analysis": str(e)}
+    
+    async def _analyze_with_gemini_vision(self, data: dict) -> dict:
+        """
+        Orchestrate Gemini Vision analysis - Primary visual signal
+        
+        Strategy:
+        1. Always: Analyze candlestick chart from DataFrame
+        2. Optional: Try TradingView screenshot (fallback if fails)
+        3. Combine insights if both available
+        """
+        try:
+            df = data.get('df')
+            symbol = data.get('chart', {}).get('symbol', 'BTCUSDT')
+            
+            # PRIMARY: Visual analysis from candlestick data
+            visual_result = await self.gemini_vision.analyze_chart_visual(df, symbol)
+            
+            # OPTIONAL: Try screenshot analysis (non-blocking)
+            screenshot_result = None
+            try:
+                screenshot_path = await asyncio.wait_for(
+                    self.chart_capture.capture_chart(symbol.replace('/', ''), timeframe="15"),
+                    timeout=10.0
+                )
+                
+                if screenshot_path:
+                    # Analyze screenshot with Gemini
+                    with open(screenshot_path, 'rb') as f:
+                        import base64
+                        img_b64 = base64.b64encode(f.read()).decode()
+                        
+                    # Quick screenshot analysis
+                    prompt = "Analyze this TradingView chart. BULLISH, BEARISH, or NEUTRAL? 1 sentence."
+                    screenshot_result = await self.gemini_vision._call_gemini_vision(img_b64, prompt)
+                    
+            except Exception as e:
+                logger.warning(f"Screenshot analysis skipped: {e}")
+            
+            # Combine results if both available
+            if screenshot_result and screenshot_result.get('verdict') == visual_result.get('verdict'):
+                # Both agree - boost confidence
+                visual_result['confidence'] = min(visual_result['confidence'] + 1, 10)
+                visual_result['reasoning'] += " (Screenshot confirmed)"
+                logger.info("📸 Screenshot CONFIRMED visual analysis")
+            
+            return visual_result
+            
+        except Exception as e:
+            logger.error(f"Gemini Vision failed: {e}")
+            return {'verdict': 'ERROR', 'confidence': 0, 'reasoning': str(e), 'patterns': []}
     
     def _extract_claude_vote(self, strategy) -> AIVote:
         """Extract Claude's vote from strategy"""
@@ -456,7 +514,35 @@ class AICortex:
             f"Skor: {macro_score} | {macro.get('regime', 'BİLİNMİYOR')}"
         ))
         
-        # 2. Technical Analysis Vote - PRICE ACTION FOCUS
+        # ** 2. GEMINI VISION - VISUAL CHART ANALYSIS (PRIMARY - 3 VOTES) **
+        # This is now the MOST IMPORTANT signal - what we SEE on the chart
+        gemini_analysis = await self._analyze_with_gemini_vision(data)
+        if gemini_analysis['verdict'] != 'ERROR':
+            # Give Gemini Vision 3 SEPARATE votes for high influence
+            base_confidence = gemini_analysis['confidence']
+            
+            for i in range(3):  # Triple the weight!
+                vote_name = f"👁️ Gemini Vision #{i+1}"
+                if i == 0:
+                    vote_name = "👁️ Gemini Vision (Chart Pattern)"
+                elif i == 1:
+                    vote_name = "👁️ Gemini Vision (Volume)"
+                else:
+                    vote_name = "👁️ Gemini Vision (Breakout)"
+                
+                votes.append(AIVote(
+                    vote_name,
+                    gemini_analysis['verdict'],
+                    base_confidence if i == 0 else max(base_confidence - 1, 1),  # Slightly lower for duplicates
+                    gemini_analysis['reasoning'][:100]
+                ))
+            
+            logger.info(f"👁️ VISUAL ANALYSIS: {gemini_analysis['verdict']} ({base_confidence}/10) - 3x WEIGHT")
+        else:
+            # Fallback if vision fails
+            votes.append(AIVote("👁️ Gemini Vision", "NEUTRAL", 5, "Vision analysis unavailable"))
+        
+        # 3. Technical Analysis Vote - PRICE ACTION FOCUS
         chart_trend = chart.get('trend', 'UNKNOWN')
         chart_strength = chart.get('strength', 0.5)
         trend_4h = chart.get('trend_4h', 'UNKNOWN')
