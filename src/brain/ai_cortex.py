@@ -15,7 +15,6 @@ try:
     from src.utils.chart_capture import TradingViewCapture
     SCREENSHOT_AVAILABLE = True
 except ImportError:
-    logger.warning("⚠️ Playwright not available - TradingView screenshots disabled")
     SCREENSHOT_AVAILABLE = False
     TradingViewCapture = None
 
