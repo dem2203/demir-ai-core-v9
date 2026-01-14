@@ -104,7 +104,7 @@ class AICortex:
             data = await self._gather_all_data(symbol)
             
             # 2. Collect votes from all analyzers
-            votes = self._collect_votes_professional(
+            votes = await self._collect_votes_professional(
                 data['macro'], 
                 data['chart'], 
                 data['news'], 
@@ -112,7 +112,8 @@ class AICortex:
                 data['microstructure']['order_book'],
                 data['microstructure']['funding_rate'],
                 data['microstructure']['volume_profile'],
-                data['microstructure']['cvd']
+                data['microstructure']['cvd'],
+                data  # NEW: Pass full data for Gemini Vision
             )
             
             # 3. Claude Strategic Reasoning (WITH FEEDBACK)
@@ -490,8 +491,8 @@ class AICortex:
         parts.append(f"  {strategy.get('reasoning', 'NONE')[:200]}")
         
         return "\n".join(parts)
-    def _collect_votes_professional(self, macro, chart, news, price_action, 
-                                     orderbook, funding, volume_profile, cvd) -> List[AIVote]:
+    async def _collect_votes_professional(self, macro, chart, news, price_action, 
+                                     orderbook, funding, volume_profile, cvd, data) -> List[AIVote]:
         """
         Collect votes from ALL sources including PROFESSIONAL market signals
         """
