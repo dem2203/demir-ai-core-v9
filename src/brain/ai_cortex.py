@@ -98,7 +98,9 @@ class AICortex:
         
         # Performance tracking for self-learning
         from src.utils.signal_tracker import SignalPerformanceTracker
+        from src.utils.adaptive_weights import AdaptiveModuleWeightManager
         self.tracker = SignalPerformanceTracker()
+        self.adaptive_weights = AdaptiveModuleWeightManager(self.tracker)
         
     async def think(self, symbol: str) -> DirectorDecision:
         """
@@ -571,16 +573,19 @@ class AICortex:
         # This is now the MOST IMPORTANT signal - what we SEE on the chart
         gemini_analysis = await self._analyze_with_gemini_vision(data)
         if gemini_analysis['verdict'] != 'ERROR':
-            # Give Gemini Vision 3 SEPARATE votes for high influence
+            # GET ADAPTIVE WEIGHT for Gemini Vision
+            gemini_weight = self.adaptive_weights.get_adaptive_weight("Gemini Vision")
+            num_gemini_votes = max(1, min(int(gemini_weight), 5))  # 1-5 votes based on performance
+            
             base_confidence = gemini_analysis['confidence']
             
-            for i in range(3):  # Triple the weight!
+            for i in range(num_gemini_votes):  # DYNAMIC weight!
                 vote_name = f"👁️ Gemini Vision #{i+1}"
                 if i == 0:
                     vote_name = "👁️ Gemini Vision (Chart Pattern)"
                 elif i == 1:
                     vote_name = "👁️ Gemini Vision (Volume)"
-                else:
+                elif i == 2:
                     vote_name = "👁️ Gemini Vision (Breakout)"
                 
                 votes.append(AIVote(
@@ -590,7 +595,7 @@ class AICortex:
                     gemini_analysis['reasoning'][:100]
                 ))
             
-            logger.info(f"👁️ VISUAL ANALYSIS: {gemini_analysis['verdict']} ({base_confidence}/10) - 3x WEIGHT")
+            logger.info(f"👁️ VISUAL ANALYSIS: {gemini_analysis['verdict']} ({base_confidence}/10) - {num_gemini_votes}x WEIGHT (adaptive)")
         else:
             # Fallback if vision fails
             votes.append(AIVote("👁️ Gemini Vision", "NEUTRAL", 5, "Vision analysis unavailable"))

@@ -15,6 +15,7 @@ from src.execution.trader import Trader
 from src.utils.position_manager import PositionManager
 from src.utils.signal_tracker import SignalPerformanceTracker
 from src.utils.daily_summary import DailySummaryReporter
+from src.utils.drawdown_protector import DailyDrawdownProtector
 
 # Setup Logging
 logger = setup_logging("AI_PHOENIX")
@@ -38,6 +39,9 @@ class AIPhoenixBot:
         # Position & Signal Tracking
         self.position_manager = PositionManager()
         self.signal_tracker = SignalPerformanceTracker()
+        
+        # Daily Drawdown Protection
+        self.drawdown_protector = DailyDrawdownProtector(max_daily_loss_pct=5.0)
         
         # Daily Reporter
         self.daily_reporter = DailySummaryReporter(self.signal_tracker, self.telegram)
@@ -100,8 +104,14 @@ class AIPhoenixBot:
                     await self.telegram.send_message(status['message'])
                     
                 else:
-                    # Still monitoring
+                    # Still monitoring - check trailing stop
                     logger.info(status['message'])
+                    
+                    # Update trailing stop if in profit
+                    trailing_updated, trailing_msg = self.position_manager.update_trailing_stop(symbol, current_price)
+                    if trailing_updated:
+                        logger.info(f"📊 {trailing_msg}")
+                        await self.telegram.send_message(f"🔒 **Trailing Stop Update**\n{trailing_msg}")
                 
                 # Don't send new signal while position active
                 return
@@ -181,6 +191,43 @@ class AIPhoenixBot:
                 await self.telegram.send_message(message)
                 
                 logger.info("📱 Telegram notification sent (unified message)")
+            
+            # === NEW: DRAWDOWN PROTECTION & CORRELATION CHECK ===
+            if decision.position != "CASH":
+                # 1. Check daily drawdown
+                current_balance = await self.binance.get_balance()
+                drawdown_allowed, drawdown_reason, drawdown_stats = self.drawdown_protector.check_trade_allowed(current_balance)
+                
+                # 2. Check correlation risk (soft warning)
+                correlation_allowed, correlation_msg = self.position_manager.check_correlation_risk(symbol, decision.position)
+                
+                # Build approval request message
+                approval_msg = f"📊 **DAILY P&L STATUS:**\n"
+                approval_msg += f"Balance: ${drawdown_stats['daily_pnl']:+.2f} ({drawdown_stats['daily_pnl_pct']:+.1f}%)\n"
+                approval_msg += f"Trades Today: {drawdown_stats['trades_taken']}\n"
+                approval_msg += f"Room: {drawdown_stats['remaining_room']:.1f}%\n\n"
+                
+                if correlation_msg != "OK":
+                    approval_msg += f"{correlation_msg}\n\n"
+                
+                if not drawdown_allowed:
+                    # CRITICAL: Drawdown limit hit!
+                    approval_msg += f"🚨 **{drawdown_reason}**\n"
+                    approval_msg += f"\n⛔ **SIGNAL BLOCKED** - Limit exceeded!\n"
+                    approval_msg += f"Position will be tracked for learning, but NO TRADE.\n"
+                    
+                    await self.telegram.send_message(approval_msg)
+                    
+                    # Still track for learning! (per user request)
+                    # Continue to position tracking below...
+                else:
+                    # Drawdown OK - ask user for approval
+                    approval_msg += f"✅ Trade Allowed\n\n"
+                    approval_msg += f"**⏳ Execute {symbol} {decision.position}?**\n"
+                    approval_msg += f"Confidence: {decision.confidence}/10\n\n"
+                    approval_msg += f"_(Auto-tracked for learning, manual execution if conf ≥7)_"
+                    
+                    await self.telegram.send_message(approval_msg)
             
             # Track ALL signals sent to Telegram (not just high-confidence)
             if decision.position != "CASH":

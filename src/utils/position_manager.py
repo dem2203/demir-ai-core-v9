@@ -263,6 +263,87 @@ class PositionManager:
         else:
             return "2-6h (tight)"
     
+    def check_correlation_risk(self, new_symbol: str, new_position: str) -> tuple[bool, str]:
+        """
+        Check if opening new position creates correlation risk.
+        SOFT CHECK: Returns warning but does NOT block trade.
+        
+        Args:
+            new_symbol: Symbol for new trade (e.g., 'ETHUSDT')
+            new_position: Direction of new trade ('LONG' or 'SHORT')
+        
+        Returns:
+            (allowed: bool, warning_message: str)
+            - allowed is ALWAYS True (soft check)
+            - warning_message explains correlation if exists
+        """
+        # Define correlated pairs
+        correlated_pairs = [
+            ('BTCUSDT', 'ETHUSDT'),  # BTC and ETH move together
+        ]
+        
+        for pair in correlated_pairs:
+            # Check if new symbol is in a correlated pair
+            if new_symbol in pair:
+                # Find the other symbol in the pair
+                other_symbol = pair[0] if new_symbol == pair[1] else pair[1]
+                
+                # Check if we have active position on the correlated symbol
+                if other_symbol in self.positions:
+                    other_pos = self.positions[other_symbol]
+                    
+                    # Same direction = correlation risk (but allow it!)
+                    if other_pos.signal_type == new_position:
+                        warning = f"⚠️ CORRELATION NOTICE: {other_symbol} {other_pos.signal_type} already active. Opening {new_symbol} {new_position} = double exposure. Allowed if signals strong!"
+                        return True, warning  # ALLOW but warn
+        
+        return True, "OK"  # No correlation, proceed
+    
+    def update_trailing_stop(self, symbol: str, current_price: float) -> tuple[bool, str]:
+        """
+        Update trailing stop loss if price moved favorably.
+        
+        Args:
+            symbol: Trading symbol
+            current_price: Current market price
+        
+        Returns:
+  (updated: bool, message: str)
+        """
+        if symbol not in self.positions:
+            return False, "No active position"
+        
+        pos = self.positions[symbol]
+        old_sl = pos.stop_loss
+        
+        if pos.signal_type == "LONG":
+            # LONG: Price went up → move SL up (lock in profit)
+            # New SL = current price - 2%
+            new_sl = current_price * 0.98
+            
+            # Only update if new SL is higher (tighter)
+            if new_sl > pos.stop_loss:
+                pos.stop_loss = new_sl
+                self._save_positions()
+                
+                pnl_locked = ((new_sl - pos.entry_price) / pos.entry_price) * 100
+                return True, f"📈 Trailing SL updated: ${old_sl:,.2f} → ${new_sl:,.2f} (Profit locked: {pnl_locked:+.1f}%)"
+        
+        elif pos.signal_type == "SHORT":
+            # SHORT: Price went down → move SL down (lock in profit)
+            # New SL = current price + 2%
+            new_sl = current_price * 1.02
+            
+            # Only update if new SL is lower (tighter)
+            if new_sl < pos.stop_loss:
+                pos.stop_loss = new_sl
+                self._save_positions()
+                
+                pnl_locked = ((pos.entry_price - new_sl) / pos.entry_price) * 100
+                return True, f"📉 Trailing SL updated: ${old_sl:,.2f} → ${new_sl:,.2f} (Profit locked: {pnl_locked:+.1f}%)"
+        
+        return False, "No update needed"
+    
     def get_summary(self) -> str:
         """Get summary of all active positions"""
         if not self.positions:
