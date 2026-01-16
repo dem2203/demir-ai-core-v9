@@ -102,6 +102,18 @@ class AICortex:
         self.tracker = SignalPerformanceTracker()
         self.adaptive_weights = AdaptiveModuleWeightManager(self.tracker)
         
+        # ML SYSTEMS (NEW)
+        try:
+            from src.ml.lstm_regime import LSTMRegimeDetector
+            from src.ml.volatility_predictor import PredictiveVolatilityScaler
+            self.lstm_regime = LSTMRegimeDetector()
+            self.vol_predictor = PredictiveVolatilityScaler()
+            logger.info("🤖 ML Systems initialized (LSTM + Volatility Predictor)")
+        except Exception as e:
+            logger.warning(f"⚠️ ML Systems unavailable: {e}")
+            self.lstm_regime = None
+            self.vol_predictor = None
+        
     async def think(self, symbol: str) -> DirectorDecision:
         """
         PROFESSIONAL AI decision loop with MARKET MICROSTRUCTURE
