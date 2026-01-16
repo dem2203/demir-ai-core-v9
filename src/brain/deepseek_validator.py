@@ -104,3 +104,57 @@ Respond in JSON: {{"is_valid": true/false, "concerns": "your concerns", "confide
                 "concerns": f"Error: {str(e)}",
                 "confidence_adjustment": 0
             }
+
+    async def resolve_conflict(self, votes_summary: str, chart_summary: str) -> dict:
+        """
+        Act as a Supreme Court Judge to resolve conflicts between AI agents.
+        """
+        if not self.client:
+            return {"verdict": "NEUTRAL", "reasoning": "DeepSeek unavailable"}
+            
+        try:
+            prompt = f"""You are the Supreme Court Judge of an AI Trading System.
+There is a serious disagreement between agents. You must decide.
+
+**CONFLICTING VOTES:**
+{votes_summary}
+
+**OBJECTIVE DATA (Chart & Macro):**
+{chart_summary}
+
+**YOUR TASK:**
+Analyze the arguments. Who is right based on the data?
+If data supports Bulls, vote BULLISH.
+If data supports Bears, vote BEARISH.
+If data is unclear or risky, vote NEUTRAL (Cash is a position).
+
+**FORMAT (JSON):**
+{{
+  "verdict": "BULLISH" or "BEARISH" or "NEUTRAL",
+  "confidence": 1-10,
+  "reasoning": "Brief explanation why you chose this side"
+}}"""
+
+            response = await self.client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[
+                    {"role": "system", "content": "You are a wise and unbiased judge."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=300
+            )
+            
+            content = response.choices[0].message.content
+            
+            # Simple parsing
+            import json
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+                
+            return json.loads(content)
+            
+        except Exception as e:
+            logger.error(f"DeepSeek conflict resolution error: {e}")
+            return {"verdict": "NEUTRAL", "reasoning": "Error in arbitration"}

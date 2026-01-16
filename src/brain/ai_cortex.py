@@ -132,15 +132,6 @@ class AICortex:
             logger.warning(f"⚠️ Pre-Spike Detector unavailable: {e}")
             self.pre_spike = None
         
-        # CONFLICT RESOLUTION (NEW - Hybrid)
-        try:
-            from src.brain.conflict_resolver import AIConflictResolver
-            self.conflict_resolver = AIConflictResolver()
-            logger.info("🤝 Conflict Resolver initialized (Hybrid mode)")
-        except Exception as e:
-            logger.warning(f"⚠️ Conflict Resolver unavailable: {e}")
-            self.conflict_resolver = None
-        
     async def think(self, symbol: str) -> DirectorDecision:
         """
         PROFESSIONAL AI decision loop with MARKET MICROSTRUCTURE
@@ -179,32 +170,43 @@ class AICortex:
 
             # Calculate initial consensus
             consensus = self._calculate_consensus_weighted(votes)
-            initial_confidence = self._calculate_consensus_confidence(consensus)
             
-            # ===== CONFLICT RESOLUTION (NEW - Hybrid) =====
-            # Only activate if disagreement detected
-            if self.conflict_resolver:
-                conflict_info = self.conflict_resolver.detect_conflict(votes, initial_confidence)
-                
-                if conflict_info['has_conflict']:
-                    logger.warning(f"🚨 {conflict_info['conflict_type']}: {conflict_info['reason']}")
-                    logger.info("🔍 Activating conflict resolution (Claude + DeepSeek deep review)...")
+            # ===== HYBRID CONFLICT RESOLUTION (NEW) =====
+            # Check for high disagreement (e.g., split vote 60/40)
+            total_score = consensus['bullish'] + consensus['bearish']
+            conflict_detected = False
+            resolution_result = None
+            
+            if total_score > 0:
+                bull_ratio = consensus['bullish'] / total_score
+                # If ratio is between 0.4 and 0.6 (40% - 60%), we have a conflict
+                if 0.4 <= bull_ratio <= 0.6:
+                    logger.warning(f"⚠️ AI CONFLICT DETECTED! Bull Ratio: {bull_ratio:.2f}. Triggering Supreme Court...")
+                    conflict_detected = True
                     
-                    # Deep review to resolve conflict
-                    resolution = await self.conflict_resolver.resolve_conflict(
-                        votes, data, self.claude, self.validator
-                    )
+                    # Prepare summaries for arbitration
+                    votes_summary = "\n".join([f"- {v.name}: {v.vote} ({v.confidence})" for v in votes])
+                    chart_summary = f"Trend: {data['chart'].get('trend')}\nAnalysis: {data['chart'].get('analysis')[:200]}"
                     
-                    # Apply resolution adjustments
-                    if resolution['resolution'] != 'ABSTAIN':
-                        # Adjust consensus based on resolution
-                        logger.info(f"✅ Resolution: {resolution['resolution']} (adj: {resolution['confidence_adjustment']:+d})")
-                        # Note: Confidence adjustment applied in validation step
+                    # Call DeepSeek Arbitration
+                    arbitration = await self.validator.resolve_conflict(votes_summary, chart_summary)
+                    resolution_result = arbitration
+                    
+                    logger.info(f"⚖️ SUPREME COURT VERDICT: {arbitration.get('verdict')} (Conf: {arbitration.get('confidence')})")
+                    logger.info(f"Reasoning: {arbitration.get('reasoning')}")
+                    
+                    # Apply verdict: Add huge weight to the winner
+                    verdict = arbitration.get('verdict')
+                    if verdict == "BULLISH":
+                        consensus['bullish'] += 20  # Overpower disagreement
+                    elif verdict == "BEARISH":
+                        consensus['bearish'] += 20
                     else:
-                        logger.warning("❌ Resolution recommends NO TRADE")
-            
-            # Continue with normal flow
-            # 4. DeepSeek Cross-Validation
+                        # Neutral verdict kills the trade
+                        consensus['bullish'] = 0
+                        consensus['bearish'] = 0
+
+            # 4. DeepSeek Cross-Validation (Standard)
             logger.info("🔍 DeepSeek validating decisions...")
             validation = await self.validator.validate(votes, data['chart'], data['macro'])
             
@@ -402,33 +404,6 @@ class AICortex:
             strategy.get('reasoning', 'Strategic analysis')[:100]
         )
     
-    
-    
-    def _calculate_consensus_confidence(self, consensus: Dict[str, int]) -> int:
-        """
-        Calculate consensus confidence score (1-10) from weighted votes.
-        
-        Args:
-            consensus: {"bullish": score, "bearish": score, "total_weight": weight}
-        
-        Returns:
-            confidence: 1-10 score
-        """
-        bullish = consensus.get("bullish", 0)
-        bearish = consensus.get("bearish", 0)
-        total = consensus.get("total_weight", 1)
-        
-        if total == 0:
-            return 1
-        
-        # Winning side percentage
-        max_score = max(bullish, bearish)
-        confidence_pct = max_score / total
-        
-        # Convert to 1-10 scale
-        confidence = int(confidence_pct * 10)
-        
-        return min(10, max(1, confidence))
     
     def _calculate_consensus_weighted(self, votes: List[AIVote]) -> Dict[str, int]:
         """Calculate weighted consensus score"""
