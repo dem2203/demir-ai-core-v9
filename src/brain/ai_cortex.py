@@ -89,6 +89,15 @@ class AICortex:
         self.news = NewsSentimentAnalyzer()
         self.validator = DeepSeekValidator()
         
+        # SOCIAL SENTIMENT (Grok - NEW)
+        try:
+            from src.brain.grok_sentiment import GrokSentimentAnalyzer
+            self.grok = GrokSentimentAnalyzer()
+            logger.info("🚀 Grok Social Sentiment initialized")
+        except Exception as e:
+            logger.warning(f"⚠️ Grok unavailable: {e}")
+            self.grok = None
+        
         # VISUAL ANALYSIS (New - Primary)
         self.gemini_vision = GeminiVisionAnalyzer()
         self.chart_capture = TradingViewCapture() if SCREENSHOT_AVAILABLE else None
