@@ -86,7 +86,7 @@ class BinanceAPI:
             return pd.DataFrame()
 
     async def get_balance(self) -> float:
-        """Get USDT Balance"""
+        """Get Total USDT Balance (free + used for margin)"""
         if not self.circuit_breaker.allow_request(): return 0.0
         
         if not self.exchange: await self.connect()
@@ -99,7 +99,12 @@ class BinanceAPI:
                 timeout=10.0
             )
             self.circuit_breaker.record_success()
-            return float(balance['USDT']['free'])
+            
+            # Use total balance (free + used) for drawdown calculation
+            total_usdt = balance.get('total', {}).get('USDT', 0) or balance.get('USDT', {}).get('total', 0)
+            
+            logger.info(f"💰 Balance: ${total_usdt:,.2f} USDT (total)")
+            return float(total_usdt)
         except asyncio.TimeoutError:
             logger.error("⏱️ Binance API timeout fetching balance")
             self.circuit_breaker.record_failure()
