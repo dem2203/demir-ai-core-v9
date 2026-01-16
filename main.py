@@ -133,11 +133,10 @@ class AIPhoenixBot:
                 risk_tr = {"HIGH": "YÜKSEK", "MEDIUM": "ORTA", "LOW": "DÜŞÜK"}.get(decision.risk_level, decision.risk_level)
                 
                 # Extract Claude's professional trade setup if available
-                # entry_conditions now contains Claude's JSON response with entry_price, stop_loss, targets, etc.
                 trade_setup = ""
                 if isinstance(decision.entry_conditions, dict):
                     # Claude's professional trade setup
-                    trade_setup += f"\n💹 *TRADE SETUP (Claude):*\n"
+                    trade_setup += f"\n\n💹 *TRADE SETUP (Claude):*\n"
                     if decision.entry_conditions.get('entry_price'):
                         trade_setup += f"Entry: {decision.entry_conditions['entry_price']}\n"
                     if decision.entry_conditions.get('stop_loss'):
@@ -153,27 +152,22 @@ class AIPhoenixBot:
                     if decision.entry_conditions.get('market_view'):
                         trade_setup += f"\n📝 *View:* {decision.entry_conditions['market_view']}\n"
                     if decision.entry_conditions.get('reasoning'):
-                    # FIX 2.4: Safe truncation preserving words and markdown
                         reasoning = decision.entry_conditions['reasoning']
                         if len(reasoning) > 200:
                             reasoning = reasoning[:197].rsplit(' ', 1)[0] + "..."
                         trade_setup += f"💡 *Reason:* {reasoning}"
-                    
-                    await self.telegram.send_alert(
-                        f"🤖 {symbol} Trading Signal",
-                        trade_setup,
-                        color="🟢" if decision.position == "LONG" else "🔴"
-                    )
                 else:
                     # Fallback to old format
                     entry_text = str(decision.entry_conditions)
                     if isinstance(decision.entry_conditions, list):
                         entry_text = "\n• " + "\n• ".join(decision.entry_conditions)
-                    trade_setup = f"\n📋 *Entry Conditions:*{entry_text}"
+                    trade_setup = f"\n\n📋 *Entry Conditions:*{entry_text}"
                 
-                # Build notification message
+                # Build SINGLE unified notification message
+                emoji = "🟢" if decision.position == "LONG" else "🔴"
                 message = (
-                    f"⚡ *LIVE TRIGGER: {symbol}*\n"
+                    f"{emoji} *{symbol} Trading Signal*\n"
+                    f"⚡ *LIVE TRIGGER*\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"Event: {reason}\n\n"
                     f"{decision.get_consensus_report()}\n\n"
@@ -183,10 +177,10 @@ class AIPhoenixBot:
                     f"{trade_setup}"
                 )
                 
-                # Send Telegram notification
+                # Send SINGLE Telegram notification (no duplicate!)
                 await self.telegram.send_message(message)
                 
-                logger.info("📱 Telegram notification sent (change detected)")
+                logger.info("📱 Telegram notification sent (unified message)")
             
             # Track ALL signals sent to Telegram (not just high-confidence)
             if decision.position != "CASH":

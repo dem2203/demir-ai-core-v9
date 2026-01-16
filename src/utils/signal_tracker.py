@@ -223,6 +223,51 @@ class SignalPerformanceTracker:
             }
         }
     
+    def get_module_performance(self) -> dict:
+        """
+        NEW: Analyze which AI modules perform best for self-learning.
+        Returns win rate per module (Gemini Vision, Macro, Technical, etc.)
+        """
+        completed = [s for s in self.signals.values() if s.outcome is not None]
+        
+        if not completed:
+            return {}
+        
+        module_stats = {}
+        
+        for signal in completed:
+            for module_name, vote in signal.ai_votes.items():
+                if module_name not in module_stats:
+                    module_stats[module_name] = {"correct": 0, "total": 0}
+                
+                # Check if module vote aligned with signal outcome
+                signal_was_profitable = (signal.outcome == "TP")
+                
+                module_was_bullish = (vote in ["BULLISH", "YÜKSELİŞ"])
+                module_was_bearish = (vote in ["BEARISH", "DÜŞÜŞ"])
+                
+                if signal.signal_type == "LONG":
+                    module_correct = (module_was_bullish and signal_was_profitable) or \
+                                     (module_was_bearish and not signal_was_profitable)
+                else:  # SHORT
+                    module_correct = (module_was_bearish and signal_was_profitable) or \
+                                     (module_was_bullish and not signal_was_profitable)
+                
+                if module_correct:
+                    module_stats[module_name]["correct"] += 1
+                module_stats[module_name]["total"] += 1
+        
+        # Calculate win rates
+        result = {}
+        for module, stats in module_stats.items():
+            win_rate = (stats["correct"] / stats["total"]) * 100 if stats["total"] > 0 else 50
+            result[module] = {
+                "win_rate": round(win_rate, 1),
+                "total_votes": stats["total"]
+            }
+        
+        return result
+    
     def get_ai_feedback_prompt(self) -> str:
         """
         Generate feedback text to show to AIs for self-improvement.
@@ -256,8 +301,8 @@ Recent Trade Outcomes:
 """
         for sig in recent_signals[:5]:
             emoji = "✅" if sig.outcome == "TP" else "❌"
-            feedback += f"{emoji} {sig.symbol} {sig.signal_type} → {sig.outcome} ({sig.pnl_pct:.1f}%)\n"
+            feedback += f"{emoji} {sig.symbol} {sig.signal_type} → {sig.outcome} ({sig.pnl_pct:.1f}%)\\n"
         
-        feedback += "\n⚠️ LEARN FROM THIS: Adjust your confidence if certain patterns keep failing."
+        feedback += "\\n⚠️ LEARN FROM THIS: Adjust your confidence if certain patterns keep failing."
         
         return feedback
