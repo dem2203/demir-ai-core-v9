@@ -26,6 +26,18 @@ class LiveMarketMonitor:
         self.VOLUME_SPIKE_MULTIPLIER = 2.0    # 2x normal volume = AI trigger
         self.MIN_TIME_BETWEEN_AI = 300        # AI cooldown (max once every 5 mins)
         
+        # PRE-PUMP DETECTION SYSTEMS (NEW)
+        try:
+            from src.indicators.volume_momentum import VolumeAccelerationDetector
+            from src.indicators.tape_reader import TapeReader
+            self.volume_detector = {}
+            self.tape_reader = {}
+            logger.info("🔮 Pre-Pump Detection initialized (Volume + Tape)")
+        except Exception as e:
+            logger.warning(f"⚠️ Pre-Pump systems unavailable: {e}")
+            self.volume_detector = None
+            self.tape_reader = None
+        
     async def start(self):
         """Start WebSocket streams for BTC and ETH"""
         logger.info("🔴 LIVE MODE: Starting WebSocket streams...")
@@ -71,7 +83,20 @@ class LiveMarketMonitor:
             self.last_prices[symbol] = close_price
             self.candle_data[symbol] = {'volumes': [volume]}
             self.last_ai_check[symbol] = 0
+            
+            # Initialize pre-pump detectors for this symbol
+            if self.volume_detector is not None:
+                from src.indicators.volume_momentum import VolumeAccelerationDetector
+                from src.indicators.tape_reader import TapeReader
+                self.volume_detector[symbol] = VolumeAccelerationDetector()
+                self.tape_reader[symbol] = TapeReader()
+                logger.info(f"🔮 Pre-Pump detectors initialized for {symbol}")
+            
             return
+        
+        # Update volume detector (if available)
+        if self.volume_detector is not None and symbol in self.volume_detector:
+            self.volume_detector[symbol].update(volume)
         
         # Calculate changes
         price_change_pct = abs(close_price - self.last_prices[symbol]) / self.last_prices[symbol]

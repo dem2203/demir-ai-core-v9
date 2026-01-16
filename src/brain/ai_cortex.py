@@ -114,6 +114,15 @@ class AICortex:
             self.lstm_regime = None
             self.vol_predictor = None
         
+        # PRE-PUMP DETECTION (NEW)
+        try:
+            from src.brain.pre_spike_detector import PreSpikeDetector
+            self.pre_spike = PreSpikeDetector()
+            logger.info("🔮 Pre-Spike Detector initialized")
+        except Exception as e:
+            logger.warning(f"⚠️ Pre-Spike Detector unavailable: {e}")
+            self.pre_spike = None
+        
     async def think(self, symbol: str) -> DirectorDecision:
         """
         PROFESSIONAL AI decision loop with MARKET MICROSTRUCTURE
