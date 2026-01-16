@@ -18,9 +18,15 @@ class GeminiVisionAnalyzer:
         self.api_key = Config.GOOGLE_API_KEY
         self.model = "gemini-2.0-flash-exp"  # Latest Gemini with vision
         
-    async def analyze_chart_visual(self, df: pd.DataFrame, symbol: str) -> dict:
+    async def analyze_chart_visual(self, df: pd.DataFrame, symbol: str, macro_context: dict = None, htf_context: dict = None) -> dict:
         """
         Create candlestick chart image and analyze with Gemini Vision
+        
+        Args:
+            df: Price dataframe
+            symbol: Trading symbol
+            macro_context: Macro data (regime, DXY, VIX)
+            htf_context: Higher timeframe trends (1d, 4h)
         
         Returns:
             {
@@ -39,8 +45,8 @@ class GeminiVisionAnalyzer:
             chart_image.save(buffered, format="PNG")
             img_base64 = base64.b64encode(buffered.getvalue()).decode()
             
-            # Send to Gemini Vision
-            prompt = self._build_analysis_prompt()
+            # Send to Gemini Vision with context
+            prompt = self._build_analysis_prompt(macro_context, htf_context)
             result = await self._call_gemini_vision(img_base64, prompt)
             
             return result
@@ -104,9 +110,28 @@ class GeminiVisionAnalyzer:
         
         return img
     
-    def _build_analysis_prompt(self) -> str:
-        """Build the prompt for Gemini Vision analysis"""
-        return """You are a professional crypto trader analyzing this BTC/ETH chart.
+    def _build_analysis_prompt(self, macro_context: dict = None, htf_context: dict = None) -> str:
+        """Build the prompt for Gemini Vision analysis with CONTEXT"""
+        
+        # Build context string
+        context_parts = []
+        if macro_context:
+            regime = macro_context.get('regime', 'UNKNOWN')
+            dxy = macro_context.get('dxy', 0)
+            vix = macro_context.get('vix', 0)
+            context_parts.append(f"Macro: {regime} (DXY: {dxy:.1f}, VIX: {vix:.1f})")
+        
+        if htf_context:
+            trend_1d = htf_context.get('trend_1d', 'UNKNOWN')
+            trend_4h = htf_context.get('trend_4h', 'UNKNOWN')
+            context_parts.append(f"Higher TF: 1d={trend_1d}, 4h={trend_4h}")
+        
+        context_str = "\n".join(context_parts) if context_parts else "No context available"
+        
+        return f"""You are a professional crypto trader analyzing this BTC/ETH chart.
+
+**MARKET CONTEXT:**
+{context_str}
 
 Analyze this candlestick chart and provide:
 
@@ -116,25 +141,30 @@ Analyze this candlestick chart and provide:
    - Trend direction (up, down, sideways)?
    - Support/Resistance breaks?
 
-2. **Trading Signal:**
+2. **Trading Signal (WITH CONTEXT AWARENESS):**
    - BULLISH: Strong upward momentum, breakout, volume confirmation
+     * If macro is RISK_OFF, only give BULLISH if VERY strong (volume + breakout)
+     * If 1d is BEARISH, be cautious with BULLISH (countertrend is risky)
    - BEARISH: Downward pressure, breakdown, selling volume
+     * If macro is RISK_ON, only give BEARISH if clear breakdown
+     * If 1d is BULLISH, be cautious with BEARISH
    - NEUTRAL: Ranging, unclear, low volume
 
 3. **Confidence:** Rate 1-10 based on:
    - Pattern clarity (10 = obvious breakout, 1 = unclear)
    - Volume confirmation (high volume = higher confidence)
    - Trend strength
+   - **ALIGNMENT with macro and HTF** (aligned = +2 confidence, against = -2)
 
 Respond in JSON format:
-{
+{{
   "verdict": "BULLISH" or "BEARISH" or "NEUTRAL",
   "confidence": 1-10,
-  "reasoning": "Brief explanation of what you see",
+  "reasoning": "Brief explanation considering context",
   "patterns": ["breakout", "volume_spike", etc]
-}
+}}
 
-Be decisive. If you see a clear move, say BULLISH/BEARISH. Only say NEUTRAL if truly unclear."""
+Be decisive but CONTEXT-AWARE. Don't fight the macro or daily trend unless pattern is VERY strong."""
     
     async def _call_gemini_vision(self, image_base64: str, prompt: str) -> dict:
         """Call Gemini Vision API"""

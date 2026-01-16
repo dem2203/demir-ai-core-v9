@@ -229,17 +229,17 @@ class MacroBrain:
         else:
             reasons.append(f"VIX Nötr ({vix:.2f})")
         
-        # DXY Analysis (More Sensitive Thresholds)
-        # >104: Strong Dollar (Bearish for Crypto)
-        # 102-104: Neutral/Slight Bearish
-        # <101: Weak Dollar (Bullish for Crypto)
-        if dxy > 104:
-            score -= 25
+        # DXY Analysis (Softened - allow trends to develop)
+        # >110: Very Strong Dollar (Bearish for Crypto) - REDUCED PENALTY
+        # 104-110: Strong Dollar (Slight Bearish)
+        # <102: Weak Dollar (Bullish for Crypto)
+        if dxy > 110:
+            score -= 15  # Was -25 (too harsh - killed all signals)
             reasons.append(f"DXY Çok Güçlü ({dxy:.2f}): Kripto Baskılanıyor")
-        elif dxy > 102:
-            score -= 10
-            reasons.append(f"DXY Güçlü ({dxy:.2f}): Negatif Baskı")
-        elif dxy < 101:
+        elif dxy > 104:
+            score -= 5  # Was -10 (softened)
+            reasons.append(f"DXY Güçlü ({dxy:.2f}): Hafif Negatif Baskı")
+        elif dxy < 102:
             score += 20
             reasons.append(f"DXY Zayıf ({dxy:.2f}): Kripto İçin Pozitif")
         else:

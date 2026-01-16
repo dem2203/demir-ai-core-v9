@@ -263,19 +263,24 @@ class AICortex:
     
     async def _analyze_with_gemini_vision(self, data: dict) -> dict:
         """
-        Orchestrate Gemini Vision analysis - Primary visual signal
+        Orchestrate Gemini Vision analysis - Primary visual signal WITH CONTEXT
         
         Strategy:
         1. Always: Analyze candlestick chart from DataFrame
         2. Optional: Try TradingView screenshot (fallback if fails)
         3. Combine insights if both available
+        4. **NEW: Pass macro + HTF context for smarter analysis**
         """
         try:
             df = data.get('df')
             symbol = data.get('chart', {}).get('symbol', 'BTCUSDT')
+            macro_context = data.get('macro')
+            htf_context = data.get('chart')  # Contains trend_1d, trend_4h
             
-            # PRIMARY: Visual analysis from candlestick data
-            visual_result = await self.gemini_vision.analyze_chart_visual(df, symbol)
+            # PRIMARY: Visual analysis from candlestick data WITH CONTEXT
+            visual_result = await self.gemini_vision.analyze_chart_visual(
+                df, symbol, macro_context, htf_context
+            )
             
             # OPTIONAL: Try screenshot analysis (non-blocking)
             screenshot_result = None
@@ -354,8 +359,10 @@ class AICortex:
         }
 
     async def _build_final_decision(self, symbol: str, consensus: dict, strategy: dict, votes: list, validation: dict, data: dict) -> DirectorDecision:
-        """Construct the final DirectorDecision object"""
+        """Construct the final DirectorDecision object with PROFESSIONAL FILTERS"""
         current_price = data['current_price']
+        chart = data['chart']
+        macro = data['macro']
         
         # Determine raw signals
         bullish_score = consensus['bullish']
@@ -375,7 +382,43 @@ class AICortex:
         else:
             position = "CASH"
             raw_confidence = 5
+        
+        # === LEVEL 2 PROFESSIONAL FILTERS ===
+        
+        # FILTER #1: HTF Protection (Daily trend veto)
+        trend_1d = chart.get('trend_1d', 'UNKNOWN')
+        if position == "LONG" and trend_1d == "BEARISH" and raw_confidence < 8:
+            logger.warning(f"🚫 HTF VETO: Daily BEARISH blocks LONG (confidence {raw_confidence:.1f} < 8)")
+            position = "CASH"
+            confidence_adjustment -= 2
+        elif position == "SHORT" and trend_1d == "BULLISH" and raw_confidence < 8:
+            logger.warning(f"🚫 HTF VETO: Daily BULLISH blocks SHORT (confidence {raw_confidence:.1f} < 8)")
+            position = "CASH"
+            confidence_adjustment -= 2
+        
+        # FILTER #2: Macro Regime Filter (RISK-OFF penalizes LONG)
+        macro_regime = macro.get('regime', 'NEUTRAL')
+        macro_score = macro.get('score', 0)
+        if position == "LONG" and macro_regime == "RISK_OFF":
+            logger.warning(f"⚠️ RISK-OFF: Reducing LONG confidence (macro score: {macro_score})")
+            confidence_adjustment -= 2
+        
+        # FILTER #3: Dynamic Confidence Scaling (volatility-based)
+        df = data.get('df')
+        if df is not None and not df.empty:
+            # Calculate ATR ratio for volatility
+            atr = df['high'].rolling(14).mean() - df['low'].rolling(14).mean()
+            current_atr = atr.iloc[-1]
+            avg_atr = atr.mean()
+            atr_ratio = current_atr / avg_atr if avg_atr > 0 else 1.0
             
+            if atr_ratio > 1.5:  # High volatility
+                logger.info(f"⚡ HIGH VOLATILITY (ATR ratio: {atr_ratio:.2f}) - Raising bar")
+                confidence_adjustment -= 1  # More strict
+            elif atr_ratio < 0.7:  # Low volatility
+                logger.info(f"😴 LOW VOLATILITY (ATR ratio: {atr_ratio:.2f}) - Easier signals")
+                confidence_adjustment += 0  # Keep normal (already at 6)
+        
         final_confidence = min(max(int(raw_confidence + confidence_adjustment), 1), 10)
         
         # AGGRESSIVE MODE: Ensure we take trades even if DeepSeek complains slightly

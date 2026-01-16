@@ -36,7 +36,7 @@ class Config:
     TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
     
     # Trading Configuration
-    MIN_CONFIDENCE_FOR_NOTIFICATION = int(os.getenv("MIN_CONFIDENCE", "3"))  # Lowered to catch real price action
+    MIN_CONFIDENCE_FOR_NOTIFICATION = int(os.getenv("MIN_CONFIDENCE", "6"))  # Professional threshold: 6+ only
     
     
     # Paths
