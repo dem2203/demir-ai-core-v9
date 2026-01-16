@@ -136,7 +136,31 @@ Be objective. High confidence only if strong consensus."""
             trending = result.get("trending", False)
             signals = result.get("key_signals", "No significant activity")
             
-            logger.info(f"📱 Grok Sentiment ({base_symbol}): {sentiment} | FOMO: {fomo} | FUD: {fud}")
+            # ===== MANIPULATION DETECTION (NEW) =====
+            manipulation_flags = []
+            
+            # Check 1: Extreme one-sided sentiment (coordinated attack)
+            if fomo >= 8 and fud <= 2:
+                confidence = max(1, confidence - 2)
+                manipulation_flags.append("Extreme FOMO")
+            
+            if fud >= 8 and fomo <= 2:
+                confidence = max(1, confidence - 2)
+                manipulation_flags.append("Extreme FUD")
+            
+            # Check 2: Both high FOMO and FUD (confused market = noise)
+            if fomo >= 7 and fud >= 7:
+                confidence = max(1, confidence - 3)
+                manipulation_flags.append("Conflicting signals")
+                sentiment = "NEUTRAL"  # Override to neutral
+            
+            # Append warnings to reasoning
+            if manipulation_flags:
+                signals += f" | ⚠️ {', '.join(manipulation_flags)}"
+            
+            logger.info(f"📱 Grok Sentiment ({base_symbol}): {sentiment} | FOMO: {fomo} | FUD: {fud} | Conf: {confidence}")
+            if manipulation_flags:
+                logger.warning(f"🚨 Manipulation flags: {manipulation_flags}")
             
             return {
                 "sentiment": sentiment,
@@ -145,7 +169,8 @@ Be objective. High confidence only if strong consensus."""
                 "fud_score": fud,
                 "whale_activity": whale,
                 "trending": trending,
-                "reasoning": signals
+                "reasoning": signals,
+                "manipulation_detected": len(manipulation_flags) > 0
             }
         
         except Exception as e:
@@ -168,32 +193,40 @@ Be objective. High confidence only if strong consensus."""
         """
         Calculate vote weight based on social sentiment strength.
         
+        SAFETY: Max 3 votes to prevent Grok dominance
+        
         Args:
             analysis: Result from analyze_social_sentiment()
         
         Returns:
-            vote_weight: 1-3 votes
+            vote_weight: 1-3 votes (capped for safety)
         """
         confidence = analysis["confidence"]
         fomo = analysis["fomo_score"]
         fud = analysis["fud_score"]
         whale = analysis["whale_activity"]
         trending = analysis["trending"]
+        manipulation = analysis.get("manipulation_detected", False)
         
-        # Base weight
-        weight = 2  # Default 2 votes
+        # Base weight (conservative)
+        weight = 1  # Start low
         
-        # Boost for strong signals
-        if confidence >= 8:
+        # Boost for high confidence (but not extreme)
+        if confidence >= 7 and confidence <= 9:
             weight += 1
         
-        # Boost for extreme FOMO/FUD
-        if fomo >= 8 or fud >= 8:
+        # Boost for moderate signals (not extremes)
+        if (fomo >= 6 and fomo <= 8) or (fud >= 6 and fud <= 8):
             weight += 1
         
-        # Boost for whale activity
+        # Boost for whale activity (reliable signal)
         if whale:
             weight += 1
         
-        # Cap at 3 votes (don't dominate)
+        # PENALTY: Manipulation detected
+        if manipulation:
+            weight = max(1, weight - 1)
+            logger.warning("🚨 Grok vote weight reduced due to manipulation flags")
+        
+        # CAP at 3 votes (NEVER dominate decision)
         return min(3, weight)
