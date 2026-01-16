@@ -187,14 +187,9 @@ class AIPhoenixBot:
                 await self.telegram.send_message(message)
                 
                 logger.info("📱 Telegram notification sent (change detected)")
-                async with self._decision_lock:  # FIX 1.4: Thread-safe update
-                    self.last_decisions[symbol] = current_decision_key
             
-            # Execute if confidence high enough AND not CASH
-            if decision.confidence >= 7 and decision.position != "CASH":
-                # Extract AI votes for tracking
-                ai_votes_dict = {vote.name: vote.vote for vote in decision.votes}
-                
+            # Track ALL signals sent to Telegram (not just high-confidence)
+            if decision.position != "CASH":
                 # Extract TP/SL from Claude's trade setup
                 entry_price = current_price
                 stop_loss = None
@@ -202,10 +197,9 @@ class AIPhoenixBot:
                 
                 if isinstance(decision.entry_conditions, dict):
                     stop_loss = decision.entry_conditions.get('stop_loss')
-                    # Use target_1 as TP, or target_2 if target_1 not available
                     take_profit = decision.entry_conditions.get('target_1') or decision.entry_conditions.get('target_2')
                 
-                # Fallback: Calculate TP/SL if not provided (2% SL, 4% TP for 2:1 R:R)
+                # Fallback: Calculate TP/SL if not provided
                 if not stop_loss:
                     if decision.position == "LONG":
                         stop_loss = entry_price * 0.98  # -2%
@@ -213,6 +207,9 @@ class AIPhoenixBot:
                     else:  # SHORT
                         stop_loss = entry_price * 1.02  # +2%
                         take_profit = entry_price * 0.96 if not take_profit else take_profit  # -4%
+                
+                # Extract AI votes for tracking
+                ai_votes_dict = {vote.name: vote.vote for vote in decision.votes}
                 
                 # Log signal to tracker
                 signal_id = self.signal_tracker.log_signal(
@@ -223,7 +220,7 @@ class AIPhoenixBot:
                     decision.confidence
                 )
                 
-                # Open position in manager
+                # Open position in manager (ANTI-SPAM FOR ALL SIGNALS!)
                 self.position_manager.open_position(
                     symbol,
                     decision.position,
@@ -233,19 +230,23 @@ class AIPhoenixBot:
                     signal_id,
                     decision.confidence
                 )
-                
+                logger.info(f"📝 Position tracked: {decision.position} @ ${entry_price} (TP: ${take_profit}, SL: ${stop_loss})")
+            
+            # Execute trade ONLY if confidence high enough (≥7)
+            if decision.confidence >= 7 and decision.position != "CASH":
                 signal = {
                     "action": "BUY" if decision.position == "LONG" else "SELL",
-                    "entry_price": entry_price,
-                    "stop_loss": stop_loss,
+                    "entry_price": current_price,
+                    "stop_loss": decision.entry_conditions.get('stop_loss') if isinstance(decision.entry_conditions, dict) else None,
                     "reason": f"Live AI ({reason})",
                     "cortex_note": decision.reasoning,
-                    "ai_votes": ai_votes_dict,
+                    "ai_votes": {vote.name: vote.vote for vote in decision.votes},
                     "confidence": decision.confidence
                 }
                 await self.trader.execute(symbol, signal)
+                logger.info(f"✅ HIGH CONFIDENCE - Trade executed")
             else:
-                logger.info(f"💤 Low confidence or CASH - holding position")
+                logger.info(f"💤 Low confidence ({decision.confidence}/10) - position tracked but no trade execution")
                 
         except Exception as e:
             logger.error(f"Error in market event handler: {e}")
