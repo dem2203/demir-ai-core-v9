@@ -131,7 +131,22 @@ class AICortex:
         except Exception as e:
             logger.warning(f"⚠️ Pre-Spike Detector unavailable: {e}")
             self.pre_spike = None
-        
+        # LIQUIDATION TRACKER (NEW)
+        try:
+            from src.brain.liquidation_tracker import LiquidationTracker
+            self.liq_tracker = LiquidationTracker()
+            logger.info("🩸 Liquidation Heatmap Engine initialized")
+        except Exception as e:
+            logger.warning(f"⚠️ Liquidation Tracker unavailable: {e}")
+        # RL AGENT (Self-Learning) - NEW
+        try:
+            from src.ml.rl_agent import RLAgent
+            self.rl_agent = RLAgent()
+            logger.info("🧠 Self-Learning RL Agent initialized")
+        except Exception as e:
+            logger.warning(f"⚠️ RL Agent unavailable: {e}")
+            self.rl_agent = None
+            
     async def think(self, symbol: str) -> DirectorDecision:
         """
         PROFESSIONAL AI decision loop with MARKET MICROSTRUCTURE
@@ -139,9 +154,25 @@ class AICortex:
         logger.info(f"🧠 AI Cortex: Starting professional analysis for {symbol}...")
         
         try:
-            # 1. Gather ALL Data in Parallel (including professional signals)
-            logger.info("📡 Gathering data from all sources (order book, funding, volume)...")
+            # 1. Gather ALL Data in Parallel
+            logger.info("📡 Gathering data from all sources (microstructure, sentiment, whale)...")
             data = await self._gather_all_data(symbol)
+            
+            # RL OPTIMIZATION (Dynamic Weights)
+            # Determine state: Volatility + Trend
+            current_vol = data['microstructure']['volume_profile'].get('volatility', 0.01) # fallback
+            trend_strength = abs(data['chart'].get('adx', 20)) 
+            
+            # Ask RL Agent for best weights
+            rl_weights = {}
+            if self.rl_agent:
+                state = self.rl_agent.get_state(current_vol, trend_strength)
+                rl_weights = self.rl_agent.get_optimized_weights(state)
+                logger.info(f"🧠 RL Strategy ({state}): Adjusted voting weights")
+            
+            # get whale data (if available) use get to avoid error
+            whale_data = data.get('whale', {})
+            liq_data = data.get('liquidation', {})
             
             # 2. Collect votes from all analyzers
             votes = await self._collect_votes_professional(
@@ -153,7 +184,10 @@ class AICortex:
                 data['microstructure']['funding_rate'],
                 data['microstructure']['volume_profile'],
                 data['microstructure']['cvd'],
-                data  # NEW: Pass full data for Gemini Vision
+                data,  # Full data for Gemini
+                whale_data, # New whale data
+                liq_data, # New liquidation data
+                rl_weights # Dynamic weights from RL
             )
             
             # 3. Claude Strategic Reasoning (WITH FEEDBACK)
@@ -269,10 +303,16 @@ class AICortex:
         volume_task = self.market_micro.analyze_volume_profile(df_1h)
         cvd_task = self.market_micro.analyze_cvd(df_1h)
         
+        # Whale Analysis (NEW)
+        whale_task = self.whale_hunter.analyze_whale_activity(symbol) if self.whale_hunter else asyncio.sleep(0, result={})
+        
+        # Liquidation Analysis (NEW)
+        liq_task = asyncio.to_thread(self.liq_tracker.analyze_liquidation_zones, df_1h, current_price) if self.liq_tracker else asyncio.sleep(0, result={})
+        
         # Wait for all
-        macro_data, news_data, chart_analysis, pa_data, ob_data, fund_data, vol_data, cvd_data = await asyncio.gather(
+        macro_data, news_data, chart_analysis, pa_data, ob_data, fund_data, vol_data, cvd_data, whale_data, liq_data = await asyncio.gather(
             macro_task, news_task, chart_task, pa_detector_task,
-            orderbook_task, funding_task, volume_task, cvd_task
+            orderbook_task, funding_task, volume_task, cvd_task, whale_task, liq_task
         )
         
         # Aggregate microstructure
@@ -290,7 +330,9 @@ class AICortex:
             "news": news_data,
             "chart": chart_analysis, # Contains HTF info now
             "price_action": pa_data,
-            "microstructure": microstructure
+            "microstructure": microstructure,
+            "whale": whale_data,
+            "liquidation": liq_data
         }
 
     async def _analyze_chart_professional(self, symbol: str, df_1h, df_4h, df_1d) -> dict:
@@ -777,4 +819,41 @@ class AICortex:
             news.get('summary', 'Haber analizi')[:100]
         ))
         
+        if whale_data and isinstance(whale_data, dict) and whale_data.get('score', 0) > 0:
+            score = whale_data.get('score', 5)
+            sentiment = whale_data.get('sentiment', 'NEUTRAL')
+            flow = whale_data.get('status', 'NEUTRAL')
+            
+            # Logic: Inflow = Bearish, Outflow = Bullish
+            vote_type = "NEUTRAL"
+            if flow == "INFLOW":
+                vote_type = "BEARISH"
+            elif flow == "OUTFLOW":
+                vote_type = "BULLISH"
+            elif sentiment == "BULLISH":
+                vote_type = "BULLISH"
+            elif sentiment == "BEARISH":
+                vote_type = "BEARISH"
+                
+            confidence = whale_data.get('confidence', 5)
+            
+            # Special Weight: Whales are smart money
+            if confidence >= 7:
+                 confidence += 1
+                 
+            votes.append(AIVote("Whale Hunter", vote_type, confidence, f"Moves: {str(whale_data.get('moves', []))[:50]}"))
+
+        # 9. LIQUIDATION HEATMAP (Short/Long Squeeze) - NEW
+        if liq_data and isinstance(liq_data, dict):
+             signal = liq_data.get('signal', 'NEUTRAL')
+             risk_score = liq_data.get('risk_score', 2)
+             magnet_price = liq_data.get('magnet_price')
+             
+             if signal == "MAGNET_UP":
+                 # Price magnetically pulled UP to kill shorts -> Bullish
+                 votes.append(AIVote("Liquidation Engine", "BULLISH", risk_score, f"Short Squeeze Magnet @ ${magnet_price:.2f}"))
+             elif signal == "MAGNET_DOWN":
+                 # Price magnetically pulled DOWN to kill longs -> Bearish
+                 votes.append(AIVote("Liquidation Engine", "BEARISH", risk_score, f"Long Squeeze Magnet @ ${magnet_price:.2f}"))
+
         return votes

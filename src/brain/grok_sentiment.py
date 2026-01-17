@@ -56,6 +56,40 @@ class GrokSentimentAnalyzer:
                 logger.error(f"Failed to initialize Grok: {e}")
                 self.client = None
     
+    async def run_custom_prompt(self, prompt: str) -> Dict:
+        """
+        Execute a custom prompt using the Grok API.
+        Useful for specialized tasks like Whale Analysis.
+        """
+        if not self.client:
+            return {}
+            
+        try:
+            response = self.client.chat.completions.create(
+                model="grok-beta",
+                messages=[
+                    {"role": "system", "content": "You are a crypto analytics AI. Return ONLY valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=300
+            )
+            
+            content = response.choices[0].message.content.strip()
+            
+            # Simple parsing
+            import json
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+            
+            return json.loads(content)
+            
+        except Exception as e:
+            logger.error(f"Grok custom prompt error: {e}")
+            return {}
+
     def analyze_social_sentiment(self, symbol: str) -> Dict:
         """
         Analyze X/Twitter sentiment for a crypto symbol.
