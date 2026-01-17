@@ -89,6 +89,9 @@ class AICortex:
         self.news = NewsSentimentAnalyzer()
         self.validator = DeepSeekValidator()
         
+        # State tracking for RL feedback
+        self.current_market_state = "LOW_VOL_RANGE"  # Default state
+        
         # SOCIAL SENTIMENT (Grok - NEW)
         try:
             from src.brain.grok_sentiment import GrokSentimentAnalyzer
@@ -165,10 +168,15 @@ class AICortex:
             
             # Ask RL Agent for best weights
             rl_weights = {}
+            current_market_state = "LOW_VOL_RANGE"  # Default
             if self.rl_agent:
                 state = self.rl_agent.get_state(current_vol, trend_strength)
+                current_market_state = state  # Store for later learning
                 rl_weights = self.rl_agent.get_optimized_weights(state)
                 logger.info(f"🧠 RL Strategy ({state}): Adjusted voting weights")
+            
+            # Store state for this symbol (for RL feedback later)
+            self.current_market_state = current_market_state
             
             # get whale data (if available) use get to avoid error
             whale_data = data.get('whale', {})
@@ -857,3 +865,23 @@ class AICortex:
                  votes.append(AIVote("Liquidation Engine", "BEARISH", risk_score, f"Long Squeeze Magnet @ ${magnet_price:.2f}"))
 
         return votes
+    
+    def provide_rl_feedback(self, trade_result: dict):
+        """
+        Provide feedback to RL Agent from a closed trade.
+        
+        This should be called by PositionManager or main.py when a trade closes.
+        
+        Args:
+            trade_result: Dict from PositionManager.close_position() containing P&L, etc.
+        """
+        if not self.rl_agent or not trade_result:
+            return
+            
+        # Use the market state at the time of decision
+        market_state = getattr(self, 'current_market_state', 'LOW_VOL_RANGE')
+        
+        # Trigger learning
+        self.rl_agent.learn_from_trade(trade_result, market_state)
+        
+        logger.info(f"🎯 RL Feedback provided: {trade_result.get('outcome')} ({trade_result.get('pnl_pct'):+.2f}%)")

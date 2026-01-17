@@ -242,9 +242,24 @@ class PositionManager:
             f"PnL: {pnl_pct:+.2f}% | Duration: {duration_str}"
         )
         
+        # Prepare trade result for RL learning
+        trade_result = {
+            "symbol": symbol,
+            "signal_type": pos.signal_type,
+            "entry_price": pos.entry_price,
+            "exit_price": exit_price,
+            "pnl_pct": pnl_pct,
+            "duration_hours": duration if isinstance(duration, float) else 0,
+            "outcome": "WIN" if pnl_pct > 0 else "LOSS",
+            "confidence": pos.confidence,
+            "timestamp": pos.entry_timestamp
+        }
+        
         # Remove from active positions
         del self.positions[symbol]
         self._save_positions()
+        
+        return trade_result  # Return for RL learning
     
     def get_all_active(self) -> Dict[str, ActivePosition]:
         """Get all active positions"""

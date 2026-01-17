@@ -121,3 +121,39 @@ class RLAgent:
     def _save_q_table(self):
         with open(self.q_table_path, 'w') as f:
             json.dump(self.q_table, f)
+            
+    def learn_from_trade(self, trade_result: dict, market_state_at_entry: str):
+        """
+        Learn from a closed trade.
+        
+        Args:
+            trade_result: Dict with {'pnl_pct', 'outcome', 'confidence', etc.}
+            market_state_at_entry: State when trade was opened (LOW_VOL_RANGE, etc.)
+        """
+        if not trade_result:
+            return
+            
+        # Calculate reward based on outcome
+        pnl = trade_result.get('pnl_pct', 0)
+        
+        # Reward function:
+        # - Positive PnL = Positive reward
+        # - Negative PnL = Negative reward
+        # Scale: +10 reward for +5% win, -10 for -5% loss
+        reward = pnl * 2  # Scale factor
+        
+        # Clip to reasonable range
+        reward = max(-10, min(10, reward))
+        
+        # Get action that was taken (best action at that time)
+        action_idx = self.choose_action(market_state_at_entry)
+        
+        # Next state (assume same for simplicity in offline learning)
+        next_state = market_state_at_entry
+        
+        # Update Q-Table
+        self.update(market_state_at_entry, action_idx, reward, next_state)
+        
+        outcome = "WIN" if pnl > 0 else "LOSS"
+        logger.info(f"🎓 RL Learning: {outcome} ({pnl:+.2f}%) in {market_state_at_entry} → Reward: {reward:+.2f}")
+
