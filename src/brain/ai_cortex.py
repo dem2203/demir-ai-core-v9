@@ -875,6 +875,46 @@ class AICortex:
                  # Price magnetically pulled DOWN to kill longs -> Bearish
                  votes.append(AIVote("Liquidation Engine", "BEARISH", risk_score, f"Long Squeeze Magnet @ ${magnet_price:.2f}"))
 
+        # 10. PRE-SPIKE DETECTOR (Early Warning) - NEW!
+        if self.pre_spike:
+            # Extract scores from existing signals
+            volume_score = volume_profile.get('strength', 5)  # 0-10
+            orderbook_score = orderbook.get('strength', 5)    # 0-10
+            tape_score = 5  # Placeholder (would come from tape_reader if implemented)
+            funding_score = min(abs(funding.get('rate_percent', 0)) * 2, 10) if funding.get('signal') != 'ERROR' else 5
+            
+            pre_spike_analysis = self.pre_spike.analyze(
+                volume_score=volume_score,
+                orderbook_score=orderbook_score,
+                tape_score=tape_score,
+                funding_score=funding_score,
+                symbol=data.get('current_price', 'UNKNOWN')  # Symbol placeholder
+            )
+            
+            # If PRE-PUMP detected, give it MASSIVE weight (it's an early warning!)
+            if pre_spike_analysis['is_pre_pump']:
+                signal_type = "BULLISH" if volume_score > 6 else "NEUTRAL"  # Direction based on volume
+                confidence = pre_spike_analysis['confidence']
+                
+                logger.warning(f"🚨 PRE-PUMP DETECTED! Score: {pre_spike_analysis['combined_score']:.1f}/10 | Lead: {pre_spike_analysis['lead_time_estimate']}")
+                
+                # Give 3 votes for pre-pump (it's ACTIONABLE intelligence)
+                for i in range(3):
+                    votes.append(AIVote(
+                        f"🚨 Pre-Pump Warning #{i+1}",
+                        signal_type,
+                        confidence,
+                        f"Early Warning: {pre_spike_analysis['signal']} ({pre_spike_analysis['combined_score']:.1f}/10)"
+                    ))
+            elif pre_spike_analysis['signal'] == 'BUILDING':
+                # BUILDING phase = 1 moderate vote
+                votes.append(AIVote(
+                    "🔍 Pre-Pump Building",
+                    "NEUTRAL",
+                    pre_spike_analysis['confidence'],
+                    f"Momentum building ({pre_spike_analysis['combined_score']:.1f}/10)"
+                ))
+
         return votes
     
     def provide_rl_feedback(self, trade_result: dict):
