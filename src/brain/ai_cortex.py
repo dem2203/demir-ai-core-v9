@@ -141,6 +141,17 @@ class AICortex:
             logger.info("🩸 Liquidation Heatmap Engine initialized")
         except Exception as e:
             logger.warning(f"⚠️ Liquidation Tracker unavailable: {e}")
+            self.liq_tracker = None
+            
+        # ON-CHAIN WHALE ANALYZER (NEW)
+        try:
+            from src.brain.on_chain_analyzer import OnChainAnalyzer
+            self.whale_hunter = OnChainAnalyzer(self.grok)  # Uses Grok for analysis
+            logger.info("🐋 Whale Hunter initialized (On-Chain Tracking)")
+        except Exception as e:
+            logger.warning(f"⚠️ Whale Hunter unavailable: {e}")
+            self.whale_hunter = None
+            
         # RL AGENT (Self-Learning) - NEW
         try:
             from src.ml.rl_agent import RLAgent
