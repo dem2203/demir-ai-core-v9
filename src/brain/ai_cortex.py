@@ -672,7 +672,8 @@ class AICortex:
         
         return "\n".join(parts)
     async def _collect_votes_professional(self, macro, chart, news, price_action, 
-                                     orderbook, funding, volume_profile, cvd, data) -> List[AIVote]:
+                                     orderbook, funding, volume_profile, cvd, data, 
+                                     whale_data=None, liq_data=None, rl_weights=None) -> List[AIVote]:
         """
         Collect votes from ALL sources including PROFESSIONAL market signals
         """
