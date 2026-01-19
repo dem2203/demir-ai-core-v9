@@ -66,7 +66,7 @@ class GrokSentimentAnalyzer:
             
         try:
             response = self.client.chat.completions.create(
-                model="grok-beta",
+                model="grok-3",  # Updated from deprecated grok-beta
                 messages=[
                     {"role": "system", "content": "You are a crypto analytics AI. Return ONLY valid JSON."},
                     {"role": "user", "content": prompt}
@@ -140,7 +140,7 @@ Be objective. High confidence only if strong consensus."""
 
             # Call Grok API
             response = self.client.chat.completions.create(
-                model="grok-beta",
+                model="grok-3",  # Updated from deprecated grok-beta
                 messages=[
                     {"role": "system", "content": "You are a crypto social sentiment analyzer. Return ONLY valid JSON."},
                     {"role": "user", "content": prompt}
